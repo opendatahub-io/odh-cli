@@ -24,16 +24,11 @@ func NewComponentsCheck() doctor.DiagnosticCheck {
 
 type componentsCheck struct{}
 
-func (c *componentsCheck) Name() string {
-	return "Deprecated Components"
-}
-
 func (c *componentsCheck) Execute(ctx context.Context, cli client.Client) []doctor.Category {
 	category := doctor.Category{
-		Name:    c.Name(),
-		Status:  doctor.StatusOK,
-		Message: "Checking components",
-		Checks:  make([]doctor.Check, 0),
+		Name:   "Deprecated components",
+		Status: doctor.StatusOK,
+		Checks: make([]doctor.Check, 0),
 	}
 
 	for _, c := range components {

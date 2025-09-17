@@ -28,7 +28,6 @@ type Check struct {
 }
 
 type DiagnosticCheck interface {
-	Name() string
 	Execute(ctx context.Context, client client.Client) []Category
 }
 
