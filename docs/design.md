@@ -1,726 +1,194 @@
-# Development Guide: odh-cli
+# Design: odh-cli
 
-This document provides coding conventions, testing guidelines, and contribution practices for developing the odh-cli kubectl plugin.
+This document describes the architecture and design decisions for the odh-cli kubectl plugin.
 
-For architectural information and design decisions, see [../AGENTS.md](../AGENTS.md).
+For development guidelines, coding conventions, and contribution practices, see [development.md](development.md).
 
-## Table of Contents
+## Overview
 
-1. [Setup and Build](#setup-and-build)
-2. [Coding Conventions](#coding-conventions)
-3. [Testing Guidelines](#testing-guidelines)
-4. [Extensibility](#extensibility)
-5. [Code Review Guidelines](#code-review-guidelines)
+CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) that provides various operational capabilities for managing and interacting with ODH/RHOAI deployments on Kubernetes.
 
-## Setup and Build
+## Key Architecture Decisions
 
-### Build Commands
+### Core Principles
+- **Extensible Command Structure**: Modular design allowing easy addition of new commands
+- **Consistent Output**: Unified output formats (table, JSON) across all commands
+- **kubectl Integration**: Native kubectl plugin providing familiar UX patterns
 
-```bash
-# Build the binary
-make build
+### Client Strategy
+- Uses `controller-runtime/pkg/client` instead of `kubernetes.Interface`
+- Better support for ODH and RHOAI custom resources
+- Unified interface for standard and custom Kubernetes objects
+- Simplifies interaction with Custom Resource Definitions (CRDs)
 
-# Run the doctor command
-make run
+### Example Data Models
 
-# Format code
-make fmt
-
-# Run linter
-make lint
-
-# Run linter with auto-fix
-make lint/fix
-
-# Run vulnerability scanner
-make vulncheck
-
-# Run all checks (lint + vulncheck)
-make check
-
-# Run tests
-make test
-
-# Tidy dependencies
-make tidy
-
-# Clean build artifacts
-make clean
-```
-
-### Test Commands
-
-```bash
-# Run all tests with verbose output
-go test -v ./...
-
-# Run tests in a specific package
-go test -v ./pkg/printer
-
-# Run a specific test
-go test -v ./pkg/printer -run TestTablePrinter
-
-# Run tests for all packages
-make test
-```
-
-## Coding Conventions
-
-### Functional Options Pattern
-
-All struct initialization uses the functional options pattern for flexible, extensible configuration. This project adopts the generic `Option[T]` interface pattern from [k8s-controller-lib](https://github.com/lburgazzoli/k8s-controller-lib/blob/main/pkg/util/option.go) for type-safe, extensible configuration.
-
-**Define the Option Interface:**
-
-The `pkg/util/option.go` package provides the generic infrastructure:
+Commands can define their own data models as needed. For example, a diagnostic command might use:
 
 ```go
-// Option is a generic interface for applying configuration to a target.
-type Option[T any] interface {
-    ApplyTo(target *T)
+type Category struct {
+    Name    string
+    Status  Status
+    Message string
+    Checks  []Check
 }
 
-// FunctionalOption wraps a function to implement the Option interface.
-type FunctionalOption[T any] func(*T)
-
-func (f FunctionalOption[T]) ApplyTo(target *T) {
-    f(target)
-}
-```
-
-**Define Type-Specific Options:**
-
-```go
-// Type alias for convenience
-type Option = util.Option[Renderer]
-
-// Function-based option using FunctionalOption
-func WithWriter(w io.Writer) Option {
-    return util.FunctionalOption[Renderer](func(r *Renderer) {
-        r.writer = w
-    })
-}
-
-func WithHeaders(headers ...string) Option {
-    return util.FunctionalOption[Renderer](func(r *Renderer) {
-        r.headers = headers
-    })
+type Check struct {
+    Name    string
+    Status  Status
+    Message string
 }
 ```
 
-**Apply Options:**
+## Architecture & Design
 
-```go
-func NewRenderer(opts ...Option) *Renderer {
-    r := &Renderer{
-        writer:     os.Stdout,
-        formatters: make(map[string]ColumnFormatter),
+The `odh` CLI is a standalone Go application that leverages the `client-go` library to communicate with the Kubernetes API server. It is designed to function as a kubectl plugin.
+
+### kubectl Plugin Mechanism
+
+The CLI is named `kubectl-odh`. When the binary is placed in a directory listed in the user's `PATH`, kubectl will automatically discover it, allowing it to be invoked as `kubectl odh`. The CLI relies on the user's active kubeconfig file for cluster authentication, just like kubectl.
+
+### Core Libraries
+
+- **Cobra**: To build a robust command-line interface with commands, subcommands, and flags
+- **Viper**: For potential future configuration needs
+- **Kubernetes client-go**: The official Go client library for interacting with the Kubernetes API
+- **controller-runtime/client**: A higher-level client to simplify interactions with Custom Resources
+- **k8s.io/cli-runtime**: Provides standard helpers for building kubectl-like command-line tools, handling common flags and client configuration
+
+### Command Structure
+
+The CLI is structured using Cobra with an extensible subcommand architecture:
+
+```
+kubectl odh
+├── <command1> [-o|--output <format>] [--namespace <ns>] [command-specific flags]
+├── <command2> [-o|--output <format>] [--namespace <ns>] [command-specific flags]
+└── version
+```
+
+**Common Elements:**
+- **odh** (root command): The entry point for the plugin
+- **-o, --output** (flag): Specifies the output format. Supported values: `table` (default), `json`
+- **--namespace** (flag): Managed via cli-runtime. Specifies the namespace for operations. Defaults to a common installation namespace like `opendatahub`
+
+**Extensibility:**
+New commands can be added by implementing the command pattern with Cobra. Each command can define its own subcommands, flags, and execution logic while leveraging shared components like the output formatters and Kubernetes client.
+
+### Command Implementation Pattern
+
+Commands follow a consistent pattern inspired by `sample-cli-plugin`, separating command definition, options, and execution logic.
+
+#### Standard Command Structure
+
+Each command typically follows this structure:
+
+1. **Initialize**: The root command instantiates a `genericclioptions.ConfigFlags` object from cli-runtime to manage common kubectl flags
+2. **Options Struct**: A command-specific options struct (e.g., `CommandOptions`) holds configuration, I/O streams, `ConfigFlags`, and output format
+3. **Execution Logic**: A `Run()` method on the options struct implements the command logic
+4. **Output Formatting**: Commands use shared printer components to format output consistently
+
+#### Example: Diagnostic Command Pattern
+
+A diagnostic command might implement the following:
+
+**Define Components:**
+- A `Check` interface or struct encapsulates individual diagnostic tests
+- Each check has a `Name` and an `Execute()` method
+- The `Execute()` method takes the Kubernetes client as input and returns a `Result`
+
+**Run Method:**
+1. Gets the target namespace and creates a Kubernetes client from the `ConfigFlags`
+2. Executes the command-specific logic (e.g., runs diagnostic checks)
+3. Collects and processes results
+4. Uses a printer to format results based on the specified output format
+
+This pattern can be adapted for other command types (installation helpers, configuration tools, etc.).
+
+## Output Formats
+
+The CLI supports multiple output formats to accommodate different use cases. Commands should implement support for these formats using the shared printer components.
+
+### Table Output (Default)
+
+The table output is for human consumption and provides a quick, glanceable summary. The format adapts to each command's data structure.
+
+**Example (diagnostic output):**
+```
+CHECK          STATUS     MESSAGE
+Check Name 1   ✅ OK       Success message for check 1.
+Check Name 2   ❌ ERROR    Error details for check 2.
+Check Name 3   ⚠️ WARNING  Warning message for check 3.
+```
+
+Icons (✅, ❌, ⚠️) and colors can be used for clarity where appropriate.
+
+### JSON Output (`-o json`)
+
+The JSON output is for scripting and integration with other tools. The structure varies by command but maintains consistency in formatting.
+
+**Example (diagnostic output):**
+```json
+{
+  "checks": [
+    {
+      "name": "Check Name 1",
+      "status": "OK",
+      "message": "Success message for check 1."
+    },
+    {
+      "name": "Check Name 2",
+      "status": "ERROR",
+      "message": "Error details for check 2."
     }
-
-    // Apply options using the interface method
-    for _, opt := range opts {
-        opt.ApplyTo(r)
-    }
-
-    return r
+  ],
+  "summary": {
+    "ok": 1,
+    "error": 1
+  }
 }
 ```
 
-**Guidelines:**
-- Use the generic `Option[T]` interface for type safety
-- Wrap option functions with `util.FunctionalOption[T]` to implement the interface
-- Keep options simple and focused on a single configuration aspect
-- Place all options and related methods in `*_options.go` files (or `*_option.go` for consistency)
-- Use descriptive names that clearly indicate what is being configured
-- This pattern allows for both function-based and struct-based options implementing the same interface
+Each command defines its own JSON structure based on its specific needs.
 
-**Usage:**
-```go
-// Function-based (flexible, composable)
-renderer := table.NewRenderer(
-    table.WithWriter(os.Stdout),
-    table.WithHeaders("CHECK", "STATUS", "MESSAGE"),
-)
-```
+## Project Structure
 
-**Benefits:**
-- Type-safe configuration using generics
-- Extensible: can have both function-based and struct-based options
-- Consistent with k8s-controller-lib patterns
-- Clear separation between option definition and application
-
-### Error Handling Conventions
-
-* Errors are wrapped using `fmt.Errorf` with `%w` for proper error chain propagation
-* Context is passed through operations for cancellation support
-* First error encountered stops processing and is returned immediately
-* All constructors validate inputs and return errors when appropriate
-* Use `errors.As()` to extract typed errors from error chains
-* Use `errors.Is()` to check for specific underlying errors
-
-### Function Signatures
-
-* Each parameter must have its own type declaration
-* Never group parameters with the same type
-* Use multiline formatting for functions with many parameters:
-
-```go
-func ProcessRequest(
-    ctx context.Context,
-    userID string,
-    requestType int,
-    payload []byte,
-    timeout time.Duration,
-) (*Response, error) {
-    // implementation
-}
-```
-
-### Package Organization
+A standard Go CLI project structure is recommended, drawing inspiration from `sample-cli-plugin`.
 
 ```
-odh-cli/
+/kubectl-odh
 ├── cmd/
-│   ├── main.go          # Entry point
-│   └── version/         # Version command
+│   ├── <command>/
+│   │   ├── command.go  # Defines the subcommand (NewCommandCmd)
+│   │   └── options.go  # Defines CommandOptions struct and Run logic
+│   ├── version/        # Version command
+│   └── main.go         # Entry point
 ├── pkg/
-│   ├── doctor/          # Doctor command logic
-│   │   ├── runner.go    # Check execution logic
-│   │   ├── types.go     # Core types (Category, Check, Status)
-│   │   └── checks/      # Individual check implementations
-│   └── printer/         # Output formatting
-│       ├── printer.go   # Printer interface and implementations
-│       ├── types.go     # Printer types
-│       └── table/       # Table rendering
+│   ├── <command>/      # Command-specific logic and types
+│   │   ├── types.go    # Command-specific types
+│   │   └── ...         # Additional command logic
+│   ├── printer/        # Shared output formatting
+│   │   ├── types.go    # Printer interfaces and types
+│   │   ├── table/      # Table renderer
+│   │   └── ...         # Other formatters
+│   └── util/           # Shared utilities
 ├── internal/
-│   └── version/         # Version information
+│   └── version/        # Internal version information
 ├── go.mod
 ├── go.sum
 └── Makefile
 ```
 
-### Naming Conventions
-
-* Use camelCase for unexported functions and variables
-* Use PascalCase for exported functions and types
-* Prefer descriptive names over short abbreviations
-* For status constants, use clear, unambiguous names (e.g., `StatusOK`, `StatusError`, `StatusWarning`)
-
-## Testing Guidelines
-
-### Test Framework
-
-* Use vanilla Gomega (not Ginkgo)
-* Use dot imports for Gomega: `import . "github.com/onsi/gomega"`
-* Prefer `Should` over `To`
-* For error validation: `Should(HaveOccurred())` / `ShouldNot(HaveOccurred())`
-* Use subtests (`t.Run`) for organizing related test cases
-* Use `t.Context()` instead of `context.Background()` or `context.TODO()` (Go 1.24+)
-
-**Example:**
-```go
-func TestRenderer(t *testing.T) {
-    g := NewWithT(t)
-    ctx := t.Context()
-
-    t.Run("should render correctly", func(t *testing.T) {
-        result, err := renderer.Process(ctx, nil)
-        g.Expect(err).ShouldNot(HaveOccurred())
-        g.Expect(result).Should(HaveLen(3))
-    })
-}
-```
-
-### Test Data Organization
-
-**CRITICAL**: All test data must be defined as package-level constants, never inline within test methods.
-
-**Good:**
-```go
-const testManifest = `
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: test-config
-data:
-  key: value
-`
-
-func TestSomething(t *testing.T) {
-    result := parseManifest(testManifest)
-    // ...
-}
-```
-
-**Bad:**
-```go
-func TestSomething(t *testing.T) {
-    manifest := `
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: test-config
-data:
-  key: value
-`  // WRONG: inline test data
-    result := parseManifest(manifest)
-    // ...
-}
-```
-
-**Rules:**
-* ALL test data (YAML, JSON, strings, etc.) must be package-level constants
-* Define constants at the top of test files, grouped by test scenario
-* Use descriptive names that indicate purpose (e.g., `validCheckResult`, `errorCategoryOutput`)
-* Add comments to group related constants (e.g., `// Test constants for check execution`)
-* This makes tests more readable and data reusable across tests
-
-### Test Strategy
-
-**Unit Tests**: Test each component in isolation
-* Checks: Test individual check implementations with mock Kubernetes clients
-* Printer: Test table and JSON output formatting
-* Runner: Test check execution and result aggregation
-
-**Integration Tests**: Test the full command flow
-* End-to-end doctor command execution
-* Output format switching (table vs JSON)
-* Error handling throughout the pipeline
-
-**Test Patterns**:
-* Use vanilla Gomega (no Ginkgo)
-* Subtests via `t.Run()`
-* Use `t.Context()` instead of `context.Background()`
-* Mock Kubernetes clients for check tests to avoid external dependencies
-* Use fake clients from `sigs.k8s.io/controller-runtime/pkg/client/fake` for testing
-
-## Extensibility
-
-### Adding a New Check
-
-Checks are individual diagnostic tests that run as part of a category. To add a new check:
-
-1. Create your check implementation in `pkg/doctor/checks/`
-2. Implement the check logic that returns a `Check` result
-3. Register the check in the appropriate category in the runner
-
-**Example Check Structure:**
-
-```go
-// pkg/doctor/checks/pod_status.go
-package checks
-
-import (
-    "context"
-    "sigs.k8s.io/controller-runtime/pkg/client"
-    "github.com/lburgazzoli/odh-cli/pkg/doctor"
-)
-
-func CheckPodStatus(ctx context.Context, k8sClient client.Client, namespace string) doctor.Check {
-    // Implement check logic
-    pods := &corev1.PodList{}
-    if err := k8sClient.List(ctx, pods, client.InNamespace(namespace)); err != nil {
-        return doctor.Check{
-            Name:    "Pod Status",
-            Status:  doctor.StatusError,
-            Message: fmt.Sprintf("Failed to list pods: %v", err),
-        }
-    }
-
-    // Analyze pods and determine status
-    for _, pod := range pods.Items {
-        if pod.Status.Phase != corev1.PodRunning {
-            return doctor.Check{
-                Name:    "Pod Status",
-                Status:  doctor.StatusWarning,
-                Message: fmt.Sprintf("Pod %s is not running", pod.Name),
-            }
-        }
-    }
-
-    return doctor.Check{
-        Name:    "Pod Status",
-        Status:  doctor.StatusOK,
-        Message: "All pods are running",
-    }
-}
-```
-
-### Adding a New Category
-
-Categories group related checks together. To add a new category:
-
-1. Define the category in the runner
-2. Add the checks that belong to this category
-3. Ensure proper status aggregation (ERROR > WARNING > OK)
-
-**Example:**
-
-```go
-// pkg/doctor/runner.go
-func (r *Runner) Run(ctx context.Context) (*CheckResults, error) {
-    results := &CheckResults{
-        Categories: []Category{},
-    }
-
-    // Add new category
-    networkCategory := r.runNetworkChecks(ctx)
-    results.Categories = append(results.Categories, networkCategory)
-
-    return results, nil
-}
-
-func (r *Runner) runNetworkChecks(ctx context.Context) Category {
-    category := Category{
-        Name:   "Network Health",
-        Status: StatusOK,
-        Checks: []Check{},
-    }
-
-    // Add checks to category
-    check1 := checks.CheckServiceEndpoints(ctx, r.client, r.namespace)
-    category.Checks = append(category.Checks, check1)
-
-    check2 := checks.CheckIngressStatus(ctx, r.client, r.namespace)
-    category.Checks = append(category.Checks, check2)
-
-    // Aggregate status
-    category.Status = aggregateStatus(category.Checks)
-    category.Message = generateCategoryMessage(category)
-
-    return category
-}
-```
-
-### Adding a New Output Format
-
-To add support for a new output format (e.g., XML, YAML):
-
-1. Add the new format constant to `pkg/printer/types.go`
-2. Implement a new printer in `pkg/printer/printer.go`
-3. Update the `NewPrinter` factory function
-4. Update the output flag validation
-
-**Example:**
-
-```go
-// pkg/printer/types.go
-const (
-    JSON  OutputFormat = "json"
-    Table OutputFormat = "table"
-    YAML  OutputFormat = "yaml"  // New format
-)
-
-// pkg/printer/printer.go
-type YAMLPrinter struct {
-    out io.Writer
-}
-
-func (p *YAMLPrinter) PrintResults(results *doctor.CheckResults) error {
-    data, err := yaml.Marshal(results)
-    if err != nil {
-        return err
-    }
-    _, err = p.out.Write(data)
-    return err
-}
-```
-
-### Using the Table Renderer with Structs
-
-The table renderer in `pkg/printer/table` supports both slice input (`[]any`) and struct input with automatic field extraction.
-
-#### Basic Struct Usage
-
-```go
-type Person struct {
-    Name   string
-    Age    int
-    Status string
-}
-
-renderer := table.NewRenderer(
-    table.WithHeaders("Name", "Age", "Status"),
-)
-
-// Append struct directly
-person := Person{Name: "Alice", Age: 30, Status: "active"}
-renderer.Append(person)
-
-// Or append multiple
-people := []any{person1, person2, person3}
-renderer.AppendAll(people)
-
-renderer.Render()
-```
-
-#### Field Extraction
-
-The renderer uses [mapstructure](https://github.com/go-viper/mapstructure/v2) to automatically extract struct fields:
-
-- **Case-insensitive matching**: Column names match struct field names case-insensitively
-- **Mapstructure tags**: Respects standard mapstructure tags for field mapping
-- **Nested fields**: Access nested fields using mapstructure's dot notation in custom formatters
-
-#### Custom Formatters
-
-Column formatters transform values for display:
-
-```go
-renderer := table.NewRenderer(
-    table.WithHeaders("Name", "Status"),
-    table.WithFormatter("Name", func(v any) any {
-        return strings.ToUpper(v.(string))
-    }),
-    table.WithFormatter("Status", func(v any) any {
-        status := v.(string)
-        if status == "active" {
-            return green(status)  // colorize function
-        }
-        return red(status)
-    }),
-)
-```
-
-#### JQ Formatter
-
-Use `JQFormatter` for complex value extraction and transformation using [jq](https://jqlang.github.io/jq/) syntax:
-
-```go
-type Person struct {
-    Name     string
-    Tags     []string
-    Metadata map[string]any
-}
-
-renderer := table.NewRenderer(
-    table.WithHeaders("Name", "Tags", "Location"),
-    
-    // Extract and join array
-    table.WithFormatter("Tags", table.JQFormatter(". | join(\", \")")),
-    
-    // Extract nested field with default
-    table.WithFormatter("Location", 
-        table.JQFormatter(".metadata.location // \"N/A\""),
-    ),
-)
-```
-
-The JQ query is compiled once at setup time. If compilation fails, the renderer will panic (fail-fast behavior).
-
-#### Formatter Composition
-
-Use `ChainFormatters` to build transformation pipelines:
-
-```go
-renderer := table.NewRenderer(
-    table.WithHeaders("Status", "Location", "Count"),
-    
-    // Chain: identity + colorization
-    table.WithFormatter("Status", 
-        table.ChainFormatters(
-            table.JQFormatter("."),
-            func(v any) any { return colorize(v.(string)) },
-        ),
-    ),
-    
-    // Chain: JQ extraction + formatting
-    table.WithFormatter("Location", 
-        table.ChainFormatters(
-            table.JQFormatter(".metadata.location // \"Unknown\""),
-            func(v any) any { return fmt.Sprintf("📍 %s", v) },
-        ),
-    ),
-    
-    // Chain: extraction + math + formatting
-    table.WithFormatter("Count", 
-        table.ChainFormatters(
-            table.JQFormatter(".items | length"),
-            func(v any) any { return fmt.Sprintf("%d items", v) },
-        ),
-    ),
-)
-```
-
-The pipeline passes the output of each formatter as input to the next, enabling complex transformations.
-
-#### Complete Example
-
-```go
-type CheckResult struct {
-    Name     string
-    Status   string
-    Message  string
-    Tags     []string
-    Metadata map[string]any
-}
-
-renderer := table.NewRenderer(
-    table.WithHeaders("Name", "Status", "Message", "Tags", "Priority"),
-    
-    // Simple formatter
-    table.WithFormatter("Name", func(v any) any {
-        return strings.ToUpper(v.(string))
-    }),
-    
-    // Chained: identity + colorization
-    table.WithFormatter("Status", 
-        table.ChainFormatters(
-            table.JQFormatter("."),
-            func(v any) any {
-                status := v.(string)
-                switch status {
-                case "OK":
-                    return green(status)
-                case "WARNING":
-                    return yellow(status)
-                case "ERROR":
-                    return red(status)
-                default:
-                    return status
-                }
-            },
-        ),
-    ),
-    
-    // JQ array join
-    table.WithFormatter("Tags", table.JQFormatter(". | join(\", \")")),
-    
-    // Chained: JQ extraction + formatting
-    table.WithFormatter("Priority", 
-        table.ChainFormatters(
-            table.JQFormatter(".metadata.priority // 0"),
-            func(v any) any {
-                priority := int(v.(float64))
-                return fmt.Sprintf("P%d", priority)
-            },
-        ),
-    ),
-)
-
-results := []any{
-    CheckResult{
-        Name:     "pod-check",
-        Status:   "OK",
-        Message:  "All pods running",
-        Tags:     []string{"core", "critical"},
-        Metadata: map[string]any{"priority": 1},
-    },
-    // ... more results
-}
-
-renderer.AppendAll(results)
-renderer.Render()
-```
-
-## Code Review Guidelines
-
-### Linter Rules
-
-The project uses golangci-lint v2 with a comprehensive configuration (`.golangci.yml`) that enables all linters by default with specific exclusions. Run `make lint` to check your code or `make lint/fix` to automatically fix issues where possible.
-
-**Configuration Highlights:**
-
-* **Enabled**: All linters except those explicitly disabled
-* **Disabled linters**: wsl, varnamelen, exhaustruct, ireturn, depguard, err113, paralleltest, funcorder, noinlineerr
-* **Test file exclusions**: Many strict linters are disabled for `*_test.go` files to allow for more flexible test code
-* **Import ordering**: Uses `gci` formatter to organize imports in sections (standard, default, k8s.io, project, dot)
-* **Revive rules**: Enable most revive rules with sensible exclusions for package comments, line length, function length, etc.
-
-**Key Rules:**
-
-* **goconst**: Extract repeated string literals to constants
-* **gosec**: No hardcoded secrets (use `//nolint:gosec` only for test data with comment explaining why)
-* **staticcheck**: Follow all suggestions
-* **Comment formatting**: All comments should be complete sentences ending with periods
-* **Error wrapping**: Use `fmt.Errorf` with `%w` for error chains
-* **Complexity limits**: cyclop (max 15), gocognit (min 50)
-
-**Running the Linter:**
-
-```bash
-# Check for issues
-make lint
-
-# Auto-fix issues where possible
-make lint/fix
-
-# Run vulnerability scanner
-make vulncheck
-
-# Run all checks
-make check
-```
-
-### Git Commit Conventions
-
-**Commit Message Format:**
-```
-<type>: <subject>
-
-<body>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-**Types:**
-* `feat`: New feature
-* `fix`: Bug fix
-* `refactor`: Code refactoring (no functional changes)
-* `test`: Adding or updating tests
-* `docs`: Documentation changes
-* `build`: Build system or dependency changes
-* `chore`: Maintenance tasks
-
-**Subject:**
-* Use imperative mood ("add feature" not "added feature")
-* Don't capitalize first letter
-* No period at the end
-* Max 72 characters
-
-**Body:**
-* Explain what and why (not how)
-* Separate from subject with blank line
-* Wrap at 72 characters
-* Use bullet points for multiple items
-
-**Example:**
-```
-feat: add pod health check to doctor command
-
-This commit adds a new check that verifies pod readiness status:
-
-- Check all pods in the ODH namespace
-- Report WARNING if any pods are not ready
-- Report ERROR if pods cannot be listed
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-### Pull Request Checklist
-
-Before submitting a PR:
-* [ ] All tests pass (`make test`)
-* [ ] All checks pass (`make check` - includes lint and vulncheck)
-* [ ] Code formatted (`make fmt`)
-* [ ] Dependencies tidied (`make tidy`)
-* [ ] New tests added for new features
-* [ ] Documentation updated (AGENTS.md or design.md as needed)
-* [ ] All test data extracted to package-level constants
-* [ ] Error handling follows conventions
-* [ ] Functional options pattern used for configuration
-* [ ] No linter warnings or errors
-
-### Code Style
-
-* **Function signatures**: Each parameter must have its own type declaration (never group parameters with same type)
-* **Comments**: Explain *why*, not *what*. Focus on non-obvious behavior, edge cases, and relationships
-* **Error wrapping**: Always use `fmt.Errorf` with `%w` for error chains
-* **Context propagation**: Pass context through all layers for cancellation support
-* **Zero values**: Leverage zero value semantics instead of pointers where appropriate
-* **Early returns**: Use early returns to reduce nesting and improve readability
-
+**Key Directories:**
+- `cmd/`: Command definitions and entry points
+- `pkg/`: Public packages that implement command logic and shared utilities
+- `internal/`: Internal packages not intended for external use
+
+## Key Implementation Notes
+
+1. **Use cli-runtime**: Leverage `k8s.io/cli-runtime/pkg/genericclioptions` for standard kubectl flag handling
+2. **Follow kubectl patterns**: Study existing kubectl plugins for consistent UX patterns
+3. **Error handling**: Ensure graceful failure and meaningful error messages when ODH/RHOAI components are not available
+4. **Extensibility**: Design commands to be modular and easy to add or modify
+5. **Testing**: Include both unit tests and integration tests with fake Kubernetes clients
+6. **Shared components**: Maximize code reuse through shared utilities like output formatters and client factories
