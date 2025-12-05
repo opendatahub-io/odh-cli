@@ -6,7 +6,7 @@ For development guidelines, coding conventions, and contribution practices, see 
 
 ## Overview
 
-CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) that provides various operational capabilities for managing and interacting with ODH/RHOAI deployments on Kubernetes.
+CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) for interacting with ODH/RHOAI deployments on Kubernetes. The CLI is designed as a kubectl plugin to provide a familiar kubectl-like experience.
 
 ## Key Architecture Decisions
 
@@ -20,25 +20,6 @@ CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) that provides 
 - Better support for ODH and RHOAI custom resources
 - Unified interface for standard and custom Kubernetes objects
 - Simplifies interaction with Custom Resource Definitions (CRDs)
-
-### Example Data Models
-
-Commands can define their own data models as needed. For example, a diagnostic command might use:
-
-```go
-type Category struct {
-    Name    string
-    Status  Status
-    Message string
-    Checks  []Check
-}
-
-type Check struct {
-    Name    string
-    Status  Status
-    Message string
-}
-```
 
 ## Architecture & Design
 
@@ -62,15 +43,15 @@ The CLI is structured using Cobra with an extensible subcommand architecture:
 
 ```
 kubectl odh
-├── <command1> [-o|--output <format>] [--namespace <ns>] [command-specific flags]
-├── <command2> [-o|--output <format>] [--namespace <ns>] [command-specific flags]
+├── <command> [-o|--output <format>] [--namespace <ns>] [command-specific flags]
 └── version
 ```
 
 **Common Elements:**
 - **odh** (root command): The entry point for the plugin
-- **-o, --output** (flag): Specifies the output format. Supported values: `table` (default), `json`
-- **--namespace** (flag): Managed via cli-runtime. Specifies the namespace for operations. Defaults to a common installation namespace like `opendatahub`
+- **-o, --output** (flag): Specifies the output format. Supported values: `table` (default), `json`, `yaml`
+- **--namespace** (flag): Managed via cli-runtime. Specifies the namespace for operations when applicable
+- **version**: Displays the CLI version information
 
 **Extensibility:**
 New commands can be added by implementing the command pattern with Cobra. Each command can define its own subcommands, flags, and execution logic while leveraging shared components like the output formatters and Kubernetes client.
@@ -88,22 +69,11 @@ Each command typically follows this structure:
 3. **Execution Logic**: A `Run()` method on the options struct implements the command logic
 4. **Output Formatting**: Commands use shared printer components to format output consistently
 
-#### Example: Diagnostic Command Pattern
-
-A diagnostic command might implement the following:
-
-**Define Components:**
-- A `Check` interface or struct encapsulates individual diagnostic tests
-- Each check has a `Name` and an `Execute()` method
-- The `Execute()` method takes the Kubernetes client as input and returns a `Result`
-
-**Run Method:**
-1. Gets the target namespace and creates a Kubernetes client from the `ConfigFlags`
-2. Executes the command-specific logic (e.g., runs diagnostic checks)
+**Typical Run Method Flow:**
+1. Gets the target namespace (if applicable) and creates a Kubernetes client from the `ConfigFlags`
+2. Executes the command-specific logic
 3. Collects and processes results
 4. Uses a printer to format results based on the specified output format
-
-This pattern can be adapted for other command types (installation helpers, configuration tools, etc.).
 
 ## Output Formats
 
@@ -111,67 +81,28 @@ The CLI supports multiple output formats to accommodate different use cases. Com
 
 ### Table Output (Default)
 
-The table output is for human consumption and provides a quick, glanceable summary. The format adapts to each command's data structure.
-
-**Example (diagnostic output):**
-```
-CHECK          STATUS     MESSAGE
-Check Name 1   ✅ OK       Success message for check 1.
-Check Name 2   ❌ ERROR    Error details for check 2.
-Check Name 3   ⚠️ WARNING  Warning message for check 3.
-```
-
-Icons (✅, ❌, ⚠️) and colors can be used for clarity where appropriate.
+The table output is designed for human consumption and provides a quick, readable summary. The format adapts to each command's data structure. Icons and colors can be used for clarity where appropriate.
 
 ### JSON Output (`-o json`)
 
-The JSON output is for scripting and integration with other tools. The structure varies by command but maintains consistency in formatting.
+The JSON output is designed for scripting and integration with other tools. The structure varies by command but maintains consistency in formatting. Each command defines its own JSON structure based on its specific needs.
 
-**Example (diagnostic output):**
-```json
-{
-  "checks": [
-    {
-      "name": "Check Name 1",
-      "status": "OK",
-      "message": "Success message for check 1."
-    },
-    {
-      "name": "Check Name 2",
-      "status": "ERROR",
-      "message": "Error details for check 2."
-    }
-  ],
-  "summary": {
-    "ok": 1,
-    "error": 1
-  }
-}
-```
+### YAML Output (`-o yaml`)
 
-Each command defines its own JSON structure based on its specific needs.
+Similar to JSON output, the YAML format provides machine-readable output in YAML syntax, suitable for configuration files and human review.
 
 ## Project Structure
 
-A standard Go CLI project structure is recommended, drawing inspiration from `sample-cli-plugin`.
+A standard Go CLI project structure is used, drawing inspiration from `sample-cli-plugin`.
 
 ```
-/kubectl-odh
+/odh-cli
 ├── cmd/
-│   ├── <command>/
-│   │   ├── command.go  # Defines the subcommand (NewCommandCmd)
-│   │   └── options.go  # Defines CommandOptions struct and Run logic
 │   ├── version/        # Version command
 │   └── main.go         # Entry point
 ├── pkg/
-│   ├── <command>/      # Command-specific logic and types
-│   │   ├── types.go    # Command-specific types
-│   │   └── ...         # Additional command logic
 │   ├── printer/        # Shared output formatting
-│   │   ├── types.go    # Printer interfaces and types
-│   │   ├── table/      # Table renderer
-│   │   └── ...         # Other formatters
-│   └── util/           # Shared utilities
+│   └── util/           # Shared utilities (client, discovery, etc.)
 ├── internal/
 │   └── version/        # Internal version information
 ├── go.mod
@@ -183,6 +114,8 @@ A standard Go CLI project structure is recommended, drawing inspiration from `sa
 - `cmd/`: Command definitions and entry points
 - `pkg/`: Public packages that implement command logic and shared utilities
 - `internal/`: Internal packages not intended for external use
+
+New commands can be added under `cmd/` with their implementation logic in `pkg/` following the established patterns.
 
 ## Key Implementation Notes
 

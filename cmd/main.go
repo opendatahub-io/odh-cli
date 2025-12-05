@@ -7,7 +7,6 @@ import (
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 
-	"github.com/lburgazzoli/odh-cli/cmd/components"
 	"github.com/lburgazzoli/odh-cli/cmd/version"
 )
 
@@ -16,11 +15,10 @@ func main() {
 
 	cmd := &cobra.Command{
 		Use:   "kubectl-odh",
-		Short: "kubectl plugin for ODH diagnostic and inspection",
+		Short: "kubectl plugin for ODH/RHOAI",
 	}
 
 	version.AddCommand(cmd, flags)
-	components.AddCommand(cmd, flags)
 
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)

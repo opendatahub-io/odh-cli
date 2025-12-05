@@ -2,7 +2,7 @@
 
 ## Overview
 
-CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) that provides various operational capabilities for managing and interacting with ODH/RHOAI deployments on Kubernetes. The `odh` CLI is implemented as a kubectl plugin.
+CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) for interacting with ODH/RHOAI deployments on Kubernetes. The `odh` CLI is implemented as a kubectl plugin.
 
 ## Documentation
 
