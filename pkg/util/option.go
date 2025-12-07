@@ -37,3 +37,10 @@ type FunctionalOption[T any] func(*T)
 func (f FunctionalOption[T]) ApplyTo(target *T) {
 	f(target)
 }
+
+// ApplyOptions applies a list of options to the target configuration.
+func ApplyOptions[T any](target *T, opts ...Option[T]) {
+	for _, opt := range opts {
+		opt.ApplyTo(target)
+	}
+}

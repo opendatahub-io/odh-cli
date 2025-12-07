@@ -69,6 +69,7 @@ func (r *Renderer[T]) Append(value T) error {
 	for _, header := range r.headers {
 		if _, exists := r.formatters[strings.ToUpper(header)]; !exists {
 			allHaveFormatters = false
+
 			break
 		}
 	}

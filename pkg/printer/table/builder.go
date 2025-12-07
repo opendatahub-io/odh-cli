@@ -24,6 +24,7 @@ func NewColumn(name string) Column {
 // Can be chained with other formatters: Column().JQ(...).Fn(...)
 func (c Column) JQ(query string) Column {
 	c.formatters = append(c.formatters, JQFormatter(query))
+
 	return c
 }
 
@@ -31,6 +32,7 @@ func (c Column) JQ(query string) Column {
 // Can be chained with other formatters: Column().JQ(...).Fn(...)
 func (c Column) Fn(formatter ColumnFormatter) Column {
 	c.formatters = append(c.formatters, formatter)
+
 	return c
 }
 

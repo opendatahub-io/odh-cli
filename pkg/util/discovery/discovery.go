@@ -39,10 +39,7 @@ func GetGroupVersionResources(
 ) ([]metav1.APIResource, error) {
 	// Use ServerGroupsAndResources which is more robust for CRDs
 	// Note: This can return partial errors but still provide results
-	_, apiResourceLists, err := discoveryClient.ServerGroupsAndResources()
-	if err != nil {
-		// Don't return error here - partial errors are common and we can still use the results
-	}
+	_, apiResourceLists, _ := discoveryClient.ServerGroupsAndResources()
 
 	if apiResourceLists == nil {
 		return []metav1.APIResource{}, nil

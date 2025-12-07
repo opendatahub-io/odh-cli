@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/itchyny/gojq"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -38,17 +39,16 @@ func convertValue(value any) (any, error) {
 
 	// Handle slices
 	if kind == reflect.Slice {
-		// For []byte, we need JSON conversion
-		if _, isByteSlice := value.([]byte); isByteSlice {
-			// Fall through to JSON marshal/unmarshal
-		} else {
-			// For other slices, convert to []any for gojq compatibility
+		// For non-byte slices, convert to []any for gojq compatibility
+		if _, isByteSlice := value.([]byte); !isByteSlice {
 			slice := make([]any, rv.Len())
-			for i := 0; i < rv.Len(); i++ {
+			for i := range rv.Len() {
 				slice[i] = rv.Index(i).Interface()
 			}
+
 			return slice, nil
 		}
+		// For []byte, fall through to JSON marshal/unmarshal
 	}
 
 	// For other types, use JSON marshal/unmarshal to normalize
