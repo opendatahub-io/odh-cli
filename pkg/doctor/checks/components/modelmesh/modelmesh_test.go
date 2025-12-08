@@ -16,6 +16,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 )
 
 //nolint:gochecknoglobals // Test fixture - shared across test functions
@@ -46,9 +47,11 @@ func TestModelmeshRemovalCheck_NoDSC(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).To(HaveField("Status", check.StatusPass))
-	g.Expect(result.Severity).To(BeNil())
-	g.Expect(result.Message).To(ContainSubstring("No DataScienceCluster"))
+	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
+		"Status":   Equal(check.StatusPass),
+		"Severity": BeNil(),
+		"Message":  ContainSubstring("No DataScienceCluster"),
+	}))
 }
 
 func TestModelmeshRemovalCheck_NotConfigured(t *testing.T) {
@@ -91,9 +94,11 @@ func TestModelmeshRemovalCheck_NotConfigured(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).To(HaveField("Status", check.StatusPass))
-	g.Expect(result.Severity).To(BeNil())
-	g.Expect(result.Message).To(ContainSubstring("not configured"))
+	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
+		"Status":   Equal(check.StatusPass),
+		"Severity": BeNil(),
+		"Message":  ContainSubstring("not configured"),
+	}))
 }
 
 func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
@@ -136,14 +141,16 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).To(HaveField("Status", check.StatusFail))
-	g.Expect(result.Severity).ToNot(BeNil())
-	g.Expect(*result.Severity).To(Equal(check.SeverityCritical))
-	g.Expect(result.Message).To(ContainSubstring("still enabled"))
-	g.Expect(result.Message).To(ContainSubstring("removed in RHOAI 3.x"))
-	g.Expect(result.Details).To(HaveKeyWithValue("managementState", "Managed"))
-	g.Expect(result.Details).To(HaveKeyWithValue("component", "modelmeshserving"))
-	g.Expect(result.Details).To(HaveKeyWithValue("targetVersion", "3.0.0"))
+	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
+		"Status":   Equal(check.StatusFail),
+		"Severity": PointTo(Equal(check.SeverityCritical)),
+		"Message":  And(ContainSubstring("still enabled"), ContainSubstring("removed in RHOAI 3.x")),
+		"Details": And(
+			HaveKeyWithValue("managementState", "Managed"),
+			HaveKeyWithValue("component", "modelmeshserving"),
+			HaveKeyWithValue("targetVersion", "3.0.0"),
+		),
+	}))
 }
 
 func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
@@ -186,11 +193,12 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).To(HaveField("Status", check.StatusFail))
-	g.Expect(result.Severity).ToNot(BeNil())
-	g.Expect(*result.Severity).To(Equal(check.SeverityCritical))
-	g.Expect(result.Message).To(ContainSubstring("state: Unmanaged"))
-	g.Expect(result.Details).To(HaveKeyWithValue("managementState", "Unmanaged"))
+	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
+		"Status":   Equal(check.StatusFail),
+		"Severity": PointTo(Equal(check.SeverityCritical)),
+		"Message":  ContainSubstring("state: Unmanaged"),
+		"Details":  HaveKeyWithValue("managementState", "Unmanaged"),
+	}))
 }
 
 func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
@@ -233,11 +241,12 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).To(HaveField("Status", check.StatusPass))
-	g.Expect(result.Severity).To(BeNil())
-	g.Expect(result.Message).To(ContainSubstring("disabled"))
-	g.Expect(result.Message).To(ContainSubstring("ready for RHOAI 3.x upgrade"))
-	g.Expect(result.Details).To(HaveKeyWithValue("managementState", "Removed"))
+	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
+		"Status":   Equal(check.StatusPass),
+		"Severity": BeNil(),
+		"Message":  And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
+		"Details":  HaveKeyWithValue("managementState", "Removed"),
+	}))
 }
 
 func TestModelmeshRemovalCheck_Metadata(t *testing.T) {
