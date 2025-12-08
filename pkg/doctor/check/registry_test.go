@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/lburgazzoli/odh-cli/pkg/doctor/check"
+	mocks "github.com/lburgazzoli/odh-cli/pkg/util/test/mocks/check"
 
 	. "github.com/onsi/gomega"
 )
@@ -14,15 +15,23 @@ func TestCheckRegistry_ListByPattern(t *testing.T) {
 	registry := check.NewRegistry()
 
 	// Register test checks
-	checks := []check.Check{
-		&MockCheck{id: "components.dashboard", name: "Dashboard Component", category: check.CategoryComponent},
-		&MockCheck{id: "components.workbench", name: "Workbench Component", category: check.CategoryComponent},
-		&MockCheck{id: "services.oauth", name: "OAuth Service", category: check.CategoryService},
-		&MockCheck{id: "workloads.limits", name: "Resource Limits", category: check.CategoryWorkload},
+	mockChecks := []struct {
+		id       string
+		name     string
+		category check.CheckCategory
+	}{
+		{id: "components.dashboard", name: "Dashboard Component", category: check.CategoryComponent},
+		{id: "components.workbench", name: "Workbench Component", category: check.CategoryComponent},
+		{id: "services.oauth", name: "OAuth Service", category: check.CategoryService},
+		{id: "workloads.limits", name: "Resource Limits", category: check.CategoryWorkload},
 	}
 
-	for _, c := range checks {
-		g.Expect(registry.Register(c)).To(Succeed())
+	for _, mc := range mockChecks {
+		mockCheck := mocks.NewMockCheck()
+		mockCheck.On("ID").Return(mc.id)
+		mockCheck.On("Name").Return(mc.name)
+		mockCheck.On("Category").Return(mc.category)
+		g.Expect(registry.Register(mockCheck)).To(Succeed())
 	}
 
 	tests := []struct {
@@ -119,7 +128,12 @@ func TestCheckRegistry_ListByPattern_InvalidPattern(t *testing.T) {
 	g := NewWithT(t)
 
 	registry := check.NewRegistry()
-	g.Expect(registry.Register(&MockCheck{id: "components.dashboard", category: check.CategoryComponent})).To(Succeed())
+
+	mockCheck := mocks.NewMockCheck()
+	mockCheck.On("ID").Return("components.dashboard")
+	mockCheck.On("Category").Return(check.CategoryComponent)
+
+	g.Expect(registry.Register(mockCheck)).To(Succeed())
 
 	// Invalid glob pattern should return error
 	_, err := registry.ListByPattern("[", "")

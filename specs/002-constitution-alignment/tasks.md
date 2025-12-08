@@ -64,7 +64,7 @@ This project follows the odh-cli structure:
 - [x] T011 [US1] Verify pkg/doctor/checks/components/modelmesh/ exists and contains modelmesh.go + modelmesh_test.go
 - [x] T012 [US1] Document package isolation pattern in specs/002-constitution-alignment/PACKAGE-ISOLATION-PATTERN.md for future checks
 - [x] T013 [US1] Run make test to confirm all isolated checks pass independently
-- [ ] T014 [US1] Commit: T008-T013: Validate and document diagnostic check package isolation
+- [x] T014 [US1] Commit: T008-T013: Validate and document diagnostic check package isolation
 
 **Checkpoint**: At this point, package isolation compliance is verified and documented
 
@@ -78,12 +78,12 @@ This project follows the odh-cli structure:
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Remove inline MockCheck struct definition from pkg/doctor/check/selector_test.go
-- [ ] T016 [US2] Add import for centralized mock: mocks "github.com/lburgazzoli/odh-cli/pkg/util/test/mocks/check" in pkg/doctor/check/selector_test.go
-- [ ] T017 [US2] Update test usage from &MockCheck{...} to mocks.NewMockCheck() in pkg/doctor/check/selector_test.go
-- [ ] T018 [US2] Update mock method calls to use testify/mock pattern (e.g., mockCheck.On("ID").Return("test")) in pkg/doctor/check/selector_test.go
-- [ ] T019 [US2] Run make test to verify selector tests pass with centralized mock
-- [ ] T020 [US2] Run make check to verify linting compliance
+- [x] T015 [US2] Remove inline MockCheck struct definition from pkg/doctor/check/selector_test.go
+- [x] T016 [US2] Add import for centralized mock: mocks "github.com/lburgazzoli/odh-cli/pkg/util/test/mocks/check" in pkg/doctor/check/selector_test.go
+- [x] T017 [US2] Update test usage from &MockCheck{...} to mocks.NewMockCheck() in pkg/doctor/check/selector_test.go
+- [x] T018 [US2] Update mock method calls to use testify/mock pattern (e.g., mockCheck.On("ID").Return("test")) in pkg/doctor/check/selector_test.go
+- [x] T019 [US2] Run make test to verify selector tests pass with centralized mock
+- [x] T020 [US2] Run make check to verify linting compliance
 - [ ] T021 [US2] Commit: T015-T020: Centralize MockCheck using testify/mock framework
 
 **Checkpoint**: At this point, all mocks are centralized, no inline mocks remain, and all tests pass

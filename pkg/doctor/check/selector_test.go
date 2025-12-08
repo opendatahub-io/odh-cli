@@ -1,49 +1,13 @@
 package check_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/blang/semver/v4"
-
 	"github.com/lburgazzoli/odh-cli/pkg/doctor/check"
+	mocks "github.com/lburgazzoli/odh-cli/pkg/util/test/mocks/check"
 
 	. "github.com/onsi/gomega"
 )
-
-// MockCheck implements the Check interface for testing.
-type MockCheck struct {
-	id       string
-	name     string
-	category check.CheckCategory
-}
-
-func (m *MockCheck) ID() string {
-	return m.id
-}
-
-func (m *MockCheck) Name() string {
-	return m.name
-}
-
-func (m *MockCheck) Category() check.CheckCategory {
-	return m.category
-}
-
-func (m *MockCheck) Description() string {
-	return "Mock check for testing"
-}
-
-func (m *MockCheck) CanApply(currentVersion *semver.Version, targetVersion *semver.Version) bool {
-	return true // Always applicable
-}
-
-func (m *MockCheck) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
-	return &check.DiagnosticResult{
-		Status:  check.StatusPass,
-		Message: "Mock check passed",
-	}, nil
-}
 
 func TestMatchesPattern_Wildcard(t *testing.T) {
 	g := NewWithT(t)
@@ -80,10 +44,9 @@ func TestMatchesPattern_Wildcard(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockCheck := &MockCheck{
-				id:       tt.checkID,
-				category: tt.category,
-			}
+			mockCheck := mocks.NewMockCheck()
+			mockCheck.On("ID").Return(tt.checkID)
+			mockCheck.On("Category").Return(tt.category)
 
 			// matchesPattern is not exported, so we test through ListByPattern
 			registry := check.NewRegistry()
@@ -172,10 +135,9 @@ func TestMatchesPattern_CategoryShortcuts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockCheck := &MockCheck{
-				id:       tt.checkID,
-				category: tt.category,
-			}
+			mockCheck := mocks.NewMockCheck()
+			mockCheck.On("ID").Return(tt.checkID)
+			mockCheck.On("Category").Return(tt.category)
 
 			registry := check.NewRegistry()
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
@@ -221,10 +183,9 @@ func TestMatchesPattern_ExactMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockCheck := &MockCheck{
-				id:       tt.checkID,
-				category: tt.category,
-			}
+			mockCheck := mocks.NewMockCheck()
+			mockCheck.On("ID").Return(tt.checkID)
+			mockCheck.On("Category").Return(tt.category)
 
 			registry := check.NewRegistry()
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
@@ -298,10 +259,9 @@ func TestMatchesPattern_GlobPatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockCheck := &MockCheck{
-				id:       tt.checkID,
-				category: tt.category,
-			}
+			mockCheck := mocks.NewMockCheck()
+			mockCheck.On("ID").Return(tt.checkID)
+			mockCheck.On("Category").Return(tt.category)
 
 			registry := check.NewRegistry()
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
@@ -322,10 +282,9 @@ func TestMatchesPattern_GlobPatterns(t *testing.T) {
 func TestMatchesPattern_InvalidPattern(t *testing.T) {
 	g := NewWithT(t)
 
-	mockCheck := &MockCheck{
-		id:       "components.dashboard",
-		category: check.CategoryComponent,
-	}
+	mockCheck := mocks.NewMockCheck()
+	mockCheck.On("ID").Return("components.dashboard")
+	mockCheck.On("Category").Return(check.CategoryComponent)
 
 	registry := check.NewRegistry()
 	g.Expect(registry.Register(mockCheck)).To(Succeed())
