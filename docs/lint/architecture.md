@@ -324,6 +324,68 @@ Follows Kubernetes List conventions:
 - Deterministic ordering through sequential execution
 - Compatible with `jq`/`yq` for post-processing
 
+### Sequential Execution Requirement
+
+**Critical Requirement:** Parallel check execution is PROHIBITED. All lint checks MUST execute sequentially to ensure deterministic ordering.
+
+**Rationale:**
+- **Diff-based workflows**: Deterministic output enables meaningful diffs between lint runs
+- **Test assertions**: Tests can reliably assert on result order
+- **Reproducible diagnostics**: Same cluster state always produces same output order
+- **Debugging**: Sequential execution makes it easier to trace check execution flow
+
+**Prohibited:**
+```go
+// ❌ WRONG: Parallel execution
+var wg sync.WaitGroup
+for _, check := range checks {
+    wg.Add(1)
+    go func(c Check) {
+        defer wg.Done()
+        results <- c.Validate(ctx, target)
+    }(check)
+}
+wg.Wait()
+```
+
+**Required:**
+```go
+// ✓ CORRECT: Sequential execution
+for _, check := range checks {
+    result := check.Validate(ctx, target)
+    results = append(results, result)
+}
+```
+
+## Offline Operation
+
+The lint command operates **fully offline** by bundling expected configurations for known OpenShift AI versions.
+
+**Requirements:**
+- **NO network access** to fetch operator manifests or configurations
+- **ALL version configurations** bundled in the binary at compile time
+- **Validation against local cluster data only** - no external API calls
+
+**Bundled Configuration:**
+```
+pkg/lint/config/
+├── v2.17/
+│   ├── components.yaml    # Expected component configurations
+│   ├── services.yaml      # Expected service configurations
+│   └── workloads.yaml     # Expected workload types
+├── v3.0/
+│   ├── components.yaml
+│   ├── services.yaml
+│   └── workloads.yaml
+└── ...
+```
+
+**Rationale:**
+- **Air-gapped environments**: Works in disconnected clusters
+- **Reproducibility**: No dependency on external network state
+- **Performance**: No network latency
+- **Reliability**: No external service dependencies
+
 ## Architectural Principles
 
 ### High-Level Resource Targeting
