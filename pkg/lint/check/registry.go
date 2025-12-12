@@ -43,14 +43,14 @@ func (r *CheckRegistry) Get(id string) (Check, bool) {
 	return check, exists
 }
 
-// ListByCategory returns all checks for a specific category.
-func (r *CheckRegistry) ListByCategory(category CheckCategory) []Check {
+// ListByGroup returns all checks for a specific group.
+func (r *CheckRegistry) ListByGroup(group CheckGroup) []Check {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	var result []Check
 	for _, check := range r.checks {
-		if check.Category() == category {
+		if check.Group() == group {
 			result = append(result, check)
 		}
 	}
@@ -58,17 +58,17 @@ func (r *CheckRegistry) ListByCategory(category CheckCategory) []Check {
 	return result
 }
 
-// ListBySelector returns checks matching category
-// If category is empty, all categories are included
+// ListBySelector returns checks matching group
+// If group is empty, all groups are included
 // Version filtering is handled by CanApply in the executor.
-func (r *CheckRegistry) ListBySelector(category CheckCategory) []Check {
+func (r *CheckRegistry) ListBySelector(group CheckGroup) []Check {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]Check, 0, len(r.checks))
 	for _, check := range r.checks {
-		// Filter by category if specified
-		if category != "" && check.Category() != category {
+		// Filter by group if specified
+		if group != "" && check.Group() != group {
 			continue
 		}
 
@@ -91,18 +91,18 @@ func (r *CheckRegistry) ListAll() []Check {
 	return result
 }
 
-// ListByPattern returns checks matching the selector pattern and category
+// ListByPattern returns checks matching the selector pattern and group
 // Pattern can be:
 //   - Wildcard: "*" matches all checks
-//   - Category shortcut: "components", "services", "workloads"
+//   - Group shortcut: "components", "services", "workloads", "dependencies"
 //   - Exact ID: "components.dashboard"
 //   - Glob pattern: "components.*", "*dashboard*", "*.dashboard"
 //
-// If category is empty, all categories are included
+// If group is empty, all groups are included
 // Version filtering is handled by CanApply in the executor.
 func (r *CheckRegistry) ListByPattern(
 	pattern string,
-	category CheckCategory,
+	group CheckGroup,
 ) ([]Check, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -118,8 +118,8 @@ func (r *CheckRegistry) ListByPattern(
 			continue
 		}
 
-		// Filter by category if specified
-		if category != "" && check.Category() != category {
+		// Filter by group if specified
+		if group != "" && check.Group() != group {
 			continue
 		}
 

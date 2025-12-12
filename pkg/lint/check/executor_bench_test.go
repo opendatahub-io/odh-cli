@@ -6,10 +6,12 @@ import (
 
 	"github.com/blang/semver/v4"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/version"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 )
@@ -41,8 +43,8 @@ func BenchmarkExecuteSelective_FullSuite(b *testing.B) {
 	}
 }
 
-// BenchmarkExecuteSelective_CategoryFilter benchmarks execution with category filter.
-func BenchmarkExecuteSelective_CategoryFilter(b *testing.B) {
+// BenchmarkExecuteSelective_GroupFilter benchmarks execution with group filter.
+func BenchmarkExecuteSelective_GroupFilter(b *testing.B) {
 	registry := setupBenchmarkRegistry()
 	executor := check.NewExecutor(registry)
 
@@ -120,24 +122,24 @@ func setupBenchmarkRegistry() *check.CheckRegistry {
 
 // benchmarkCheck is a minimal check implementation for benchmarking.
 type benchmarkCheck struct {
-	id       string
-	category check.CheckCategory
+	id    string
+	group check.CheckGroup
 }
 
 func newBenchmarkCheck(categoryStr string, index int) *benchmarkCheck {
-	var category check.CheckCategory
+	var group check.CheckGroup
 	switch categoryStr {
 	case "components":
-		category = check.CategoryComponent
+		group = check.GroupComponent
 	case "services":
-		category = check.CategoryService
+		group = check.GroupService
 	case "workloads":
-		category = check.CategoryWorkload
+		group = check.GroupWorkload
 	}
 
 	return &benchmarkCheck{
-		id:       categoryStr + ".bench" + string(rune('0'+index)),
-		category: category,
+		id:    categoryStr + ".bench" + string(rune('0'+index)),
+		group: group,
 	}
 }
 
@@ -153,17 +155,29 @@ func (c *benchmarkCheck) Description() string {
 	return "Benchmark check for performance testing"
 }
 
-func (c *benchmarkCheck) Category() check.CheckCategory {
-	return c.category
+func (c *benchmarkCheck) Group() check.CheckGroup {
+	return c.group
 }
 
 func (c *benchmarkCheck) CanApply(currentVersion *semver.Version, targetVersion *semver.Version) bool {
 	return true // Always applicable
 }
 
-func (c *benchmarkCheck) Validate(_ context.Context, _ *check.CheckTarget) (*check.DiagnosticResult, error) {
-	return &check.DiagnosticResult{
-		Status:  check.StatusPass,
-		Message: "Benchmark check passed",
-	}, nil
+func (c *benchmarkCheck) Validate(_ context.Context, _ *check.CheckTarget) (*result.DiagnosticResult, error) {
+	dr := result.New(
+		string(c.group),
+		"bench"+string(rune('0'+len(c.id))),
+		c.id,
+		c.Description(),
+	)
+	dr.Status.Conditions = []metav1.Condition{
+		check.NewCondition(
+			check.ConditionTypeValidated,
+			metav1.ConditionTrue,
+			check.ReasonResourceFound,
+			"Benchmark check passed",
+		),
+	}
+
+	return dr, nil
 }

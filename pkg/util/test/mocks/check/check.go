@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 )
 
 // MockCheck is a mock implementation of check.Check interface using testify/mock.
@@ -37,14 +38,14 @@ func (m *MockCheck) Description() string {
 	return args.String(0)
 }
 
-func (m *MockCheck) Category() check.CheckCategory {
+func (m *MockCheck) Group() check.CheckGroup {
 	args := m.Called()
-	category, ok := args.Get(0).(check.CheckCategory)
+	group, ok := args.Get(0).(check.CheckGroup)
 	if !ok {
-		return check.CategoryComponent
+		return check.GroupComponent
 	}
 
-	return category
+	return group
 }
 
 func (m *MockCheck) CanApply(currentVersion *semver.Version, targetVersion *semver.Version) bool {
@@ -53,16 +54,16 @@ func (m *MockCheck) CanApply(currentVersion *semver.Version, targetVersion *semv
 	return args.Bool(0)
 }
 
-func (m *MockCheck) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
+func (m *MockCheck) Validate(ctx context.Context, target *check.CheckTarget) (*result.DiagnosticResult, error) {
 	args := m.Called(ctx, target)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	result, ok := args.Get(0).(*check.DiagnosticResult)
+	dr, ok := args.Get(0).(*result.DiagnosticResult)
 	if !ok {
 		return nil, args.Error(1)
 	}
 
-	return result, args.Error(1)
+	return dr, args.Error(1)
 }

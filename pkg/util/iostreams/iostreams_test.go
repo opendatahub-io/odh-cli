@@ -14,7 +14,7 @@ func TestIOStreams_Fprintf(t *testing.T) {
 	t.Run("with formatting arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var out bytes.Buffer
-		io := &iostreams.IOStreams{Out: &out}
+		io := iostreams.NewIOStreams(nil, &out, nil)
 
 		io.Fprintf("Hello %s, you have %d messages", "Alice", 5)
 
@@ -24,7 +24,7 @@ func TestIOStreams_Fprintf(t *testing.T) {
 	t.Run("without formatting arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var out bytes.Buffer
-		io := &iostreams.IOStreams{Out: &out}
+		io := iostreams.NewIOStreams(nil, &out, nil)
 
 		io.Fprintf("Static message")
 
@@ -34,7 +34,7 @@ func TestIOStreams_Fprintf(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		g := NewWithT(t)
 		var out bytes.Buffer
-		io := &iostreams.IOStreams{Out: &out}
+		io := iostreams.NewIOStreams(nil, &out, nil)
 
 		io.Fprintf("")
 
@@ -47,7 +47,7 @@ func TestIOStreams_Fprintln(t *testing.T) {
 	t.Run("single argument", func(t *testing.T) {
 		g := NewWithT(t)
 		var out bytes.Buffer
-		io := &iostreams.IOStreams{Out: &out}
+		io := iostreams.NewIOStreams(nil, &out, nil)
 
 		io.Fprintln("Hello World")
 
@@ -57,7 +57,7 @@ func TestIOStreams_Fprintln(t *testing.T) {
 	t.Run("multiple arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var out bytes.Buffer
-		io := &iostreams.IOStreams{Out: &out}
+		io := iostreams.NewIOStreams(nil, &out, nil)
 
 		io.Fprintln("Hello", "World", 123)
 
@@ -67,7 +67,7 @@ func TestIOStreams_Fprintln(t *testing.T) {
 	t.Run("no arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var out bytes.Buffer
-		io := &iostreams.IOStreams{Out: &out}
+		io := iostreams.NewIOStreams(nil, &out, nil)
 
 		io.Fprintln()
 
@@ -80,7 +80,7 @@ func TestIOStreams_Errorf(t *testing.T) {
 	t.Run("with formatting arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var errOut bytes.Buffer
-		io := &iostreams.IOStreams{ErrOut: &errOut}
+		io := iostreams.NewIOStreams(nil, nil, &errOut)
 
 		io.Errorf("Error: %s failed with code %d", "operation", 42)
 
@@ -90,7 +90,7 @@ func TestIOStreams_Errorf(t *testing.T) {
 	t.Run("without formatting arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var errOut bytes.Buffer
-		io := &iostreams.IOStreams{ErrOut: &errOut}
+		io := iostreams.NewIOStreams(nil, nil, &errOut)
 
 		io.Errorf("Static error message")
 
@@ -100,7 +100,7 @@ func TestIOStreams_Errorf(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		g := NewWithT(t)
 		var errOut bytes.Buffer
-		io := &iostreams.IOStreams{ErrOut: &errOut}
+		io := iostreams.NewIOStreams(nil, nil, &errOut)
 
 		io.Errorf("")
 
@@ -113,7 +113,7 @@ func TestIOStreams_Errorln(t *testing.T) {
 	t.Run("single argument", func(t *testing.T) {
 		g := NewWithT(t)
 		var errOut bytes.Buffer
-		io := &iostreams.IOStreams{ErrOut: &errOut}
+		io := iostreams.NewIOStreams(nil, nil, &errOut)
 
 		io.Errorln("Error occurred")
 
@@ -123,7 +123,7 @@ func TestIOStreams_Errorln(t *testing.T) {
 	t.Run("multiple arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var errOut bytes.Buffer
-		io := &iostreams.IOStreams{ErrOut: &errOut}
+		io := iostreams.NewIOStreams(nil, nil, &errOut)
 
 		io.Errorln("Error", "code", 500)
 
@@ -133,7 +133,7 @@ func TestIOStreams_Errorln(t *testing.T) {
 	t.Run("no arguments", func(t *testing.T) {
 		g := NewWithT(t)
 		var errOut bytes.Buffer
-		io := &iostreams.IOStreams{ErrOut: &errOut}
+		io := iostreams.NewIOStreams(nil, nil, &errOut)
 
 		io.Errorln()
 
@@ -144,7 +144,7 @@ func TestIOStreams_Errorln(t *testing.T) {
 // T008: Test nil writer validation (edge case from spec).
 func TestIOStreams_NilWriterValidation(t *testing.T) {
 	t.Run("nil Out writer should not panic", func(t *testing.T) {
-		io := &iostreams.IOStreams{Out: nil}
+		io := iostreams.NewIOStreams(nil, nil, nil)
 
 		// Should not panic - implementation should handle gracefully
 		// Note: The actual behavior will be defined during implementation
@@ -159,7 +159,7 @@ func TestIOStreams_NilWriterValidation(t *testing.T) {
 	})
 
 	t.Run("nil ErrOut writer should not panic", func(t *testing.T) {
-		io := &iostreams.IOStreams{ErrOut: nil}
+		io := iostreams.NewIOStreams(nil, nil, nil)
 
 		defer func() {
 			if r := recover(); r != nil {

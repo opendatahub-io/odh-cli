@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -47,10 +48,12 @@ func TestCodeFlareRemovalCheck_NoDSC(t *testing.T) {
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("No DataScienceCluster"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("No DataScienceCluster"),
 	}))
 }
 
@@ -94,10 +97,12 @@ func TestCodeFlareRemovalCheck_NotConfigured(t *testing.T) {
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("not configured"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("not configured"),
 	}))
 }
 
@@ -141,16 +146,17 @@ func TestCodeFlareRemovalCheck_ManagedBlocking(t *testing.T) {
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  And(ContainSubstring("still enabled"), ContainSubstring("removed in RHOAI 3.x")),
-		"Details": And(
-			HaveKeyWithValue("managementState", "Managed"),
-			HaveKeyWithValue("component", "codeflare"),
-			HaveKeyWithValue("targetVersion", "3.0.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(And(
+		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
+		HaveKeyWithValue("check.opendatahub.io/target-version", "3.0.0"),
+	))
 }
 
 func TestCodeFlareRemovalCheck_UnmanagedBlocking(t *testing.T) {
@@ -193,12 +199,14 @@ func TestCodeFlareRemovalCheck_UnmanagedBlocking(t *testing.T) {
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  ContainSubstring("state: Unmanaged"),
-		"Details":  HaveKeyWithValue("managementState", "Unmanaged"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": ContainSubstring("state: Unmanaged"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/management-state", "Unmanaged"))
 }
 
 func TestCodeFlareRemovalCheck_RemovedReady(t *testing.T) {
@@ -241,12 +249,14 @@ func TestCodeFlareRemovalCheck_RemovedReady(t *testing.T) {
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
-		"Details":  HaveKeyWithValue("managementState", "Removed"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/management-state", "Removed"))
 }
 
 func TestCodeFlareRemovalCheck_Metadata(t *testing.T) {
@@ -256,6 +266,6 @@ func TestCodeFlareRemovalCheck_Metadata(t *testing.T) {
 
 	g.Expect(codeflareCheck.ID()).To(Equal("components.codeflare.removal"))
 	g.Expect(codeflareCheck.Name()).To(Equal("Components :: CodeFlare :: Removal (3.x)"))
-	g.Expect(codeflareCheck.Category()).To(Equal(check.CategoryComponent))
+	g.Expect(codeflareCheck.Group()).To(Equal(check.GroupComponent))
 	g.Expect(codeflareCheck.Description()).ToNot(BeEmpty())
 }

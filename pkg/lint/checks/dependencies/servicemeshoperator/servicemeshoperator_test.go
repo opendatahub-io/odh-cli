@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -46,14 +47,12 @@ func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
 	result, err := serviceMeshOperator2Check.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  And(ContainSubstring("Not installed"), ContainSubstring("ready for RHOAI 3.x")),
-		"Details": And(
-			HaveKeyWithValue("installed", false),
-			HaveKeyWithValue("version", "Not installed"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": And(ContainSubstring("not installed"), ContainSubstring("ready for RHOAI 3.x")),
 	}))
 }
 
@@ -66,8 +65,11 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 			"apiVersion": resources.Subscription.APIVersion(),
 			"kind":       resources.Subscription.Kind,
 			"metadata": map[string]any{
-				"name":      "servicemeshoperator2",
+				"name":      "servicemeshoperator",
 				"namespace": "openshift-operators",
+			},
+			"spec": map[string]any{
+				"channel": "stable",
 			},
 			"status": map[string]any{
 				"installedCSV": "servicemeshoperator.v2.5.0",
@@ -93,16 +95,14 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 	result, err := serviceMeshOperator2Check.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  And(ContainSubstring("not supported in RHOAI 3.x"), ContainSubstring("servicemeshoperator3")),
-		"Details": And(
-			HaveKeyWithValue("installed", true),
-			HaveKeyWithValue("version", "servicemeshoperator.v2.5.0"),
-			HaveKeyWithValue("targetVersion", "3.0.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("installed but RHOAI 3.x requires v3")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "servicemeshoperator.v2.5.0"))
 }
 
 func TestServiceMeshOperator2Check_Metadata(t *testing.T) {
@@ -112,6 +112,6 @@ func TestServiceMeshOperator2Check_Metadata(t *testing.T) {
 
 	g.Expect(serviceMeshOperator2Check.ID()).To(Equal("dependencies.servicemeshoperator2.upgrade"))
 	g.Expect(serviceMeshOperator2Check.Name()).To(Equal("Dependencies :: ServiceMeshOperator2 :: Upgrade (3.x)"))
-	g.Expect(serviceMeshOperator2Check.Category()).To(Equal(check.CategoryDependency))
+	g.Expect(serviceMeshOperator2Check.Group()).To(Equal(check.GroupDependency))
 	g.Expect(serviceMeshOperator2Check.Description()).ToNot(BeEmpty())
 }

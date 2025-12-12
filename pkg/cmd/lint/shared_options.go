@@ -13,10 +13,12 @@ import (
 	"github.com/olekukonko/tablewriter/tw"
 	"sigs.k8s.io/yaml"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/printer/table"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
@@ -65,7 +67,7 @@ func (m MinimumSeverity) Validate() error {
 }
 
 // ShouldInclude returns true if a check result with the given severity should be included.
-func (m MinimumSeverity) ShouldInclude(severity *check.Severity) bool {
+func (m MinimumSeverity) ShouldInclude(severity *string) bool {
 	// Always include pass/error results
 	if severity == nil {
 		return true
@@ -78,12 +80,12 @@ func (m MinimumSeverity) ShouldInclude(severity *check.Severity) bool {
 
 	// For critical filter, only show critical
 	if m == MinimumSeverityCritical {
-		return *severity == check.SeverityCritical
+		return *severity == string(check.SeverityCritical)
 	}
 
 	// For warning filter, show critical and warning
 	if m == MinimumSeverityWarning {
-		return *severity == check.SeverityCritical || *severity == check.SeverityWarning
+		return *severity == string(check.SeverityCritical) || *severity == string(check.SeverityWarning)
 	}
 
 	// Default: show all
@@ -204,7 +206,7 @@ func ValidateCheckSelector(selector string) error {
 type CheckResultOutput struct {
 	CheckID     string         `json:"checkId"               yaml:"checkId"`
 	CheckName   string         `json:"checkName"             yaml:"checkName"`
-	Category    string         `json:"category"              yaml:"category"`
+	Group       string         `json:"group"                 yaml:"group"`
 	Status      string         `json:"status"                yaml:"status"`
 	Severity    *string        `json:"severity,omitempty"    yaml:"severity,omitempty"`
 	Message     string         `json:"message"               yaml:"message"`
@@ -212,13 +214,16 @@ type CheckResultOutput struct {
 	Details     map[string]any `json:"details,omitempty"     yaml:"details,omitempty"`
 }
 
-// CheckResultTableRow represents a single check result row for table output.
+// CheckResultTableRow represents a single condition row for table output.
+// Each row represents one condition from a diagnostic result.
 type CheckResultTableRow struct {
-	Status   string
-	Category string
-	Check    string
-	Severity string
-	Message  string
+	Status      string
+	Group       string
+	Kind        string
+	Check       string
+	Severity    string
+	Message     string
+	Description string
 }
 
 // LintOutput represents the full lint output for JSON/YAML.
@@ -238,39 +243,52 @@ type LintOutput struct {
 
 // FilterResultsBySeverity filters check results based on minimum severity level.
 func FilterResultsBySeverity(
-	resultsByCategory map[check.CheckCategory][]check.CheckExecution,
+	resultsByGroup map[check.CheckGroup][]check.CheckExecution,
 	minSeverity MinimumSeverity,
-) map[check.CheckCategory][]check.CheckExecution {
+) map[check.CheckGroup][]check.CheckExecution {
 	// If no filtering requested, return original results
 	if minSeverity == MinimumSeverityAll {
-		return resultsByCategory
+		return resultsByGroup
 	}
 
-	filtered := make(map[check.CheckCategory][]check.CheckExecution)
-	for category, results := range resultsByCategory {
-		var categoryResults []check.CheckExecution
-		for _, result := range results {
+	filtered := make(map[check.CheckGroup][]check.CheckExecution)
+	for group, results := range resultsByGroup {
+		var groupResults []check.CheckExecution
+		for _, res := range results {
 			// Always include pass/error results (no severity)
 			// Include results that match the minimum severity filter
-			if minSeverity.ShouldInclude(result.Result.Severity) {
-				categoryResults = append(categoryResults, result)
+			if minSeverity.ShouldInclude(res.Result.GetSeverity()) {
+				groupResults = append(groupResults, res)
 			}
 		}
-		filtered[category] = categoryResults
+		filtered[group] = groupResults
 	}
 
 	return filtered
 }
 
-// OutputTable is a shared function for outputting check results in table format.
-func OutputTable(out io.Writer, resultsByCategory map[check.CheckCategory][]check.CheckExecution) error {
-	categories := []check.CheckCategory{
-		check.CategoryComponent,
-		check.CategoryService,
-		check.CategoryDependency,
-		check.CategoryWorkload,
+// FlattenResults converts a map of results by group to a flat sorted array.
+// Results are sorted by group in the order: Component, Service, Dependency, Workload.
+func FlattenResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) []check.CheckExecution {
+	groups := []check.CheckGroup{
+		check.GroupComponent,
+		check.GroupService,
+		check.GroupDependency,
+		check.GroupWorkload,
 	}
 
+	flattened := make([]check.CheckExecution, 0)
+	for _, group := range groups {
+		flattened = append(flattened, resultsByGroup[group]...)
+	}
+
+	return flattened
+}
+
+// OutputTable is a shared function for outputting check results in table format.
+//
+//nolint:revive // verbose boolean is clear and appropriate for controlling output detail level
+func OutputTable(out io.Writer, results []check.CheckExecution, verbose bool) error {
 	totalChecks := 0
 	totalPassed := 0
 	totalFailed := 0
@@ -279,26 +297,46 @@ func OutputTable(out io.Writer, resultsByCategory map[check.CheckCategory][]chec
 	var (
 		statusPass   = color.New(color.FgGreen).Sprint("✓")
 		statusFail   = color.New(color.FgRed).Sprint("✗")
-		severityCrit = color.New(color.FgRed).Sprint(string(check.SeverityCritical))
-		severityWarn = color.New(color.FgYellow).Sprint(string(check.SeverityWarning))
-		severityInfo = color.New(color.FgCyan).Sprint(string(check.SeverityInfo))
+		severityCrit = color.New(color.FgRed).Sprint("critical")
+		severityWarn = color.New(color.FgYellow).Sprint("warning")
+		severityInfo = color.New(color.FgCyan).Sprint("info")
 	)
+
+	// Build headers based on verbose mode
+	var headers []string
+	if verbose {
+		headers = []string{"STATUS", "GROUP", "KIND", "CHECK", "SEVERITY", "MESSAGE", "DESCRIPTION"}
+	} else {
+		headers = []string{"STATUS", "GROUP", "KIND", "CHECK", "SEVERITY", "MESSAGE"}
+	}
 
 	// Create single table renderer for all results
 	renderer := table.NewRenderer[CheckResultTableRow](
 		table.WithWriter[CheckResultTableRow](out),
-		table.WithHeaders[CheckResultTableRow]("STATUS", "CATEGORY", "CHECK", "SEVERITY", "MESSAGE"),
-		table.WithTableOptions[CheckResultTableRow](tablewriter.WithHeaderAlignment(tw.AlignLeft)),
+		table.WithHeaders[CheckResultTableRow](headers...),
+		table.WithTableOptions[CheckResultTableRow](
+			tablewriter.WithHeaderAlignment(tw.AlignLeft),
+			tablewriter.WithRendition(tw.Rendition{
+				Settings: tw.Settings{
+					Separators: tw.Separators{
+						BetweenColumns: tw.Off,
+						BetweenRows:    tw.Off,
+					},
+				},
+			}),
+		),
 	)
 
-	// Append all results to single table
-	for _, category := range categories {
-		results := resultsByCategory[category]
-		for _, exec := range results {
+	// Append all results to single table - one row per condition
+	for _, exec := range results {
+		// Each diagnostic result can have multiple conditions
+		// Create one table row per condition
+		for _, condition := range exec.Result.Status.Conditions {
 			totalChecks++
 
+			// Determine status symbol based on condition status
 			var status string
-			if exec.Result.IsFailing() {
+			if condition.Status == metav1.ConditionFalse || condition.Status == metav1.ConditionUnknown {
 				status = statusFail
 				totalFailed++
 			} else {
@@ -306,31 +344,32 @@ func OutputTable(out io.Writer, resultsByCategory map[check.CheckCategory][]chec
 				totalPassed++
 			}
 
+			// Determine severity from condition status
 			var severity string
-			if exec.Result.Severity != nil {
-				switch *exec.Result.Severity {
-				case check.SeverityCritical:
-					severity = severityCrit
-				case check.SeverityWarning:
-					severity = severityWarn
-				case check.SeverityInfo:
-					severity = severityInfo
-				default:
-					severity = string(*exec.Result.Severity)
-				}
+
+			switch condition.Status {
+			case metav1.ConditionFalse:
+				severity = severityCrit
+			case metav1.ConditionTrue:
+				severity = severityInfo
+			case metav1.ConditionUnknown:
+				severity = severityWarn
 			}
 
-			message := exec.Result.Message
-			if exec.Result.Remediation != "" && exec.Result.IsFailing() {
-				message = fmt.Sprintf("%s\n  → %s", exec.Result.Message, exec.Result.Remediation)
+			msg := condition.Message
+
+			if len(msg) > 1024 {
+				msg = msg[:1024] + "..."
 			}
 
 			row := CheckResultTableRow{
-				Status:   status,
-				Category: string(category),
-				Check:    exec.Check.Name(),
-				Severity: severity,
-				Message:  message,
+				Status:      status,
+				Group:       string(exec.Check.Group()),
+				Kind:        exec.Result.Metadata.Kind,
+				Check:       exec.Result.Metadata.Name,
+				Severity:    severity,
+				Message:     msg,
+				Description: exec.Result.Spec.Description,
 			}
 
 			if err := renderer.Append(row); err != nil {
@@ -350,25 +389,37 @@ func OutputTable(out io.Writer, resultsByCategory map[check.CheckCategory][]chec
 	return nil
 }
 
-// OutputJSON is a shared function for outputting check results in JSON format.
-func OutputJSON(out io.Writer, resultsByCategory map[check.CheckCategory][]check.CheckExecution, clusterVersion *string, targetVersion *string) error {
-	output := ConvertToOutputFormat(resultsByCategory, clusterVersion, targetVersion)
+// OutputJSON outputs diagnostic results in List format.
+func OutputJSON(out io.Writer, results []check.CheckExecution, clusterVersion *string, targetVersion *string) error {
+	// Create the list
+	list := result.NewDiagnosticResultList(clusterVersion, targetVersion)
+
+	// Add all results in execution order
+	for _, exec := range results {
+		list.Items = append(list.Items, exec.Result)
+	}
 
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 
-	if err := encoder.Encode(output); err != nil {
+	if err := encoder.Encode(list); err != nil {
 		return fmt.Errorf("encoding JSON: %w", err)
 	}
 
 	return nil
 }
 
-// OutputYAML is a shared function for outputting check results in YAML format.
-func OutputYAML(out io.Writer, resultsByCategory map[check.CheckCategory][]check.CheckExecution, clusterVersion *string, targetVersion *string) error {
-	output := ConvertToOutputFormat(resultsByCategory, clusterVersion, targetVersion)
+// OutputYAML outputs diagnostic results in List format.
+func OutputYAML(out io.Writer, results []check.CheckExecution, clusterVersion *string, targetVersion *string) error {
+	// Create the list
+	list := result.NewDiagnosticResultList(clusterVersion, targetVersion)
 
-	yamlBytes, err := yaml.Marshal(output)
+	// Add all results in execution order
+	for _, exec := range results {
+		list.Items = append(list.Items, exec.Result)
+	}
+
+	yamlBytes, err := yaml.Marshal(list)
 	if err != nil {
 		return fmt.Errorf("encoding YAML: %w", err)
 	}
@@ -376,59 +427,4 @@ func OutputYAML(out io.Writer, resultsByCategory map[check.CheckCategory][]check
 	_, _ = fmt.Fprint(out, string(yamlBytes))
 
 	return nil
-}
-
-// ConvertToOutputFormat converts check executions to output format.
-func ConvertToOutputFormat(resultsByCategory map[check.CheckCategory][]check.CheckExecution, clusterVersion *string, targetVersion *string) *LintOutput {
-	output := &LintOutput{
-		ClusterVersion: clusterVersion,
-		TargetVersion:  targetVersion,
-		Components:     make([]CheckResultOutput, 0),
-		Services:       make([]CheckResultOutput, 0),
-		Dependencies:   make([]CheckResultOutput, 0),
-		Workloads:      make([]CheckResultOutput, 0),
-	}
-
-	for category, results := range resultsByCategory {
-		for _, exec := range results {
-			var severityStr *string
-			if exec.Result.Severity != nil {
-				s := string(*exec.Result.Severity)
-				severityStr = &s
-			}
-
-			result := CheckResultOutput{
-				CheckID:     exec.Check.ID(),
-				CheckName:   exec.Check.Name(),
-				Category:    string(exec.Check.Category()),
-				Status:      string(exec.Result.Status),
-				Severity:    severityStr,
-				Message:     exec.Result.Message,
-				Remediation: exec.Result.Remediation,
-				Details:     exec.Result.Details,
-			}
-
-			output.Summary.Total++
-			if exec.Result.IsFailing() {
-				output.Summary.Failed++
-			} else {
-				output.Summary.Passed++
-			}
-
-			switch category {
-			case check.CategoryComponent:
-				output.Components = append(output.Components, result)
-			case check.CategoryService:
-				output.Services = append(output.Services, result)
-			case check.CategoryDependency:
-				output.Dependencies = append(output.Dependencies, result)
-			case check.CategoryWorkload:
-				output.Workloads = append(output.Workloads, result)
-			default:
-				// Unreachable: all check categories are handled above
-			}
-		}
-	}
-
-	return output
 }

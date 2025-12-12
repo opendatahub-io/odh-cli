@@ -6,9 +6,9 @@ import "fmt"
 type Severity string
 
 const (
-	SeverityCritical Severity = "Critical"
-	SeverityWarning  Severity = "Warning"
-	SeverityInfo     Severity = "Info"
+	SeverityCritical Severity = "critical"
+	SeverityWarning  Severity = "warning"
+	SeverityInfo     Severity = "info"
 )
 
 // Validate checks if the severity is valid.

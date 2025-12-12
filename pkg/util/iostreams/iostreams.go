@@ -142,12 +142,12 @@ func (q *QuietWrapper) Fprintln(args ...any) {
 }
 
 // Errorf is suppressed (no-op) in quiet mode.
-func (q *QuietWrapper) Errorf(format string, args ...any) {
+func (q *QuietWrapper) Errorf(_ string, _ ...any) {
 	// Suppress - no output
 }
 
 // Errorln is suppressed (no-op) in quiet mode.
-func (q *QuietWrapper) Errorln(args ...any) {
+func (q *QuietWrapper) Errorln(_ ...any) {
 	// Suppress - no output
 }
 

@@ -1,5 +1,6 @@
 package lint
 
+//nolint:gci // Blank imports required for check registration - DO NOT REMOVE
 import (
 	"fmt"
 
@@ -10,7 +11,9 @@ import (
 
 	"github.com/lburgazzoli/odh-cli/pkg/cmd/lint"
 
-	// Import check packages to trigger init() auto-registration
+	// Import check packages to trigger init() auto-registration.
+	// These blank imports are REQUIRED for checks to register with the global registry.
+	// DO NOT REMOVE - they appear unused but are essential for runtime check discovery.
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/codeflare"
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kserve"
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kueue"
@@ -103,7 +106,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 				if command.Verbose {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
 				}
-				return err
+
+				return fmt.Errorf("completing command: %w", err)
 			}
 
 			// Validate phase
@@ -111,15 +115,21 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 				if command.Verbose {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
 				}
-				return err
+
+				return fmt.Errorf("validating command: %w", err)
 			}
 
 			// Run phase
 			err := command.Run(cmd.Context())
-			if err != nil && command.Verbose {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
+			if err != nil {
+				if command.Verbose {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
+				}
+
+				return fmt.Errorf("running command: %w", err)
 			}
-			return err
+
+			return nil
 		},
 	}
 

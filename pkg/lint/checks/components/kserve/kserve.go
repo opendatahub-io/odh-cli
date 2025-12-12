@@ -7,8 +7,10 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
@@ -37,9 +39,9 @@ func (c *ServerlessRemovalCheck) Description() string {
 	return checkDescription
 }
 
-// Category returns the check category.
-func (c *ServerlessRemovalCheck) Category() check.CheckCategory {
-	return check.CategoryComponent
+// Group returns the check group.
+func (c *ServerlessRemovalCheck) Group() check.CheckGroup {
+	return check.GroupComponent
 }
 
 // CanApply returns whether this check should run for the given versions.
@@ -55,12 +57,19 @@ func (c *ServerlessRemovalCheck) CanApply(currentVersion *semver.Version, target
 }
 
 // Validate executes the check against the provided target.
-func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
+func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) (*result.DiagnosticResult, error) {
+	dr := result.New(
+		string(check.GroupComponent),
+		"kserve",
+		"serverless-removal",
+		checkDescription,
+	)
+
 	// Get the DataScienceCluster singleton
 	dsc, err := target.Client.GetDataScienceCluster(ctx)
 	switch {
 	case apierrors.IsNotFound(err):
-		return results.DataScienceClusterNotFound(), nil
+		return results.DataScienceClusterNotFound(string(check.GroupComponent), "kserve", "serverless-removal", checkDescription), nil
 	case err != nil:
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
@@ -69,10 +78,16 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 	kserveState, err := jq.Query(dsc, ".spec.components.kserve.managementState")
 	if err != nil || kserveState == nil {
 		// KServe component not defined in spec - check passes
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: "KServe component is not configured in DataScienceCluster",
-		}, nil
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeConfigured,
+				metav1.ConditionFalse,
+				check.ReasonResourceNotFound,
+				"KServe component is not configured in DataScienceCluster",
+			),
+		}
+
+		return dr, nil
 	}
 
 	kserveStateStr, ok := kserveState.(string)
@@ -80,29 +95,37 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 		return nil, fmt.Errorf("kserve managementState is not a string: %T", kserveState)
 	}
 
+	dr.Metadata.Annotations["component.opendatahub.io/kserve-management-state"] = kserveStateStr
+
 	// Only check serverless if KServe is Managed
 	if kserveStateStr != "Managed" {
 		// KServe not managed - serverless won't be enabled
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: fmt.Sprintf("KServe component is not managed (state: %s) - serverless not enabled", kserveStateStr),
-			Details: map[string]any{
-				"kserveManagementState": kserveStateStr,
-			},
-		}, nil
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeConfigured,
+				metav1.ConditionFalse,
+				"ComponentNotManaged",
+				fmt.Sprintf("KServe component is not managed (state: %s) - serverless not enabled", kserveStateStr),
+			),
+		}
+
+		return dr, nil
 	}
 
 	// Query serverless (serving) management state
 	servingState, err := jq.Query(dsc, ".spec.components.kserve.serving.managementState")
 	if err != nil || servingState == nil {
 		// Serverless not configured - check passes
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: "KServe serverless mode is not configured - ready for RHOAI 3.x upgrade",
-			Details: map[string]any{
-				"kserveManagementState": kserveStateStr,
-			},
-		}, nil
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionTrue,
+				check.ReasonVersionCompatible,
+				"KServe serverless mode is not configured - ready for RHOAI 3.x upgrade",
+			),
+		}
+
+		return dr, nil
 	}
 
 	servingStateStr, ok := servingState.(string)
@@ -110,35 +133,36 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 		return nil, fmt.Errorf("kserve serving managementState is not a string: %T", servingState)
 	}
 
+	dr.Metadata.Annotations["component.opendatahub.io/serving-management-state"] = servingStateStr
+	if target.Version != nil {
+		dr.Metadata.Annotations["check.opendatahub.io/target-version"] = target.Version.Version
+	}
+
 	// Check if serverless (serving) is enabled (Managed or Unmanaged)
 	if servingStateStr == "Managed" || servingStateStr == "Unmanaged" {
-		severity := check.SeverityCritical
-
-		return &check.DiagnosticResult{
-			Status:   check.StatusFail,
-			Severity: &severity,
-			Message: fmt.Sprintf(
-				"KServe serverless mode is enabled (state: %s) but will be removed in RHOAI 3.x",
-				servingStateStr,
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionFalse,
+				check.ReasonVersionIncompatible,
+				fmt.Sprintf("KServe serverless mode is enabled (state: %s) but will be removed in RHOAI 3.x", servingStateStr),
 			),
-			Details: map[string]any{
-				"kserveManagementState":  kserveStateStr,
-				"servingManagementState": servingStateStr,
-				"component":              "kserve",
-				"targetVersion":          target.Version.Version,
-			},
-		}, nil
+		}
+
+		return dr, nil
 	}
 
 	// Serverless is disabled (Removed) - check passes
-	return &check.DiagnosticResult{
-		Status:  check.StatusPass,
-		Message: fmt.Sprintf("KServe serverless mode is disabled (state: %s) - ready for RHOAI 3.x upgrade", servingStateStr),
-		Details: map[string]any{
-			"kserveManagementState":  kserveStateStr,
-			"servingManagementState": servingStateStr,
-		},
-	}, nil
+	dr.Status.Conditions = []metav1.Condition{
+		check.NewCondition(
+			check.ConditionTypeCompatible,
+			metav1.ConditionTrue,
+			check.ReasonVersionCompatible,
+			fmt.Sprintf("KServe serverless mode is disabled (state: %s) - ready for RHOAI 3.x upgrade", servingStateStr),
+		),
+	}
+
+	return dr, nil
 }
 
 // Register the check in the global registry.

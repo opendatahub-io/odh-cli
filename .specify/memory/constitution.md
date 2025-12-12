@@ -2,19 +2,14 @@
 ============================================================================
 SYNC IMPACT REPORT
 ============================================================================
-Version Change: 1.15.0 → 1.16.0
+Version Change: 1.20.0 → 1.20.1
 Modified Principles:
-  - Principle XI: Doctor Command Architecture → Lint Command Architecture
-    - Removed `kubectl odh doctor` parent command entirely
-    - Promoted `lint` to top-level: `kubectl odh lint` (was `kubectl odh doctor lint`)
-    - Renamed `--version` flag to `--target-version` for clarity
-    - Updated package structure: pkg/cmd/doctor/lint/ → pkg/cmd/lint/
-    - Updated cmd structure: cmd/doctor/lint.go → cmd/lint.go
+  - Updated Principle XII: Kubernetes-Native Diagnostic CR Structure
+    - Removed condition message truncation requirement from validation
+    - Message truncation (if needed) should be applied in table rendering only
+    - Preserves full messages in JSON/YAML output
 Modified Sections:
-  - Principle II: Extensible Command Structure - Updated example paths and SharedOptions references
-  - Principle IV: Flexible Initialization Patterns - Updated example paths and SharedOptions references
-  - Development Standards: Code Organization - Added guidance for top-level vs nested commands
-  - Development Standards: Package Granularity - Updated pkg/doctor/ → pkg/lint/ in examples
+  - Quality Gates: Constitution Check Gates - Removed "condition message truncation" from Phase 2
 Removed Sections: None
 Templates Requiring Updates:
   ✅ .specify/templates/plan-template.md - Generic template, gates auto-populate from constitution
@@ -22,23 +17,13 @@ Templates Requiring Updates:
   ✅ .specify/templates/tasks-template.md - Generic template, intentionally not constitution-specific
   ✅ .specify/templates/agent-file-template.md - Generic template, intentionally not constitution-specific
   ✅ .specify/templates/checklist-template.md - Generic template, intentionally not constitution-specific
-Follow-up TODOs:
-  ⬜ Remove cmd/doctor/ directory and all doctor subcommand files
-  ⬜ Move cmd/doctor/lint.go → cmd/lint.go
-  ⬜ Move pkg/cmd/doctor/lint/ → pkg/cmd/lint/
-  ⬜ Move pkg/cmd/doctor/shared_options.go → pkg/cmd/lint/shared_options.go
-  ⬜ Rename all --version flags to --target-version in lint command
-  ⬜ Update all help text and examples to use `kubectl odh lint`
-  ⬜ Update all internal references from pkg/cmd/doctor to pkg/cmd/lint
-  ⬜ Update all check package paths from pkg/doctor/ to pkg/lint/
+Follow-up TODOs: None
 
-Rationale for MINOR bump (1.15.0 → 1.16.0):
-- Breaking change at CLI level: command path changed from `kubectl odh doctor lint` to `kubectl odh lint`
-- Breaking change: `--version` flag renamed to `--target-version`
-- Package restructuring from doctor → lint affects import paths
-- Simplifies CLI surface by removing intermediary doctor command
-- Improves user experience with clearer flag naming and direct command access
-- No backward compatibility maintained (clean break)
+Rationale for PATCH bump (1.20.0 → 1.20.1):
+- Removes message truncation from validation to preserve full messages in structured output
+- Truncation belongs in presentation layer (table rendering), not data layer (validation)
+- Clarifies that DiagnosticResult should not modify condition messages
+- No breaking changes to validation contract, only removes a modification side effect
 ============================================================================
 -->
 
@@ -102,7 +87,45 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 
 All commands MUST support table (default), JSON, and YAML output formats via the `-o/--output` flag. Table output MUST be human-readable with consistent formatting. JSON and YAML output MUST be machine-parsable and suitable for scripting.
 
-**Rationale**: Different consumers need different formats. Humans need readable tables, scripts need structured JSON/YAML. Consistency across commands reduces learning curve and enables composition.
+**JSON and YAML List Format Requirements**:
+- JSON and YAML output MUST use Kubernetes List pattern with `kind`, `metadata`, and `items` fields
+- List `kind` MUST be `"DiagnosticResultList"`
+- List `metadata` MUST contain `clusterVersion` and `targetVersion` fields (optional, omitted if null)
+- `items` array MUST contain flat list of `DiagnosticResult` objects in execution order
+- Each `DiagnosticResult` MUST include `kind: "DiagnosticResult"` field
+- Category information MUST be preserved in each item's `metadata.group` field
+- Results MUST be in execution order (sequential, not grouped by category)
+- Parallel execution is PROHIBITED to ensure deterministic ordering
+
+**Example Structure**:
+```json
+{
+  "kind": "DiagnosticResultList",
+  "metadata": {
+    "clusterVersion": "2.17.0",
+    "targetVersion": "3.0.0"
+  },
+  "items": [
+    {
+      "kind": "DiagnosticResult",
+      "metadata": {
+        "group": "component",
+        "kind": "kserve",
+        "name": "serverless-removal",
+        "annotations": {...}
+      },
+      "spec": {
+        "description": "..."
+      },
+      "status": {
+        "conditions": [...]
+      }
+    }
+  ]
+}
+```
+
+**Rationale**: Different consumers need different formats. Humans need readable tables, scripts need structured JSON/YAML. The Kubernetes List pattern provides a familiar structure for kubectl users, enables easy post-processing with jq/yq, maintains category information in metadata.group, and ensures deterministic ordering through sequential execution. This format aligns with `kubectl get -o json` output conventions and is optimized for pipeability and tool composition.
 
 ### IV. Flexible Initialization Patterns
 
@@ -354,6 +377,220 @@ func (c *Check) Run(ctx context.Context, target *check.CheckTarget) check.CheckR
 - Hard-coding lint-only or upgrade-only logic (checks SHOULD be version-aware)
 
 **Rationale**: Promoting lint to top-level simplifies the CLI surface and reduces typing for the primary diagnostic command. The `--target-version` flag name is more explicit than `--version`, making the command's intent clearer. Users understand "lint validates cluster state" as a single concept; the `--target-version` flag simply changes the validation context (current vs target). This approach aligns with kubectl's philosophy of direct command access and clear flag naming. Checks that adapt to version context are more maintainable than separate check implementations.
+
+### XII. Kubernetes-Native Diagnostic CR Structure
+
+Diagnostic check results MUST follow Kubernetes Custom Resource structure with metadata, spec, and status sections. This ensures consistency with Kubernetes CR conventions and enables familiar organization, granular condition reporting, and version tracking capabilities.
+
+**CR Structure Requirements**:
+- Diagnostic results MUST have a `Metadata` section with Group, Kind, Name, and Annotations
+- Diagnostic results MUST have a `Spec` section containing the check description
+- Diagnostic results MUST have a `Status` section containing a Conditions array
+- Table rendering MUST display one row per condition for multi-condition checks
+
+**Metadata Section**:
+- `Group`: Categorizes the diagnostic target (e.g., "components", "services", "workloads")
+- `Kind`: Identifies the specific target being checked (e.g., "kserve", "auth", "cert-manager")
+- `Name`: Identifies the specific check being performed (e.g., "configuration-valid", "version-compatibility")
+- `Annotations`: Key-value pairs for metadata (source/target versions, etc.)
+
+**Group Field**:
+- Categorizes diagnostic targets into logical groups
+- Enables filtering and organizing diagnostics by category
+- Examples: "components", "services", "infrastructure", "workloads"
+
+**Kind Field**:
+- Identifies the specific target being checked (component, service, etc.)
+- Examples: "kserve", "auth", "cert-manager", "dashboard", "model-registry"
+- Uses lowercase or component name conventions
+- Represents the target entity within the group
+
+**Name Field**:
+- Identifies the specific diagnostic check being performed
+- Uses descriptive kebab-case naming
+- Examples: "component-status", "version-compatibility", "configuration-valid", "upgrade-readiness"
+- Should clearly indicate what the check validates
+- Must be unique within its group and kind
+
+**Annotations**:
+- Store version information using domain-qualified keys
+- Source version annotation MUST use key: `check.opendatahub.io/source-version`
+- Target version annotation MUST use key: `check.opendatahub.io/target-version`
+- Additional annotations MAY be added for check-specific metadata
+- Annotation keys MUST follow Kubernetes domain-qualified naming (domain/key format)
+
+**Spec Section**:
+- MUST contain a `Description` field explaining what the check validates
+- Description MUST be detailed and user-friendly
+- MUST clarify why the check matters (impact of failure)
+- MUST be clear enough for operators to understand without reading source code
+
+**Status Section**:
+- MUST contain a `Conditions` array of metav1.Condition-alike structs
+- Each condition represents a specific validation requirement
+- Conditions enable granular reporting vs. single pass/fail result
+- Each condition MUST include: Type, Status, Reason, Message, LastTransitionTime (following metav1.Condition pattern)
+
+**Table Rendering**:
+- When a diagnostic check has multiple conditions, table output MUST display one row per condition
+- Each row MUST show Group, Kind, Name, and condition-specific details
+- Single-condition checks display as one row; multi-condition checks expand to multiple rows
+- This enables at-a-glance visibility of all validation requirements
+
+**Example Diagnostic CR Structure**:
+```go
+type DiagnosticResult struct {
+    // Metadata section (Kubernetes ObjectMeta/TypeMeta-alike)
+    Metadata struct {
+        Group       string            // "components"
+        Kind        string            // "kserve"
+        Name        string            // "configuration-valid"
+        Annotations map[string]string // {"check.opendatahub.io/source-version": "2.15", ...}
+    }
+
+    // Spec section
+    Spec struct {
+        Description string // "Validates KServe component configuration and readiness for production use"
+    }
+
+    // Status section
+    Status struct {
+        Conditions []Condition // Array of validation conditions
+    }
+}
+
+type Condition struct {
+    Type               string    // Condition type (e.g., "ConfigurationValid", "ResourcesAvailable")
+    Status             string    // "True", "False", "Unknown"
+    Reason             string    // Machine-readable reason code
+    Message            string    // Human-readable message
+    LastTransitionTime time.Time // When condition last changed
+}
+```
+
+**Rationale**: Kubernetes users are already familiar with CR structure (metadata/spec/status) and metav1.Condition patterns. Using this structure reduces cognitive load, enables intuitive filtering and organization, aligns with kubectl plugin integration (Principle I), and provides granular condition reporting for better troubleshooting. The Conditions array enables reporting multiple validation requirements per check instead of a single pass/fail, making diagnostics more actionable. Table expansion for multi-condition checks provides clear visibility without nested data structures. Domain-qualified annotation keys prevent naming conflicts and follow Kubernetes best practices. This structure enables future enhancements like diagnostic resource discovery, selective check execution by group/kind, condition-based filtering, and programmatic result processing that mirrors Kubernetes API patterns.
+
+**Check Registration Pattern**:
+
+All diagnostic checks MUST register themselves with the global registry using the init() function pattern. Command entrypoints MUST use blank imports to trigger check registration.
+
+**Registration Requirements**:
+- Each check implementation MUST call `registry.Instance().Register()` in its `init()` function
+- Check packages MUST be imported in the command entrypoint file using blank imports (`import _ "package"`)
+- Blank import statements MUST include explanatory comments documenting their purpose
+- The global registry pattern ensures checks are automatically discovered without manual registration
+
+**Example Check Registration**:
+```go
+// pkg/lint/checks/components/kserve/kserve.go
+package kserve
+
+import "github.com/lburgazzoli/odh-cli/pkg/lint/check"
+
+func init() {
+    registry.Instance().Register(&Check{})
+}
+
+type Check struct{}
+// ... check implementation
+```
+
+**Example Command Entrypoint**:
+```go
+// cmd/lint/lint.go
+package lint
+
+import (
+    // Import check packages to trigger init() auto-registration.
+    // These blank imports are REQUIRED for checks to register with the global registry.
+    // Do NOT remove these imports - they appear unused but are essential for runtime check discovery.
+    _ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kserve"
+    _ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/modelmesh"
+    _ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/services/servicemesh"
+    // ... other check packages
+)
+```
+
+**Prohibited**:
+- Manual check registration in command code (e.g., `registry.Register(kserve.NewCheck())`)
+- Conditional registration based on runtime flags or environment
+- Lazy registration patterns that delay check discovery
+
+**Rationale**: The init() + blank import pattern provides automatic check discovery without manual registration boilerplate, ensures all checks are available at runtime, follows Go's plugin-like extension pattern, and prevents runtime errors from forgotten registration calls. Blank imports with explanatory comments prevent accidental removal by linters or developers who don't understand their purpose. This pattern is used by database drivers (database/sql), image formats (image), and other Go plugin systems.
+
+**DiagnosticResult Validation Requirements**:
+
+All DiagnosticResult instances MUST pass validation before being returned from checks. The validation MUST enforce strict structural requirements to ensure output consistency and prevent malformed diagnostics.
+
+**Validation Rules**:
+
+*Metadata Validation*:
+- `Metadata.Group` MUST NOT be empty
+- `Metadata.Kind` MUST NOT be empty
+- `Metadata.Name` MUST NOT be empty
+- `Metadata.Annotations` keys MUST follow domain-qualified format: `domain/key`
+  - Domain MUST contain at least one dot (e.g., `opendatahub.io`, `example.com`)
+  - Key MUST be non-empty
+  - Examples: `check.opendatahub.io/source-version` (valid), `version` (invalid - no domain/key separator)
+
+*Status Validation*:
+- `Status.Conditions` array MUST contain at least one condition
+- Empty conditions array is INVALID
+
+*Condition Validation*:
+- `Condition.Type` MUST NOT be empty
+- `Condition.Status` MUST be one of: `"True"`, `"False"`, `"Unknown"` (matches metav1.ConditionStatus)
+- `Condition.Reason` MUST NOT be empty
+
+**Validation Error Messages**:
+```go
+const (
+    errMsgGroupEmpty              = "metadata.group must not be empty"
+    errMsgKindEmpty               = "metadata.kind must not be empty"
+    errMsgNameEmpty               = "metadata.name must not be empty"
+    errMsgConditionsEmpty         = "status.conditions must contain at least one condition"
+    errMsgConditionTypeEmpty      = "condition with empty type found"
+    errMsgConditionReasonEmpty    = "condition %q has empty reason"
+    errMsgConditionInvalidStatus  = "condition %q has invalid status (must be True, False, or Unknown)"
+    errMsgAnnotationInvalidFormat = "annotation key %q must be in domain/key format (e.g., openshiftai.io/version)"
+)
+```
+
+**Example Validation Implementation**:
+```go
+func (r *DiagnosticResult) Validate() error {
+    // Validate metadata
+    if err := r.Metadata.Validate(); err != nil {
+        return err
+    }
+
+    // Validate conditions
+    if len(r.Status.Conditions) == 0 {
+        return errors.New(errMsgConditionsEmpty)
+    }
+
+    // Validate each condition
+    for i := range r.Status.Conditions {
+        condition := &r.Status.Conditions[i]
+
+        if condition.Type == "" {
+            return errors.New(errMsgConditionTypeEmpty)
+        }
+        if condition.Status != metav1.ConditionTrue &&
+           condition.Status != metav1.ConditionFalse &&
+           condition.Status != metav1.ConditionUnknown {
+            return fmt.Errorf(errMsgConditionInvalidStatus, condition.Type)
+        }
+        if condition.Reason == "" {
+            return fmt.Errorf(errMsgConditionReasonEmpty, condition.Type)
+        }
+    }
+
+    return nil
+}
+```
+
+**Rationale**: Strict validation prevents malformed diagnostics from propagating through the system, ensures consistent output structure across all checks, catches developer errors at check execution time rather than during output rendering, and provides clear error messages for debugging. Annotation key validation enforces Kubernetes conventions and prevents naming conflicts. Message truncation (if needed) should be applied during table rendering for display purposes only, not during validation, to preserve full messages in JSON/YAML output.
 
 ## Development Standards
 
@@ -852,6 +1089,6 @@ Constitutional violations MUST be justified in the implementation plan's Complex
 **Constitution Check Gates**:
 - Phase 0 (Research): Verify approach aligns with kubectl plugin integration, output format consistency, high-level resource check targets (Principle IX - no low-level Kubernetes primitives), and cluster-wide diagnostic scope (Principle X - no namespace filtering)
 - Phase 1 (Design): Verify command structure follows Complete/Validate/Run pattern, functional options, and fine-grained package organization (focused packages with concise domain names, avoid package bloat)
-- Phase 2 (Implementation): Verify error handling, test coverage (fake client + k3s-envtest), testify/mock for mocking (mocks in pkg/util/test/mocks), JQ-based field access for unstructured objects, centralized GVK/GVR definitions in pkg/resources/types.go, user-facing messages defined as package-level constants (no inline strings), `make check` execution after each implementation, full linting compliance, and one commit per completed task with task ID in commit message
+- Phase 2 (Implementation): Verify error handling, test coverage (fake client + k3s-envtest), testify/mock for mocking (mocks in pkg/util/test/mocks), JQ-based field access for unstructured objects, centralized GVK/GVR definitions in pkg/resources/types.go, Kubernetes-native diagnostic CR structure (Principle XII - Metadata with Group/Kind/Name/Annotations, Spec with Description, Status with Conditions array, table rendering one row per condition), check registration pattern (init() functions + blank imports with explanatory comments), DiagnosticResult validation compliance (required fields, annotation key format, empty conditions array check), user-facing messages defined as package-level constants (no inline strings), `make check` execution after each implementation, full linting compliance, and one commit per completed task with task ID in commit message
 
-**Version**: 1.16.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-09
+**Version**: 1.20.1 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-12

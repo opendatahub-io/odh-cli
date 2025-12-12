@@ -4,17 +4,19 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 )
 
 // CheckExecution bundles a check with its execution result and any error encountered.
 type CheckExecution struct {
 	Check  Check
-	Result *DiagnosticResult
+	Result *result.DiagnosticResult
 	Error  error
 }
 
@@ -38,16 +40,16 @@ func (e *Executor) ExecuteAll(ctx context.Context, target *CheckTarget) []CheckE
 	return e.executeChecks(ctx, target, checks)
 }
 
-// ExecuteSelective runs checks matching the pattern and category
+// ExecuteSelective runs checks matching the pattern and group
 // Returns results for matching checks only.
 // Version filtering is done via CanApply during execution.
 func (e *Executor) ExecuteSelective(
 	ctx context.Context,
 	target *CheckTarget,
 	pattern string,
-	category CheckCategory,
+	group CheckGroup,
 ) ([]CheckExecution, error) {
-	checks, err := e.registry.ListByPattern(pattern, category)
+	checks, err := e.registry.ListByPattern(pattern, group)
 	if err != nil {
 		return nil, fmt.Errorf("selecting checks: %w", err)
 	}
@@ -55,13 +57,9 @@ func (e *Executor) ExecuteSelective(
 	return e.executeChecks(ctx, target, checks), nil
 }
 
-// executeChecks runs the provided checks against the target.
+// executeChecks runs the provided checks against the target sequentially.
 func (e *Executor) executeChecks(ctx context.Context, target *CheckTarget, checks []Check) []CheckExecution {
-	var (
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-		results = make([]CheckExecution, 0, len(checks))
-	)
+	results := make([]CheckExecution, 0, len(checks))
 
 	// Parse versions once for all checks
 	var currentVer, targetVer *semver.Version
@@ -86,78 +84,88 @@ func (e *Executor) executeChecks(ctx context.Context, target *CheckTarget, check
 			continue
 		}
 
-		wg.Add(1)
-
-		go func(c Check) {
-			defer wg.Done()
-
-			exec := e.executeCheck(ctx, target, c)
-
-			mu.Lock()
-			results = append(results, exec)
-			mu.Unlock()
-		}(check)
+		// Execute check sequentially
+		exec := e.executeCheck(ctx, target, check)
+		results = append(results, exec)
 	}
-
-	wg.Wait()
 
 	return results
 }
 
 // executeCheck runs a single check and captures the result or error.
 func (e *Executor) executeCheck(ctx context.Context, target *CheckTarget, check Check) CheckExecution {
-	result, err := check.Validate(ctx, target)
+	checkResult, err := check.Validate(ctx, target)
 
-	// If check returned an error, convert to Error status with appropriate remediation
+	// If check returned an error, create a diagnostic result with error condition
 	if err != nil {
-		remediation := "Check the error message and ensure you have proper access to the cluster resources"
+		var message string
+		var reason string
 
 		// Handle specific error types
 		switch {
 		case apierrors.IsForbidden(err):
-			remediation = "Insufficient permissions to access cluster resources. " +
-				"Ensure your ServiceAccount or user has the required RBAC permissions. " +
-				"Required permissions: get, list on the resource types being checked. " +
-				"Contact your cluster administrator to grant access."
+			reason = ReasonAPIAccessDenied
+			message = "Insufficient permissions to access cluster resources"
 		case apierrors.IsTimeout(err):
-			remediation = "Request timed out. Check network connectivity to the cluster API server. " +
-				"Verify the cluster is responsive and not overloaded."
+			reason = ReasonCheckExecutionFailed
+			message = "Request timed out"
 		case apierrors.IsServiceUnavailable(err) || apierrors.IsServerTimeout(err):
-			remediation = "API server is unavailable or overloaded. " +
-				"Wait a few moments and try again. " +
-				"If the issue persists, check cluster health with 'kubectl get nodes' and 'kubectl get pods -n kube-system'."
+			reason = ReasonCheckExecutionFailed
+			message = "API server is unavailable or overloaded"
 		default:
-			// Use the default remediation message set above
+			message = fmt.Sprintf("Check execution failed: %v", err)
+			reason = ReasonCheckExecutionFailed
+		}
+
+		errorResult := result.New(
+			string(check.Group()),
+			check.ID(),
+			check.Name(),
+			check.Description(),
+		)
+		errorResult.Status.Conditions = []metav1.Condition{
+			NewCondition(
+				ConditionTypeValidated,
+				metav1.ConditionUnknown,
+				reason,
+				message,
+			),
 		}
 
 		return CheckExecution{
-			Check: check,
-			Result: &DiagnosticResult{
-				Status:      StatusError,
-				Message:     fmt.Sprintf("Check execution failed: %v", err),
-				Remediation: remediation,
-			},
-			Error: err,
+			Check:  check,
+			Result: errorResult,
+			Error:  err,
 		}
 	}
 
 	// Validate the result
-	if err := result.Validate(); err != nil {
+	if err := checkResult.Validate(); err != nil {
+		invalidResult := result.New(
+			string(check.Group()),
+			check.ID(),
+			check.Name(),
+			check.Description(),
+		)
+		invalidResult.Status.Conditions = []metav1.Condition{
+			NewCondition(
+				ConditionTypeValidated,
+				metav1.ConditionUnknown,
+				ReasonCheckExecutionFailed,
+				fmt.Sprintf("Invalid check result: %v", err),
+			),
+		}
+
 		return CheckExecution{
-			Check: check,
-			Result: &DiagnosticResult{
-				Status:  StatusError,
-				Message: fmt.Sprintf("Invalid check result: %v", err),
-				Remediation: "This is an internal error. " +
-					"Please report this issue to the OpenShift AI team with the error details.",
-			},
-			Error: fmt.Errorf("invalid result from check %s: %w", check.ID(), err),
+			Check:  check,
+			Result: invalidResult,
+			Error:  fmt.Errorf("invalid result from check %s: %w", check.ID(), err),
 		}
 	}
 
 	return CheckExecution{
 		Check:  check,
-		Result: result,
+		Result: checkResult,
 		Error:  nil,
 	}
 }

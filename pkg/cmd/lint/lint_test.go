@@ -234,8 +234,8 @@ func TestCommand_NewCommand(t *testing.T) {
 		// Per FR-014, SharedOptions should be initialized internally
 		g.Expect(command.SharedOptions).ToNot(BeNil())
 		g.Expect(command.IO).ToNot(BeNil())
-		g.Expect(command.IO.Out).To(Equal(&out))
-		g.Expect(command.IO.ErrOut).To(Equal(&errOut))
+		g.Expect(command.IO.Out()).To(Equal(&out))
+		g.Expect(command.IO.ErrOut()).To(Equal(&errOut))
 	})
 }
 

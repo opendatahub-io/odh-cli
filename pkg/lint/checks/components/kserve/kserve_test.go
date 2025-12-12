@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -47,10 +48,12 @@ func TestKServeServerlessRemovalCheck_NoDSC(t *testing.T) {
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("No DataScienceCluster"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("No DataScienceCluster"),
 	}))
 }
 
@@ -94,10 +97,12 @@ func TestKServeServerlessRemovalCheck_KServeNotConfigured(t *testing.T) {
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("not configured"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("not configured"),
 	}))
 }
 
@@ -141,12 +146,14 @@ func TestKServeServerlessRemovalCheck_KServeNotManaged(t *testing.T) {
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("not managed"),
-		"Details":  HaveKeyWithValue("kserveManagementState", "Removed"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal("ComponentNotManaged"),
+		"Message": ContainSubstring("not managed"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/kserve-management-state", "Removed"))
 }
 
 func TestKServeServerlessRemovalCheck_ServerlessNotConfigured(t *testing.T) {
@@ -190,12 +197,14 @@ func TestKServeServerlessRemovalCheck_ServerlessNotConfigured(t *testing.T) {
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("serverless mode is not configured"),
-		"Details":  HaveKeyWithValue("kserveManagementState", "Managed"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": ContainSubstring("serverless mode is not configured"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/kserve-management-state", "Managed"))
 }
 
 func TestKServeServerlessRemovalCheck_ServerlessManagedBlocking(t *testing.T) {
@@ -241,17 +250,18 @@ func TestKServeServerlessRemovalCheck_ServerlessManagedBlocking(t *testing.T) {
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  And(ContainSubstring("serverless mode is enabled"), ContainSubstring("removed in RHOAI 3.x")),
-		"Details": And(
-			HaveKeyWithValue("kserveManagementState", "Managed"),
-			HaveKeyWithValue("servingManagementState", "Managed"),
-			HaveKeyWithValue("component", "kserve"),
-			HaveKeyWithValue("targetVersion", "3.0.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("serverless mode is enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(And(
+		HaveKeyWithValue("component.opendatahub.io/kserve-management-state", "Managed"),
+		HaveKeyWithValue("component.opendatahub.io/serving-management-state", "Managed"),
+		HaveKeyWithValue("check.opendatahub.io/target-version", "3.0.0"),
+	))
 }
 
 func TestKServeServerlessRemovalCheck_ServerlessUnmanagedBlocking(t *testing.T) {
@@ -297,12 +307,14 @@ func TestKServeServerlessRemovalCheck_ServerlessUnmanagedBlocking(t *testing.T) 
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  ContainSubstring("state: Unmanaged"),
-		"Details":  HaveKeyWithValue("servingManagementState", "Unmanaged"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": ContainSubstring("state: Unmanaged"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/serving-management-state", "Unmanaged"))
 }
 
 func TestKServeServerlessRemovalCheck_ServerlessRemovedReady(t *testing.T) {
@@ -348,15 +360,17 @@ func TestKServeServerlessRemovalCheck_ServerlessRemovedReady(t *testing.T) {
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  And(ContainSubstring("serverless mode is disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
-		"Details": And(
-			HaveKeyWithValue("kserveManagementState", "Managed"),
-			HaveKeyWithValue("servingManagementState", "Removed"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": And(ContainSubstring("serverless mode is disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(And(
+		HaveKeyWithValue("component.opendatahub.io/kserve-management-state", "Managed"),
+		HaveKeyWithValue("component.opendatahub.io/serving-management-state", "Removed"),
+	))
 }
 
 func TestKServeServerlessRemovalCheck_Metadata(t *testing.T) {
@@ -366,6 +380,6 @@ func TestKServeServerlessRemovalCheck_Metadata(t *testing.T) {
 
 	g.Expect(kserveCheck.ID()).To(Equal("components.kserve.serverless-removal"))
 	g.Expect(kserveCheck.Name()).To(Equal("Components :: KServe :: Serverless Removal (3.x)"))
-	g.Expect(kserveCheck.Category()).To(Equal(check.CategoryComponent))
+	g.Expect(kserveCheck.Group()).To(Equal(check.GroupComponent))
 	g.Expect(kserveCheck.Description()).ToNot(BeEmpty())
 }

@@ -6,9 +6,11 @@ import (
 
 	"github.com/blang/semver/v4"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/operators"
 )
 
 const (
@@ -31,63 +33,36 @@ func (c *Check) Description() string {
 	return checkDescription
 }
 
-func (c *Check) Category() check.CheckCategory {
-	return check.CategoryDependency
+func (c *Check) Group() check.CheckGroup {
+	return check.GroupDependency
 }
 
 func (c *Check) CanApply(_ *semver.Version, _ *semver.Version) bool {
 	return true
 }
 
-func (c *Check) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
-	subscriptions, err := target.Client.List(ctx, resources.Subscription)
-	if err != nil {
-		return nil, fmt.Errorf("listing subscriptions: %w", err)
-	}
-
-	var version string
-	for _, sub := range subscriptions {
-		name, err := jq.Query(&sub, ".metadata.name")
-		if err != nil {
-			continue
-		}
-
-		nameStr, ok := name.(string)
-		if !ok {
-			continue
-		}
-
-		if nameStr == "kueue-operator" {
-			installedCSV, err := jq.Query(&sub, ".status.installedCSV")
-			if err == nil && installedCSV != nil {
-				if csvStr, ok := installedCSV.(string); ok {
-					version = csvStr
-
-					break
-				}
+func (c *Check) Validate(ctx context.Context, target *check.CheckTarget) (*result.DiagnosticResult, error) {
+	// kueue-operator check uses all defaults from operators.CheckOperatorPresence
+	// since the subscription name matches the operator kind ("kueue-operator")
+	res, err := operators.CheckOperatorPresence(
+		ctx,
+		target.Client,
+		"kueue-operator",
+		operators.WithDescription(checkDescription),
+		operators.WithMatcher(func(subscription *unstructured.Unstructured) bool {
+			op, err := operators.GetOperator(subscription)
+			if err != nil {
+				return false
 			}
-		}
+
+			return op.Name == "kueue-operator"
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("checking kueue-operator presence: %w", err)
 	}
 
-	if version == "" {
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: "kueue-operator: Not installed",
-			Details: map[string]any{
-				"installed": false,
-				"version":   "Not installed",
-			},
-		}, nil
-	}
-
-	return &check.DiagnosticResult{
-		Status:  check.StatusPass,
-		Message: "kueue-operator: " + version,
-		Details: map[string]any{
-			"installed": true,
-			"version":   version,
-		},
-	}, nil
+	return res, nil
 }
 
 //nolint:gochecknoinits

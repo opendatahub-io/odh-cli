@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -47,10 +48,12 @@ func TestModelmeshRemovalCheck_NoDSC(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("No DataScienceCluster"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("No DataScienceCluster"),
 	}))
 }
 
@@ -58,7 +61,7 @@ func TestModelmeshRemovalCheck_NotConfigured(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster without modelmeshserving component
+	// Create DataScienceCluster without modelmesh component
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -94,10 +97,12 @@ func TestModelmeshRemovalCheck_NotConfigured(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("not configured"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("not configured"),
 	}))
 }
 
@@ -105,7 +110,7 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster with modelmeshserving Managed (blocking upgrade)
+	// Create DataScienceCluster with modelmesh Managed (blocking upgrade)
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -115,7 +120,7 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"components": map[string]any{
-					"modelmeshserving": map[string]any{
+					"modelmesh": map[string]any{
 						"managementState": "Managed",
 					},
 				},
@@ -141,23 +146,24 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  And(ContainSubstring("still enabled"), ContainSubstring("removed in RHOAI 3.x")),
-		"Details": And(
-			HaveKeyWithValue("managementState", "Managed"),
-			HaveKeyWithValue("component", "modelmeshserving"),
-			HaveKeyWithValue("targetVersion", "3.0.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(And(
+		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
+		HaveKeyWithValue("check.opendatahub.io/target-version", "3.0.0"),
+	))
 }
 
 func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster with modelmeshserving Unmanaged (also blocking)
+	// Create DataScienceCluster with modelmesh Unmanaged (also blocking)
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -167,7 +173,7 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"components": map[string]any{
-					"modelmeshserving": map[string]any{
+					"modelmesh": map[string]any{
 						"managementState": "Unmanaged",
 					},
 				},
@@ -193,19 +199,21 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  ContainSubstring("state: Unmanaged"),
-		"Details":  HaveKeyWithValue("managementState", "Unmanaged"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": ContainSubstring("state: Unmanaged"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/management-state", "Unmanaged"))
 }
 
 func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster with modelmeshserving Removed (ready for upgrade)
+	// Create DataScienceCluster with modelmesh Removed (ready for upgrade)
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -215,7 +223,7 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"components": map[string]any{
-					"modelmeshserving": map[string]any{
+					"modelmesh": map[string]any{
 						"managementState": "Removed",
 					},
 				},
@@ -241,12 +249,14 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
-		"Details":  HaveKeyWithValue("managementState", "Removed"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("component.opendatahub.io/management-state", "Removed"))
 }
 
 func TestModelmeshRemovalCheck_Metadata(t *testing.T) {
@@ -256,6 +266,6 @@ func TestModelmeshRemovalCheck_Metadata(t *testing.T) {
 
 	g.Expect(modelmeshCheck.ID()).To(Equal("components.modelmesh.removal"))
 	g.Expect(modelmeshCheck.Name()).To(Equal("Components :: ModelMesh :: Removal (3.x)"))
-	g.Expect(modelmeshCheck.Category()).To(Equal(check.CategoryComponent))
+	g.Expect(modelmeshCheck.Group()).To(Equal(check.GroupComponent))
 	g.Expect(modelmeshCheck.Description()).ToNot(BeEmpty())
 }

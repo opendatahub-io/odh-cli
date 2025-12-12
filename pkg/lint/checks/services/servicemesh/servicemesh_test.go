@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -47,10 +48,12 @@ func TestServiceMeshRemovalCheck_NoDSCI(t *testing.T) {
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("No DSCInitialization"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("No DSCInitialization"),
 	}))
 }
 
@@ -90,10 +93,12 @@ func TestServiceMeshRemovalCheck_NotConfigured(t *testing.T) {
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("not configured"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("not configured"),
 	}))
 }
 
@@ -136,16 +141,14 @@ func TestServiceMeshRemovalCheck_ManagedBlocking(t *testing.T) {
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  And(ContainSubstring("enabled"), ContainSubstring("not supported in RHOAI 3.x")),
-		"Details": And(
-			HaveKeyWithValue("managementState", "Managed"),
-			HaveKeyWithValue("service", "serviceMesh"),
-			HaveKeyWithValue("targetVersion", "3.0.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("service.opendatahub.io/management-state", "Managed"))
 }
 
 func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
@@ -187,12 +190,14 @@ func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusFail),
-		"Severity": PointTo(Equal(check.SeverityCritical)),
-		"Message":  ContainSubstring("state: Unmanaged"),
-		"Details":  HaveKeyWithValue("managementState", "Unmanaged"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": ContainSubstring("state: Unmanaged"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("service.opendatahub.io/management-state", "Unmanaged"))
 }
 
 func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
@@ -234,12 +239,14 @@ func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
-		"Details":  HaveKeyWithValue("managementState", "Removed"),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("service.opendatahub.io/management-state", "Removed"))
 }
 
 func TestServiceMeshRemovalCheck_Metadata(t *testing.T) {
@@ -249,6 +256,6 @@ func TestServiceMeshRemovalCheck_Metadata(t *testing.T) {
 
 	g.Expect(servicemeshCheck.ID()).To(Equal("services.servicemesh.removal"))
 	g.Expect(servicemeshCheck.Name()).To(Equal("Services :: ServiceMesh :: Removal (3.x)"))
-	g.Expect(servicemeshCheck.Category()).To(Equal(check.CategoryService))
+	g.Expect(servicemeshCheck.Group()).To(Equal(check.GroupService))
 	g.Expect(servicemeshCheck.Description()).ToNot(BeEmpty())
 }

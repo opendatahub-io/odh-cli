@@ -7,8 +7,10 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
@@ -19,7 +21,7 @@ const (
 	checkDescription = "Validates that Kueue managed option is not used before upgrading from RHOAI 2.x to 3.x (managed option will be removed)"
 )
 
-// ManagedRemovalCheck validates that Kueue is not in Managed state before upgrading to 3.x.
+// ManagedRemovalCheck validates that Kueue managed option is not used before upgrading to 3.x.
 type ManagedRemovalCheck struct{}
 
 // ID returns the unique identifier for this check.
@@ -37,9 +39,9 @@ func (c *ManagedRemovalCheck) Description() string {
 	return checkDescription
 }
 
-// Category returns the check category.
-func (c *ManagedRemovalCheck) Category() check.CheckCategory {
-	return check.CategoryComponent
+// Group returns the check group.
+func (c *ManagedRemovalCheck) Group() check.CheckGroup {
+	return check.GroupComponent
 }
 
 // CanApply returns whether this check should run for the given versions.
@@ -55,12 +57,19 @@ func (c *ManagedRemovalCheck) CanApply(currentVersion *semver.Version, targetVer
 }
 
 // Validate executes the check against the provided target.
-func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
+func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) (*result.DiagnosticResult, error) {
+	dr := result.New(
+		string(check.GroupComponent),
+		"kueue",
+		"managed-removal",
+		checkDescription,
+	)
+
 	// Get the DataScienceCluster singleton
 	dsc, err := target.Client.GetDataScienceCluster(ctx)
 	switch {
 	case apierrors.IsNotFound(err):
-		return results.DataScienceClusterNotFound(), nil
+		return results.DataScienceClusterNotFound(string(check.GroupComponent), "kueue", "managed-removal", checkDescription), nil
 	case err != nil:
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
@@ -69,10 +78,16 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 	managementState, err := jq.Query(dsc, ".spec.components.kueue.managementState")
 	if err != nil || managementState == nil {
 		// Kueue component not defined in spec - check passes
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: "Kueue component is not configured in DataScienceCluster",
-		}, nil
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeConfigured,
+				metav1.ConditionFalse,
+				check.ReasonResourceNotFound,
+				"Kueue component is not configured in DataScienceCluster",
+			),
+		}
+
+		return dr, nil
 	}
 
 	managementStateStr, ok := managementState.(string)
@@ -80,33 +95,37 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 		return nil, fmt.Errorf("managementState is not a string: %T", managementState)
 	}
 
-	// Check if kueue is in Managed state (the managed option is going away)
-	if managementStateStr == "Managed" {
-		severity := check.SeverityCritical
-
-		return &check.DiagnosticResult{
-			Status:   check.StatusFail,
-			Severity: &severity,
-			Message: fmt.Sprintf(
-				"Kueue managed option is enabled (state: %s) but will be removed in RHOAI 3.x",
-				managementStateStr,
-			),
-			Details: map[string]any{
-				"managementState": managementStateStr,
-				"component":       "kueue",
-				"targetVersion":   target.Version.Version,
-			},
-		}, nil
+	// Add management state as annotation
+	dr.Metadata.Annotations["component.opendatahub.io/management-state"] = managementStateStr
+	if target.Version != nil {
+		dr.Metadata.Annotations["check.opendatahub.io/target-version"] = target.Version.Version
 	}
 
-	// Kueue is not Managed - check passes
-	return &check.DiagnosticResult{
-		Status:  check.StatusPass,
-		Message: fmt.Sprintf("Kueue managed option is not enabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
-		Details: map[string]any{
-			"managementState": managementStateStr,
-		},
-	}, nil
+	// Check if kueue is enabled (Managed or Unmanaged)
+	if managementStateStr == "Managed" || managementStateStr == "Unmanaged" {
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionFalse,
+				check.ReasonVersionIncompatible,
+				fmt.Sprintf("Kueue managed option is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr),
+			),
+		}
+
+		return dr, nil
+	}
+
+	// Kueue is disabled (Removed) - check passes
+	dr.Status.Conditions = []metav1.Condition{
+		check.NewCondition(
+			check.ConditionTypeCompatible,
+			metav1.ConditionTrue,
+			check.ReasonVersionCompatible,
+			fmt.Sprintf("Kueue managed option is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
+		),
+	}
+
+	return dr, nil
 }
 
 // Register the check in the global registry.

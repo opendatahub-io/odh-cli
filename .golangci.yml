@@ -42,6 +42,15 @@ linters:
       max-complexity: 15  # Increased from default 10
     gocognit:
       min-complexity: 50  # Increased from default 30
+    mnd:
+      ignored-functions:
+        - len
+      checks:
+        - argument
+        - case
+        - operation
+        - return
+        - assign
     revive:
       enable-all-rules: true
       rules:
@@ -84,6 +93,8 @@ linters:
           disabled: true  # Standard wg.Add/Done pattern is fine
         - name: empty-block
           disabled: true  # Empty blocks with comments are intentional
+        - name: enforce-switch-style
+          disabled: true # default would make it more verbose
 
 formatters:
   enable:

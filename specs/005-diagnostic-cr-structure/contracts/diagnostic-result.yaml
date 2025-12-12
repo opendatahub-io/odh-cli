@@ -1,0 +1,148 @@
+# OpenAPI 3.0 Schema for DiagnosticResult CR Structure
+# Feature: 005-diagnostic-cr-structure
+# Date: 2025-12-10
+
+openapi: 3.0.3
+info:
+  title: DiagnosticResult API
+  description: |
+    Diagnostic check result following Kubernetes Custom Resource conventions.
+    This schema defines the structure for diagnostic results in odh-cli.
+  version: 1.0.0
+
+components:
+  schemas:
+    DiagnosticResult:
+      type: object
+      required:
+        - metadata
+        - spec
+        - status
+      properties:
+        metadata:
+          $ref: '#/components/schemas/DiagnosticMetadata'
+        spec:
+          $ref: '#/components/schemas/DiagnosticSpec'
+        status:
+          $ref: '#/components/schemas/DiagnosticStatus'
+      example:
+        metadata:
+          group: components
+          kind: kserve
+          name: version-compatibility
+          annotations:
+            check.opendatahub.io/source-version: "2.15"
+            check.opendatahub.io/target-version: "3.0"
+        spec:
+          description: "Validates KServe version compatibility for upgrade readiness"
+        status:
+          conditions:
+            - type: Validated
+              status: "True"
+              reason: RequirementsMet
+              message: "KServe v0.11 is compatible with OpenShift AI 3.0"
+              lastTransitionTime: "2025-12-10T10:00:00Z"
+
+    DiagnosticMetadata:
+      type: object
+      description: Metadata identifying the diagnostic target and check
+      required:
+        - group
+        - kind
+        - name
+      properties:
+        group:
+          type: string
+          description: Diagnostic target category
+          pattern: '^[a-z][a-z0-9-]*$'
+          example: components
+        kind:
+          type: string
+          description: Specific target being checked
+          pattern: '^[a-z][a-z0-9-]*$'
+          example: kserve
+        name:
+          type: string
+          description: Check identifier
+          pattern: '^[a-z][a-z0-9-]*$'
+          example: version-compatibility
+        annotations:
+          type: object
+          description: Key-value metadata (domain-qualified keys)
+          additionalProperties:
+            type: string
+          example:
+            check.opendatahub.io/source-version: "2.15"
+            check.opendatahub.io/target-version: "3.0"
+
+    DiagnosticSpec:
+      type: object
+      description: Specification describing the check purpose
+      required:
+        - description
+      properties:
+        description:
+          type: string
+          description: Detailed explanation of what the check validates
+          maxLength: 1024
+          example: "Validates KServe component configuration and availability"
+
+    DiagnosticStatus:
+      type: object
+      description: Status containing condition-based validation results
+      required:
+        - conditions
+      properties:
+        conditions:
+          type: array
+          description: Array of validation conditions (ordered by execution sequence)
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DiagnosticCondition'
+
+    DiagnosticCondition:
+      type: object
+      description: Individual validation condition (Kubernetes metav1.Condition pattern)
+      required:
+        - type
+        - status
+        - reason
+        - message
+        - lastTransitionTime
+      properties:
+        type:
+          type: string
+          description: Condition type identifier (CamelCase)
+          pattern: '^[A-Z][a-zA-Z0-9]*$'
+          example: Validated
+        status:
+          type: string
+          description: Condition status
+          enum:
+            - "True"
+            - "False"
+            - "Unknown"
+          example: "True"
+        reason:
+          type: string
+          description: Machine-readable reason code (CamelCase)
+          pattern: '^[A-Z][a-zA-Z0-9]*$'
+          example: RequirementsMet
+        message:
+          type: string
+          description: Human-readable explanation
+          maxLength: 1024
+          example: "All version requirements validated successfully"
+        lastTransitionTime:
+          type: string
+          format: date-time
+          description: Timestamp when status last changed (RFC3339)
+          example: "2025-12-10T10:00:00Z"
+
+    ConditionStatus:
+      type: string
+      description: Enumeration for condition status values
+      enum:
+        - "True"
+        - "False"
+        - "Unknown"

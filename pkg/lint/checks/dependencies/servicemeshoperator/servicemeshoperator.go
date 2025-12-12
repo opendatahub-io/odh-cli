@@ -6,8 +6,12 @@ import (
 
 	"github.com/blang/semver/v4"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/operators"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
@@ -17,6 +21,7 @@ const (
 	checkDescription = "Validates that servicemeshoperator2 is not installed when upgrading to RHOAI 3.x (requires servicemeshoperator3)"
 )
 
+// Check validates that Service Mesh Operator v2 is not installed when upgrading to 3.x.
 type Check struct{}
 
 func (c *Check) ID() string {
@@ -31,8 +36,8 @@ func (c *Check) Description() string {
 	return checkDescription
 }
 
-func (c *Check) Category() check.CheckCategory {
-	return check.CategoryDependency
+func (c *Check) Group() check.CheckGroup {
+	return check.GroupDependency
 }
 
 func (c *Check) CanApply(currentVersion *semver.Version, targetVersion *semver.Version) bool {
@@ -43,62 +48,56 @@ func (c *Check) CanApply(currentVersion *semver.Version, targetVersion *semver.V
 	return currentVersion.Major == 2 && targetVersion.Major >= 3
 }
 
-func (c *Check) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
-	subscriptions, err := target.Client.List(ctx, resources.Subscription)
-	if err != nil {
-		return nil, fmt.Errorf("listing subscriptions: %w", err)
-	}
-
-	var version string
-	for _, sub := range subscriptions {
-		name, err := jq.Query(&sub, ".metadata.name")
-		if err != nil {
-			continue
-		}
-
-		nameStr, ok := name.(string)
-		if !ok {
-			continue
-		}
-
-		if nameStr == "servicemeshoperator2" {
-			installedCSV, err := jq.Query(&sub, ".status.installedCSV")
-			if err == nil && installedCSV != nil {
-				if csvStr, ok := installedCSV.(string); ok {
-					version = csvStr
-
-					break
-				}
+func (c *Check) Validate(ctx context.Context, target *check.CheckTarget) (*result.DiagnosticResult, error) {
+	res, err := operators.CheckOperatorPresence(
+		ctx,
+		target.Client,
+		"servicemesh-operator-v2",
+		operators.WithDescription(checkDescription),
+		operators.WithMatcher(func(subscription *unstructured.Unstructured) bool {
+			// Check if this is servicemeshoperator on v2.x channel
+			op, err := operators.GetOperator(subscription)
+			if err != nil || op.Name != "servicemeshoperator" {
+				return false
 			}
-		}
+
+			// Check if it's on v2.x channel (stable or v2.x)
+			channel, err := jq.Query(subscription, ".spec.channel")
+			if err != nil || channel == nil {
+				return false
+			}
+
+			channelStr, ok := channel.(string)
+			if !ok {
+				return false
+			}
+
+			return channelStr == "stable" || channelStr == "v2.x"
+		}),
+		operators.WithConditionBuilder(func(found bool, version string) metav1.Condition {
+			// Inverted logic: NOT finding the operator is good
+			if !found {
+				return check.NewCondition(
+					check.ConditionTypeCompatible,
+					metav1.ConditionTrue,
+					check.ReasonVersionCompatible,
+					"Service Mesh Operator v2 is not installed - ready for RHOAI 3.x upgrade",
+				)
+			}
+
+			return check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionFalse,
+				check.ReasonVersionIncompatible,
+				fmt.Sprintf("Service Mesh Operator v2 (%s) is installed but RHOAI 3.x requires v3", version),
+			)
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("checking servicemesh-operator v2 presence: %w", err)
 	}
 
-	if version == "" {
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: "servicemeshoperator2: Not installed (ready for RHOAI 3.x)",
-			Details: map[string]any{
-				"installed": false,
-				"version":   "Not installed",
-			},
-		}, nil
-	}
-
-	severity := check.SeverityCritical
-
-	return &check.DiagnosticResult{
-		Status:   check.StatusFail,
-		Severity: &severity,
-		Message: fmt.Sprintf(
-			"servicemeshoperator2 is installed (%s) but not supported in RHOAI 3.x, requires servicemeshoperator3",
-			version,
-		),
-		Details: map[string]any{
-			"installed":     true,
-			"version":       version,
-			"targetVersion": target.Version.Version,
-		},
-	}, nil
+	return res, nil
 }
 
 //nolint:gochecknoinits

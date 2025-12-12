@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -46,14 +47,12 @@ func TestKueueOperatorCheck_NotInstalled(t *testing.T) {
 	result, err := kueueOperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("Not installed"),
-		"Details": And(
-			HaveKeyWithValue("installed", false),
-			HaveKeyWithValue("version", "Not installed"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("not installed"),
 	}))
 }
 
@@ -93,15 +92,14 @@ func TestKueueOperatorCheck_Installed(t *testing.T) {
 	result, err := kueueOperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("kueue-operator.v0.6.0"),
-		"Details": And(
-			HaveKeyWithValue("installed", true),
-			HaveKeyWithValue("version", "kueue-operator.v0.6.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonResourceFound),
+		"Message": ContainSubstring("kueue-operator.v0.6.0"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "kueue-operator.v0.6.0"))
 }
 
 func TestKueueOperatorCheck_Metadata(t *testing.T) {
@@ -111,6 +109,6 @@ func TestKueueOperatorCheck_Metadata(t *testing.T) {
 
 	g.Expect(kueueOperatorCheck.ID()).To(Equal("dependencies.kueueoperator.installed"))
 	g.Expect(kueueOperatorCheck.Name()).To(Equal("Dependencies :: KueueOperator :: Installed"))
-	g.Expect(kueueOperatorCheck.Category()).To(Equal(check.CategoryDependency))
+	g.Expect(kueueOperatorCheck.Group()).To(Equal(check.GroupDependency))
 	g.Expect(kueueOperatorCheck.Description()).ToNot(BeEmpty())
 }

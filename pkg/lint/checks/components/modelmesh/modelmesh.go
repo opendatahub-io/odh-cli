@@ -7,8 +7,10 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
@@ -16,10 +18,10 @@ import (
 const (
 	checkID          = "components.modelmesh.removal"
 	checkName        = "Components :: ModelMesh :: Removal (3.x)"
-	checkDescription = "Validates that ModelMesh Serving is disabled before upgrading from RHOAI 2.x to 3.x (component will be removed)"
+	checkDescription = "Validates that ModelMesh is disabled before upgrading from RHOAI 2.x to 3.x (component will be removed)"
 )
 
-// RemovalCheck validates that ModelMesh Serving is disabled before upgrading to 3.x.
+// RemovalCheck validates that ModelMesh is disabled before upgrading to 3.x.
 type RemovalCheck struct{}
 
 // ID returns the unique identifier for this check.
@@ -37,9 +39,9 @@ func (c *RemovalCheck) Description() string {
 	return checkDescription
 }
 
-// Category returns the check category.
-func (c *RemovalCheck) Category() check.CheckCategory {
-	return check.CategoryComponent
+// Group returns the check group.
+func (c *RemovalCheck) Group() check.CheckGroup {
+	return check.GroupComponent
 }
 
 // CanApply returns whether this check should run for the given versions.
@@ -55,24 +57,37 @@ func (c *RemovalCheck) CanApply(currentVersion *semver.Version, targetVersion *s
 }
 
 // Validate executes the check against the provided target.
-func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) (*check.DiagnosticResult, error) {
+func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) (*result.DiagnosticResult, error) {
+	dr := result.New(
+		string(check.GroupComponent),
+		"modelmesh",
+		"removal",
+		checkDescription,
+	)
+
 	// Get the DataScienceCluster singleton
 	dsc, err := target.Client.GetDataScienceCluster(ctx)
 	switch {
 	case apierrors.IsNotFound(err):
-		return results.DataScienceClusterNotFound(), nil
+		return results.DataScienceClusterNotFound(string(check.GroupComponent), "modelmesh", "removal", checkDescription), nil
 	case err != nil:
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	// Query modelmeshserving component management state using JQ
-	managementState, err := jq.Query(dsc, ".spec.components.modelmeshserving.managementState")
+	// Query modelmesh component management state using JQ
+	managementState, err := jq.Query(dsc, ".spec.components.modelmesh.managementState")
 	if err != nil || managementState == nil {
 		// ModelMesh component not defined in spec - check passes
-		return &check.DiagnosticResult{
-			Status:  check.StatusPass,
-			Message: "ModelMesh Serving component is not configured in DataScienceCluster",
-		}, nil
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeConfigured,
+				metav1.ConditionFalse,
+				check.ReasonResourceNotFound,
+				"ModelMesh component is not configured in DataScienceCluster",
+			),
+		}
+
+		return dr, nil
 	}
 
 	managementStateStr, ok := managementState.(string)
@@ -80,33 +95,37 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 		return nil, fmt.Errorf("managementState is not a string: %T", managementState)
 	}
 
+	// Add management state as annotation
+	dr.Metadata.Annotations["component.opendatahub.io/management-state"] = managementStateStr
+	if target.Version != nil {
+		dr.Metadata.Annotations["check.opendatahub.io/target-version"] = target.Version.Version
+	}
+
 	// Check if modelmesh is enabled (Managed or Unmanaged)
 	if managementStateStr == "Managed" || managementStateStr == "Unmanaged" {
-		severity := check.SeverityCritical
-
-		return &check.DiagnosticResult{
-			Status:   check.StatusFail,
-			Severity: &severity,
-			Message: fmt.Sprintf(
-				"ModelMesh Serving is still enabled (state: %s) but will be removed in RHOAI 3.x",
-				managementStateStr,
+		dr.Status.Conditions = []metav1.Condition{
+			check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionFalse,
+				check.ReasonVersionIncompatible,
+				fmt.Sprintf("ModelMesh is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr),
 			),
-			Details: map[string]any{
-				"managementState": managementStateStr,
-				"component":       "modelmeshserving",
-				"targetVersion":   target.Version.Version,
-			},
-		}, nil
+		}
+
+		return dr, nil
 	}
 
 	// ModelMesh is disabled (Removed) - check passes
-	return &check.DiagnosticResult{
-		Status:  check.StatusPass,
-		Message: fmt.Sprintf("ModelMesh Serving is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
-		Details: map[string]any{
-			"managementState": managementStateStr,
-		},
-	}, nil
+	dr.Status.Conditions = []metav1.Condition{
+		check.NewCondition(
+			check.ConditionTypeCompatible,
+			metav1.ConditionTrue,
+			check.ReasonVersionCompatible,
+			fmt.Sprintf("ModelMesh is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
+		),
+	}
+
+	return dr, nil
 }
 
 // Register the check in the global registry.

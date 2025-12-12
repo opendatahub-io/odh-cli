@@ -13,32 +13,32 @@ func TestMatchesPattern_Wildcard(t *testing.T) {
 	g := NewWithT(t)
 
 	tests := []struct {
-		name     string
-		checkID  string
-		category check.CheckCategory
-		pattern  string
-		want     bool
+		name    string
+		checkID string
+		group   check.CheckGroup
+		pattern string
+		want    bool
 	}{
 		{
-			name:     "wildcard matches component check",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "*",
-			want:     true,
+			name:    "wildcard matches component check",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "*",
+			want:    true,
 		},
 		{
-			name:     "wildcard matches service check",
-			checkID:  "services.oauth",
-			category: check.CategoryService,
-			pattern:  "*",
-			want:     true,
+			name:    "wildcard matches service check",
+			checkID: "services.oauth",
+			group:   check.GroupService,
+			pattern: "*",
+			want:    true,
 		},
 		{
-			name:     "wildcard matches workload check",
-			checkID:  "workloads.limits",
-			category: check.CategoryWorkload,
-			pattern:  "*",
-			want:     true,
+			name:    "wildcard matches workload check",
+			checkID: "workloads.limits",
+			group:   check.GroupWorkload,
+			pattern: "*",
+			want:    true,
 		},
 	}
 
@@ -46,7 +46,7 @@ func TestMatchesPattern_Wildcard(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockCheck := mocks.NewMockCheck()
 			mockCheck.On("ID").Return(tt.checkID)
-			mockCheck.On("Category").Return(tt.category)
+			mockCheck.On("Group").Return(tt.group)
 
 			// matchesPattern is not exported, so we test through ListByPattern
 			registry := check.NewRegistry()
@@ -65,71 +65,71 @@ func TestMatchesPattern_Wildcard(t *testing.T) {
 	}
 }
 
-func TestMatchesPattern_CategoryShortcuts(t *testing.T) {
+func TestMatchesPattern_GroupShortcuts(t *testing.T) {
 	g := NewWithT(t)
 
 	tests := []struct {
-		name     string
-		checkID  string
-		category check.CheckCategory
-		pattern  string
-		want     bool
+		name    string
+		checkID string
+		group   check.CheckGroup
+		pattern string
+		want    bool
 	}{
 		{
-			name:     "components shortcut matches component check",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "components",
-			want:     true,
+			name:    "components shortcut matches component check",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "components",
+			want:    true,
 		},
 		{
-			name:     "components shortcut does not match service check",
-			checkID:  "services.oauth",
-			category: check.CategoryService,
-			pattern:  "components",
-			want:     false,
+			name:    "components shortcut does not match service check",
+			checkID: "services.oauth",
+			group:   check.GroupService,
+			pattern: "components",
+			want:    false,
 		},
 		{
-			name:     "services shortcut matches service check",
-			checkID:  "services.oauth",
-			category: check.CategoryService,
-			pattern:  "services",
-			want:     true,
+			name:    "services shortcut matches service check",
+			checkID: "services.oauth",
+			group:   check.GroupService,
+			pattern: "services",
+			want:    true,
 		},
 		{
-			name:     "services shortcut does not match component check",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "services",
-			want:     false,
+			name:    "services shortcut does not match component check",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "services",
+			want:    false,
 		},
 		{
-			name:     "workloads shortcut matches workload check",
-			checkID:  "workloads.limits",
-			category: check.CategoryWorkload,
-			pattern:  "workloads",
-			want:     true,
+			name:    "workloads shortcut matches workload check",
+			checkID: "workloads.limits",
+			group:   check.GroupWorkload,
+			pattern: "workloads",
+			want:    true,
 		},
 		{
-			name:     "workloads shortcut does not match component check",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "workloads",
-			want:     false,
+			name:    "workloads shortcut does not match component check",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "workloads",
+			want:    false,
 		},
 		{
-			name:     "dependencies shortcut matches dependency check",
-			checkID:  "dependencies.certmanager",
-			category: check.CategoryDependency,
-			pattern:  "dependencies",
-			want:     true,
+			name:    "dependencies shortcut matches dependency check",
+			checkID: "dependencies.certmanager",
+			group:   check.GroupDependency,
+			pattern: "dependencies",
+			want:    true,
 		},
 		{
-			name:     "dependencies shortcut does not match component check",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "dependencies",
-			want:     false,
+			name:    "dependencies shortcut does not match component check",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "dependencies",
+			want:    false,
 		},
 	}
 
@@ -137,7 +137,7 @@ func TestMatchesPattern_CategoryShortcuts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockCheck := mocks.NewMockCheck()
 			mockCheck.On("ID").Return(tt.checkID)
-			mockCheck.On("Category").Return(tt.category)
+			mockCheck.On("Group").Return(tt.group)
 
 			registry := check.NewRegistry()
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
@@ -159,25 +159,25 @@ func TestMatchesPattern_ExactMatch(t *testing.T) {
 	g := NewWithT(t)
 
 	tests := []struct {
-		name     string
-		checkID  string
-		category check.CheckCategory
-		pattern  string
-		want     bool
+		name    string
+		checkID string
+		group   check.CheckGroup
+		pattern string
+		want    bool
 	}{
 		{
-			name:     "exact match success",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "components.dashboard",
-			want:     true,
+			name:    "exact match success",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "components.dashboard",
+			want:    true,
 		},
 		{
-			name:     "exact match fail",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "components.workbench",
-			want:     false,
+			name:    "exact match fail",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "components.workbench",
+			want:    false,
 		},
 	}
 
@@ -185,7 +185,7 @@ func TestMatchesPattern_ExactMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockCheck := mocks.NewMockCheck()
 			mockCheck.On("ID").Return(tt.checkID)
-			mockCheck.On("Category").Return(tt.category)
+			mockCheck.On("Group").Return(tt.group)
 
 			registry := check.NewRegistry()
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
@@ -207,53 +207,53 @@ func TestMatchesPattern_GlobPatterns(t *testing.T) {
 	g := NewWithT(t)
 
 	tests := []struct {
-		name     string
-		checkID  string
-		category check.CheckCategory
-		pattern  string
-		want     bool
+		name    string
+		checkID string
+		group   check.CheckGroup
+		pattern string
+		want    bool
 	}{
 		{
-			name:     "prefix glob match",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "components.*",
-			want:     true,
+			name:    "prefix glob match",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "components.*",
+			want:    true,
 		},
 		{
-			name:     "prefix glob no match",
-			checkID:  "services.oauth",
-			category: check.CategoryService,
-			pattern:  "components.*",
-			want:     false,
+			name:    "prefix glob no match",
+			checkID: "services.oauth",
+			group:   check.GroupService,
+			pattern: "components.*",
+			want:    false,
 		},
 		{
-			name:     "suffix glob match",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "*.dashboard",
-			want:     true,
+			name:    "suffix glob match",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "*.dashboard",
+			want:    true,
 		},
 		{
-			name:     "suffix glob no match",
-			checkID:  "components.workbench",
-			category: check.CategoryComponent,
-			pattern:  "*.dashboard",
-			want:     false,
+			name:    "suffix glob no match",
+			checkID: "components.workbench",
+			group:   check.GroupComponent,
+			pattern: "*.dashboard",
+			want:    false,
 		},
 		{
-			name:     "contains glob match",
-			checkID:  "components.dashboard",
-			category: check.CategoryComponent,
-			pattern:  "*dashboard*",
-			want:     true,
+			name:    "contains glob match",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "*dashboard*",
+			want:    true,
 		},
 		{
-			name:     "contains glob no match",
-			checkID:  "components.workbench",
-			category: check.CategoryComponent,
-			pattern:  "*dashboard*",
-			want:     false,
+			name:    "contains glob no match",
+			checkID: "components.workbench",
+			group:   check.GroupComponent,
+			pattern: "*dashboard*",
+			want:    false,
 		},
 	}
 
@@ -261,7 +261,7 @@ func TestMatchesPattern_GlobPatterns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockCheck := mocks.NewMockCheck()
 			mockCheck.On("ID").Return(tt.checkID)
-			mockCheck.On("Category").Return(tt.category)
+			mockCheck.On("Group").Return(tt.group)
 
 			registry := check.NewRegistry()
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
@@ -284,7 +284,7 @@ func TestMatchesPattern_InvalidPattern(t *testing.T) {
 
 	mockCheck := mocks.NewMockCheck()
 	mockCheck.On("ID").Return("components.dashboard")
-	mockCheck.On("Category").Return(check.CategoryComponent)
+	mockCheck.On("Group").Return(check.GroupComponent)
 
 	registry := check.NewRegistry()
 	g.Expect(registry.Register(mockCheck)).To(Succeed())

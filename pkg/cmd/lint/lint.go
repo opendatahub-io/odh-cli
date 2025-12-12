@@ -46,26 +46,6 @@ func NewCommand(streams genericiooptions.IOStreams) *Command {
 	}
 }
 
-// NewOptions creates a new Command with defaults.
-//
-// Deprecated: Use NewCommand(streams) instead. This function is kept for
-// backward compatibility during migration. NewCommand provides better
-// encapsulation by initializing SharedOptions internally (FR-014).
-//
-// Example migration:
-//
-//	// Before:
-//	shared := NewSharedOptions(streams)
-//	cmd := lint.NewOptions(shared)
-//
-//	// After:
-//	cmd := lint.NewCommand(streams)
-func NewOptions(shared *SharedOptions) *Command {
-	return &Command{
-		SharedOptions: shared,
-	}
-}
-
 // AddFlags registers command-specific flags with the provided FlagSet.
 func (c *Command) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.TargetVersion, "target-version", "",
@@ -187,7 +167,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *version.Clust
 	executor := check.NewExecutor(registry)
 
 	// Execute all component checks
-	componentResults, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelector, check.CategoryComponent)
+	componentResults, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelector, check.GroupComponent)
 	if err != nil {
 		// Log error but continue with other checks
 		c.IO.Errorf("Warning: Failed to execute component checks: %v", err)
@@ -195,7 +175,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *version.Clust
 	}
 
 	// Execute all service checks
-	serviceResults, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelector, check.CategoryService)
+	serviceResults, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelector, check.GroupService)
 	if err != nil {
 		// Log error but continue with other checks
 		c.IO.Errorf("Warning: Failed to execute service checks: %v", err)
@@ -203,7 +183,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *version.Clust
 	}
 
 	// Execute all dependency checks
-	dependencyResults, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelector, check.CategoryDependency)
+	dependencyResults, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelector, check.GroupDependency)
 	if err != nil {
 		// Log error but continue with other checks
 		c.IO.Errorf("Warning: Failed to execute dependency checks: %v", err)
@@ -233,7 +213,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *version.Clust
 				Resource:       &instances[i],
 			}
 
-			results, err := executor.ExecuteSelective(ctx, workloadTarget, c.CheckSelector, check.CategoryWorkload)
+			results, err := executor.ExecuteSelective(ctx, workloadTarget, c.CheckSelector, check.GroupWorkload)
 			if err != nil {
 				return fmt.Errorf("executing workload checks: %w", err)
 			}
@@ -242,16 +222,16 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *version.Clust
 		}
 	}
 
-	// Group results by category
-	resultsByCategory := map[check.CheckCategory][]check.CheckExecution{
-		check.CategoryComponent:  componentResults,
-		check.CategoryService:    serviceResults,
-		check.CategoryDependency: dependencyResults,
-		check.CategoryWorkload:   workloadResults,
+	// Group results by group
+	resultsByGroup := map[check.CheckGroup][]check.CheckExecution{
+		check.GroupComponent:  componentResults,
+		check.GroupService:    serviceResults,
+		check.GroupDependency: dependencyResults,
+		check.GroupWorkload:   workloadResults,
 	}
 
 	// Filter results by minimum severity if specified
-	filteredResults := FilterResultsBySeverity(resultsByCategory, c.MinSeverity)
+	filteredResults := FilterResultsBySeverity(resultsByGroup, c.MinSeverity)
 
 	// Format and output results based on output format
 	if err := c.formatAndOutputResults(filteredResults); err != nil {
@@ -319,15 +299,15 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *version.Cl
 		return fmt.Errorf("executing upgrade checks: %w", err)
 	}
 
-	// Group results by category
-	resultsByCategory := make(map[check.CheckCategory][]check.CheckExecution)
+	// Group results by group
+	resultsByGroup := make(map[check.CheckGroup][]check.CheckExecution)
 	for _, result := range results {
-		category := result.Check.Category()
-		resultsByCategory[category] = append(resultsByCategory[category], result)
+		group := result.Check.Group()
+		resultsByGroup[group] = append(resultsByGroup[group], result)
 	}
 
 	// Filter results by minimum severity if specified
-	filteredResults := FilterResultsBySeverity(resultsByCategory, c.MinSeverity)
+	filteredResults := FilterResultsBySeverity(resultsByGroup, c.MinSeverity)
 
 	// Format and output results
 	if err := c.formatAndOutputUpgradeResults(currentVersion.Version, filteredResults); err != nil {
@@ -338,7 +318,8 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *version.Cl
 	blockingIssues := 0
 	for _, executions := range filteredResults {
 		for _, exec := range executions {
-			if exec.Result.IsFailing() && exec.Result.Severity != nil && *exec.Result.Severity == check.SeverityCritical {
+			severity := exec.Result.GetSeverity()
+			if exec.Result.IsFailing() && severity != nil && *severity == string(check.SeverityCritical) {
 				blockingIssues++
 			}
 		}
@@ -355,19 +336,20 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *version.Cl
 }
 
 // determineExitCode returns an error if fail-on conditions are met.
-func (c *Command) determineExitCode(resultsByCategory map[check.CheckCategory][]check.CheckExecution) error {
+func (c *Command) determineExitCode(resultsByGroup map[check.CheckGroup][]check.CheckExecution) error {
 	var hasCritical, hasWarning bool
 
-	for _, results := range resultsByCategory {
+	for _, results := range resultsByGroup {
 		for _, result := range results {
-			if result.Result.Severity != nil {
-				//nolint:revive // exhaustive linter requires explicit SeverityInfo case
-				switch *result.Result.Severity {
-				case check.SeverityCritical:
+			severity := result.Result.GetSeverity()
+			if severity != nil {
+				//nolint:revive // exhaustive linter requires explicit Info case
+				switch *severity {
+				case string(check.SeverityCritical):
 					hasCritical = true
-				case check.SeverityWarning:
+				case string(check.SeverityWarning):
 					hasWarning = true
-				case check.SeverityInfo:
+				case string(check.SeverityInfo):
 					// Info doesn't affect exit code
 				default:
 					// Unknown severities don't affect exit code
@@ -388,24 +370,27 @@ func (c *Command) determineExitCode(resultsByCategory map[check.CheckCategory][]
 }
 
 // formatAndOutputResults formats and outputs check results based on the output format.
-func (c *Command) formatAndOutputResults(resultsByCategory map[check.CheckCategory][]check.CheckExecution) error {
+func (c *Command) formatAndOutputResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) error {
 	clusterVer := &c.currentClusterVersion
 	var targetVer *string
 	if c.TargetVersion != "" {
 		targetVer = &c.TargetVersion
 	}
 
+	// Flatten results to sorted array
+	flatResults := FlattenResults(resultsByGroup)
+
 	switch c.OutputFormat {
 	case OutputFormatTable:
-		return c.outputTable(resultsByCategory)
+		return c.outputTable(flatResults)
 	case OutputFormatJSON:
-		if err := OutputJSON(c.IO.Out(), resultsByCategory, clusterVer, targetVer); err != nil {
+		if err := OutputJSON(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
 			return fmt.Errorf("outputting JSON: %w", err)
 		}
 
 		return nil
 	case OutputFormatYAML:
-		if err := OutputYAML(c.IO.Out(), resultsByCategory, clusterVer, targetVer); err != nil {
+		if err := OutputYAML(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
 			return fmt.Errorf("outputting YAML: %w", err)
 		}
 
@@ -416,12 +401,12 @@ func (c *Command) formatAndOutputResults(resultsByCategory map[check.CheckCatego
 }
 
 // outputTable outputs results in table format.
-func (c *Command) outputTable(resultsByCategory map[check.CheckCategory][]check.CheckExecution) error {
+func (c *Command) outputTable(results []check.CheckExecution) error {
 	c.IO.Fprintln()
 	c.IO.Fprintln("Check Results:")
 	c.IO.Fprintln("==============")
 
-	if err := OutputTable(c.IO.Out(), resultsByCategory); err != nil {
+	if err := OutputTable(c.IO.Out(), results, c.Verbose); err != nil {
 		return fmt.Errorf("outputting table: %w", err)
 	}
 
@@ -429,21 +414,24 @@ func (c *Command) outputTable(resultsByCategory map[check.CheckCategory][]check.
 }
 
 // formatAndOutputUpgradeResults formats upgrade assessment results.
-func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByCategory map[check.CheckCategory][]check.CheckExecution) error {
+func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByGroup map[check.CheckGroup][]check.CheckExecution) error {
 	clusterVer := &c.currentClusterVersion
 	targetVer := &c.TargetVersion
 
+	// Flatten results to sorted array
+	flatResults := FlattenResults(resultsByGroup)
+
 	switch c.OutputFormat {
 	case OutputFormatTable:
-		return c.outputUpgradeTable(currentVer, resultsByCategory)
+		return c.outputUpgradeTable(currentVer, flatResults)
 	case OutputFormatJSON:
-		if err := OutputJSON(c.IO.Out(), resultsByCategory, clusterVer, targetVer); err != nil {
+		if err := OutputJSON(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
 			return fmt.Errorf("outputting JSON: %w", err)
 		}
 
 		return nil
 	case OutputFormatYAML:
-		if err := OutputYAML(c.IO.Out(), resultsByCategory, clusterVer, targetVer); err != nil {
+		if err := OutputYAML(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
 			return fmt.Errorf("outputting YAML: %w", err)
 		}
 
@@ -454,13 +442,13 @@ func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByCate
 }
 
 // outputUpgradeTable outputs upgrade results in table format with header.
-func (c *Command) outputUpgradeTable(currentVer string, resultsByCategory map[check.CheckCategory][]check.CheckExecution) error {
+func (c *Command) outputUpgradeTable(currentVer string, results []check.CheckExecution) error {
 	c.IO.Fprintln()
 	c.IO.Errorf("UPGRADE READINESS: %s → %s", currentVer, c.TargetVersion)
 	c.IO.Errorf("=============================================================")
 
 	// Reuse the lint table output logic
-	if err := OutputTable(c.IO.Out(), resultsByCategory); err != nil {
+	if err := OutputTable(c.IO.Out(), results, c.Verbose); err != nil {
 		return fmt.Errorf("outputting table: %w", err)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -46,14 +47,12 @@ func TestCertManagerCheck_NotInstalled(t *testing.T) {
 	result, err := certManagerCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("Not installed"),
-		"Details": And(
-			HaveKeyWithValue("installed", false),
-			HaveKeyWithValue("version", "Not installed"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("not installed"),
 	}))
 }
 
@@ -93,15 +92,14 @@ func TestCertManagerCheck_InstalledCertManager(t *testing.T) {
 	result, err := certManagerCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("cert-manager.v1.13.0"),
-		"Details": And(
-			HaveKeyWithValue("installed", true),
-			HaveKeyWithValue("version", "cert-manager.v1.13.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonResourceFound),
+		"Message": ContainSubstring("cert-manager.v1.13.0"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "cert-manager.v1.13.0"))
 }
 
 func TestCertManagerCheck_InstalledOpenShiftCertManager(t *testing.T) {
@@ -140,15 +138,14 @@ func TestCertManagerCheck_InstalledOpenShiftCertManager(t *testing.T) {
 	result, err := certManagerCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(*result).To(MatchFields(IgnoreExtras, Fields{
-		"Status":   Equal(check.StatusPass),
-		"Severity": BeNil(),
-		"Message":  ContainSubstring("cert-manager-operator.v1.12.0"),
-		"Details": And(
-			HaveKeyWithValue("installed", true),
-			HaveKeyWithValue("version", "cert-manager-operator.v1.12.0"),
-		),
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonResourceFound),
+		"Message": ContainSubstring("cert-manager-operator.v1.12.0"),
 	}))
+	g.Expect(result.Metadata.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "cert-manager-operator.v1.12.0"))
 }
 
 func TestCertManagerCheck_Metadata(t *testing.T) {
@@ -158,6 +155,6 @@ func TestCertManagerCheck_Metadata(t *testing.T) {
 
 	g.Expect(certManagerCheck.ID()).To(Equal("dependencies.certmanager.installed"))
 	g.Expect(certManagerCheck.Name()).To(Equal("Dependencies :: CertManager :: Installed"))
-	g.Expect(certManagerCheck.Category()).To(Equal(check.CategoryDependency))
+	g.Expect(certManagerCheck.Group()).To(Equal(check.GroupDependency))
 	g.Expect(certManagerCheck.Description()).ToNot(BeEmpty())
 }

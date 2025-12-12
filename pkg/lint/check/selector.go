@@ -8,7 +8,7 @@ import (
 // matchesPattern returns true if the check matches the selector pattern
 // Pattern can be:
 //   - Wildcard: "*" matches all checks
-//   - Category shortcut: "components", "services", "workloads", "dependencies"
+//   - Group shortcut: "components", "services", "workloads", "dependencies"
 //   - Exact ID: "components.dashboard"
 //   - Glob pattern: "components.*", "*dashboard*", "*.dashboard"
 func matchesPattern(check Check, pattern string) (bool, error) {
@@ -17,16 +17,16 @@ func matchesPattern(check Check, pattern string) (bool, error) {
 		return true, nil
 	}
 
-	// Category shortcuts
+	// Group shortcuts
 	switch pattern {
 	case "components":
-		return check.Category() == CategoryComponent, nil
+		return check.Group() == GroupComponent, nil
 	case "services":
-		return check.Category() == CategoryService, nil
+		return check.Group() == GroupService, nil
 	case "workloads":
-		return check.Category() == CategoryWorkload, nil
+		return check.Group() == GroupWorkload, nil
 	case "dependencies":
-		return check.Category() == CategoryDependency, nil
+		return check.Group() == GroupDependency, nil
 	}
 
 	// Exact ID match
