@@ -122,4 +122,27 @@ var (
 		Kind:     "Subscription",
 		Resource: "subscriptions",
 	}
+
+	InstallPlan = ResourceType{
+		Group:    "operators.coreos.com",
+		Version:  "v1alpha1",
+		Kind:     "InstallPlan",
+		Resource: "installplans",
+	}
+
+	// ClusterQueue is the Kueue ClusterQueue resource.
+	ClusterQueue = ResourceType{
+		Group:    "kueue.x-k8s.io",
+		Version:  "v1beta1",
+		Kind:     "ClusterQueue",
+		Resource: "clusterqueues",
+	}
+
+	// LocalQueue is the Kueue LocalQueue resource.
+	LocalQueue = ResourceType{
+		Group:    "kueue.x-k8s.io",
+		Version:  "v1beta1",
+		Kind:     "LocalQueue",
+		Resource: "localqueues",
+	}
 )
