@@ -25,13 +25,12 @@ func DetectFromDataScienceCluster(ctx context.Context, c *client.Client) (string
 	}
 
 	// Query .status.release.version using JQ
-	version, err := jq.Query(dsc, ".status.release.version")
+	versionStr, err := jq.Query[string](dsc, ".status.release.version")
 	if err != nil {
 		return "", false, fmt.Errorf("querying .status.release.version: %w", err)
 	}
 
-	versionStr, ok := version.(string)
-	if !ok || versionStr == "" {
+	if versionStr == "" {
 		return "", false, nil
 	}
 
@@ -52,13 +51,12 @@ func DetectFromDSCInitialization(ctx context.Context, c *client.Client) (string,
 	}
 
 	// Query .status.release.version using JQ
-	version, err := jq.Query(dsci, ".status.release.version")
+	versionStr, err := jq.Query[string](dsci, ".status.release.version")
 	if err != nil {
 		return "", false, fmt.Errorf("querying .status.release.version: %w", err)
 	}
 
-	versionStr, ok := version.(string)
-	if !ok || versionStr == "" {
+	if versionStr == "" {
 		return "", false, nil
 	}
 
@@ -87,13 +85,12 @@ func DetectFromOLM(ctx context.Context, c *client.Client) (string, bool, error) 
 	csv := &csvList[0]
 
 	// Query .spec.version using JQ
-	version, err := jq.Query(csv, ".spec.version")
+	versionStr, err := jq.Query[string](csv, ".spec.version")
 	if err != nil {
 		return "", false, fmt.Errorf("querying .spec.version: %w", err)
 	}
 
-	versionStr, ok := version.(string)
-	if !ok || versionStr == "" {
+	if versionStr == "" {
 		return "", false, nil
 	}
 

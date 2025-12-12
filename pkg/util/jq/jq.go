@@ -65,19 +65,22 @@ func convertValue(value any) (any, error) {
 	return normalizedValue, nil
 }
 
-// Query executes a JQ query against the provided value and returns the first result.
-// The value is converted to a JQ-compatible format before processing.
-func Query(value any, jqQuery string) (any, error) {
+// Query executes a JQ query against the provided value and returns the first result
+// cast to type T. Returns an error if the result cannot be cast to T.
+// When the query returns nil/null, returns the zero value of T.
+func Query[T any](value any, jqQuery string) (T, error) {
+	var zero T
+
 	// Compile the JQ query
 	compiledQuery, err := gojq.Parse(jqQuery)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse jq query: %w", err)
+		return zero, fmt.Errorf("failed to parse jq query: %w", err)
 	}
 
 	// Convert value to JQ-compatible format
 	normalizedValue, err := convertValue(value)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 
 	// Run the query against the normalized value
@@ -86,13 +89,25 @@ func Query(value any, jqQuery string) (any, error) {
 	// Get the first result
 	result, ok := iter.Next()
 	if !ok {
-		return nil, nil
+		return zero, nil
 	}
 
 	// Check for errors
 	if err, isErr := result.(error); isErr {
-		return nil, fmt.Errorf("jq query error: %w", err)
+		return zero, fmt.Errorf("jq query error: %w", err)
 	}
 
-	return result, nil
+	// Handle nil result - return zero value
+	if result == nil {
+		return zero, nil
+	}
+
+	// Type assertion to T
+	typed, ok := result.(T)
+	if !ok {
+		return zero, fmt.Errorf("query result type mismatch: expected %T, got %T (value: %v)",
+			zero, result, result)
+	}
+
+	return typed, nil
 }

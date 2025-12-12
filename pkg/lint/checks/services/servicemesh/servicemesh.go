@@ -75,8 +75,12 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 	}
 
 	// Query servicemesh management state using JQ
-	managementState, err := jq.Query(dsci, ".spec.serviceMesh.managementState")
-	if err != nil || managementState == nil {
+	managementStateStr, err := jq.Query[string](dsci, ".spec.serviceMesh.managementState")
+	if err != nil {
+		return nil, fmt.Errorf("querying servicemesh managementState: %w", err)
+	}
+
+	if managementStateStr == "" {
 		// ServiceMesh not defined in spec - check passes
 		dr.Status.Conditions = []metav1.Condition{
 			check.NewCondition(
@@ -88,11 +92,6 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 		}
 
 		return dr, nil
-	}
-
-	managementStateStr, ok := managementState.(string)
-	if !ok {
-		return nil, fmt.Errorf("managementState is not a string: %T", managementState)
 	}
 
 	// Add management state as annotation

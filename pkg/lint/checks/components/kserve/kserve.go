@@ -75,8 +75,12 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 	}
 
 	// Query kserve component management state using JQ
-	kserveState, err := jq.Query(dsc, ".spec.components.kserve.managementState")
-	if err != nil || kserveState == nil {
+	kserveStateStr, err := jq.Query[string](dsc, ".spec.components.kserve.managementState")
+	if err != nil {
+		return nil, fmt.Errorf("querying kserve managementState: %w", err)
+	}
+
+	if kserveStateStr == "" {
 		// KServe component not defined in spec - check passes
 		dr.Status.Conditions = []metav1.Condition{
 			check.NewCondition(
@@ -88,11 +92,6 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 		}
 
 		return dr, nil
-	}
-
-	kserveStateStr, ok := kserveState.(string)
-	if !ok {
-		return nil, fmt.Errorf("kserve managementState is not a string: %T", kserveState)
 	}
 
 	dr.Annotations["component.opendatahub.io/kserve-management-state"] = kserveStateStr
@@ -113,8 +112,12 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 	}
 
 	// Query serverless (serving) management state
-	servingState, err := jq.Query(dsc, ".spec.components.kserve.serving.managementState")
-	if err != nil || servingState == nil {
+	servingStateStr, err := jq.Query[string](dsc, ".spec.components.kserve.serving.managementState")
+	if err != nil {
+		return nil, fmt.Errorf("querying kserve serving managementState: %w", err)
+	}
+
+	if servingStateStr == "" {
 		// Serverless not configured - check passes
 		dr.Status.Conditions = []metav1.Condition{
 			check.NewCondition(
@@ -126,11 +129,6 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 		}
 
 		return dr, nil
-	}
-
-	servingStateStr, ok := servingState.(string)
-	if !ok {
-		return nil, fmt.Errorf("kserve serving managementState is not a string: %T", servingState)
 	}
 
 	dr.Annotations["component.opendatahub.io/serving-management-state"] = servingStateStr

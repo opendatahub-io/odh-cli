@@ -62,13 +62,8 @@ func (c *Check) Validate(ctx context.Context, target *check.CheckTarget) (*resul
 			}
 
 			// Check if it's on v2.x channel (stable or v2.x)
-			channel, err := jq.Query(subscription, ".spec.channel")
-			if err != nil || channel == nil {
-				return false
-			}
-
-			channelStr, ok := channel.(string)
-			if !ok {
+			channelStr, err := jq.Query[string](subscription, ".spec.channel")
+			if err != nil || channelStr == "" {
 				return false
 			}
 

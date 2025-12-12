@@ -49,7 +49,7 @@ func WithTableOptions[T any](values ...tablewriter.Option) Option[T] {
 // Uses the jq.Query utility which properly handles unstructured types.
 func JQFormatter(query string) ColumnFormatter {
 	return func(value any) any {
-		result, err := jq.Query(value, query)
+		result, err := jq.Query[any](value, query)
 		if err != nil {
 			return err.Error()
 		}

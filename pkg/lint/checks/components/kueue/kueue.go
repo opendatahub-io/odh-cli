@@ -75,8 +75,12 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 	}
 
 	// Query kueue component management state using JQ
-	managementState, err := jq.Query(dsc, ".spec.components.kueue.managementState")
-	if err != nil || managementState == nil {
+	managementStateStr, err := jq.Query[string](dsc, ".spec.components.kueue.managementState")
+	if err != nil {
+		return nil, fmt.Errorf("querying kueue managementState: %w", err)
+	}
+
+	if managementStateStr == "" {
 		// Kueue component not defined in spec - check passes
 		dr.Status.Conditions = []metav1.Condition{
 			check.NewCondition(
@@ -88,11 +92,6 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 		}
 
 		return dr, nil
-	}
-
-	managementStateStr, ok := managementState.(string)
-	if !ok {
-		return nil, fmt.Errorf("managementState is not a string: %T", managementState)
 	}
 
 	// Add management state as annotation

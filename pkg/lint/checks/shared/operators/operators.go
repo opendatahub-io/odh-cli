@@ -22,24 +22,21 @@ type Operator struct {
 
 // GetOperator extracts the operator name and version from a subscription.
 func GetOperator(subscription *unstructured.Unstructured) (*Operator, error) {
-	name, err := jq.Query(subscription, ".metadata.name")
-	if err != nil || name == nil {
+	nameStr, err := jq.Query[string](subscription, ".metadata.name")
+	if err != nil {
 		return nil, fmt.Errorf("failed to get subscription name: %w", err)
 	}
 
-	nameStr, ok := name.(string)
-	if !ok {
-		return nil, fmt.Errorf("subscription name is not a string: %T", name)
+	if nameStr == "" {
+		return nil, fmt.Errorf("subscription name is empty")
 	}
 
 	op := &Operator{Name: nameStr}
 
 	// Get version from installedCSV
-	installedCSV, err := jq.Query(subscription, ".status.installedCSV")
-	if err == nil && installedCSV != nil {
-		if csvStr, ok := installedCSV.(string); ok {
-			op.Version = csvStr
-		}
+	csvStr, err := jq.Query[string](subscription, ".status.installedCSV")
+	if err == nil && csvStr != "" {
+		op.Version = csvStr
 	}
 
 	return op, nil
