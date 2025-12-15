@@ -24,8 +24,8 @@ var DefaultTableOptions = []tablewriter.Option{
 				BetweenRows:    tw.Off,
 			},
 			Lines: tw.Lines{
-				ShowTop:        tw.Off,
-				ShowBottom:     tw.Off,
+				ShowTop:        tw.On,
+				ShowBottom:     tw.On,
 				ShowHeaderLine: tw.On,
 			},
 		},
