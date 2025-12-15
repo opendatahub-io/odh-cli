@@ -151,7 +151,7 @@ func TestKueueManagedRemovalCheck_ManagedBlocking(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("managed option is enabled"), ContainSubstring("removed in RHOAI 3.x")),
+		"Message": And(ContainSubstring("managed by OpenShift AI"), ContainSubstring("migrate to RHBOK operator")),
 	}))
 	g.Expect(result.Annotations).To(And(
 		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
@@ -202,9 +202,9 @@ func TestKueueManagedRemovalCheck_UnmanagedAllowed(t *testing.T) {
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("enabled"), ContainSubstring("state: Unmanaged")),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": And(ContainSubstring("compatible with RHOAI 3.x"), ContainSubstring("state: Unmanaged")),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue("component.opendatahub.io/management-state", "Unmanaged"))
 }
@@ -254,7 +254,7 @@ func TestKueueManagedRemovalCheck_RemovedAllowed(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
+		"Message": And(ContainSubstring("compatible with RHOAI 3.x"), ContainSubstring("state: Removed")),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue("component.opendatahub.io/management-state", "Removed"))
 }

@@ -100,27 +100,27 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.Version.Version
 	}
 
-	// Check if kueue is enabled (Managed or Unmanaged)
-	if managementStateStr == check.ManagementStateManaged || managementStateStr == check.ManagementStateUnmanaged {
+	// Check if kueue is Managed (old way - needs migration)
+	if managementStateStr == check.ManagementStateManaged {
 		dr.Status.Conditions = []metav1.Condition{
 			check.NewCondition(
 				check.ConditionTypeCompatible,
 				metav1.ConditionFalse,
 				check.ReasonVersionIncompatible,
-				fmt.Sprintf("Kueue managed option is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr),
+				fmt.Sprintf("Kueue is managed by OpenShift AI (state: %s) but will be removed in RHOAI 3.x - migrate to RHBOK operator", managementStateStr),
 			),
 		}
 
 		return dr, nil
 	}
 
-	// Kueue is disabled (Removed) - check passes
+	// Kueue is Unmanaged (using RHBOK operator) or Removed - check passes
 	dr.Status.Conditions = []metav1.Condition{
 		check.NewCondition(
 			check.ConditionTypeCompatible,
 			metav1.ConditionTrue,
 			check.ReasonVersionCompatible,
-			fmt.Sprintf("Kueue managed option is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
+			fmt.Sprintf("Kueue configuration (state: %s) is compatible with RHOAI 3.x", managementStateStr),
 		),
 	}
 
