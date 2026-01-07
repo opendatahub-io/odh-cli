@@ -7,7 +7,6 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
@@ -82,14 +81,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 
 	if kserveStateStr == "" {
 		// KServe component not defined in spec - check passes
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeConfigured,
-				metav1.ConditionFalse,
-				check.ReasonResourceNotFound,
-				"KServe component is not configured in DataScienceCluster",
-			),
-		}
+		results.SetComponentNotConfigured(dr, "KServe")
 
 		return dr, nil
 	}
@@ -99,14 +91,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 	// Only check serverless if KServe is Managed
 	if kserveStateStr != check.ManagementStateManaged {
 		// KServe not managed - serverless won't be enabled
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeConfigured,
-				metav1.ConditionFalse,
-				"ComponentNotManaged",
-				fmt.Sprintf("KServe component is not managed (state: %s) - serverless not enabled", kserveStateStr),
-			),
-		}
+		results.SetComponentNotManaged(dr, "KServe", kserveStateStr)
 
 		return dr, nil
 	}
@@ -119,14 +104,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 
 	if servingStateStr == "" {
 		// Serverless not configured - check passes
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionTrue,
-				check.ReasonVersionCompatible,
-				"KServe serverless mode is not configured - ready for RHOAI 3.x upgrade",
-			),
-		}
+		results.SetCompatibilitySuccessf(dr, "KServe serverless mode is not configured - ready for RHOAI 3.x upgrade")
 
 		return dr, nil
 	}
@@ -138,27 +116,13 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target *check.Che
 
 	// Check if serverless (serving) is enabled (Managed or Unmanaged)
 	if servingStateStr == check.ManagementStateManaged || servingStateStr == check.ManagementStateUnmanaged {
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionFalse,
-				check.ReasonVersionIncompatible,
-				fmt.Sprintf("KServe serverless mode is enabled (state: %s) but will be removed in RHOAI 3.x", servingStateStr),
-			),
-		}
+		results.SetCompatibilityFailuref(dr, "KServe serverless mode is enabled (state: %s) but will be removed in RHOAI 3.x", servingStateStr)
 
 		return dr, nil
 	}
 
 	// Serverless is disabled (Removed) - check passes
-	dr.Status.Conditions = []metav1.Condition{
-		check.NewCondition(
-			check.ConditionTypeCompatible,
-			metav1.ConditionTrue,
-			check.ReasonVersionCompatible,
-			fmt.Sprintf("KServe serverless mode is disabled (state: %s) - ready for RHOAI 3.x upgrade", servingStateStr),
-		),
-	}
+	results.SetCompatibilitySuccessf(dr, "KServe serverless mode is disabled (state: %s) - ready for RHOAI 3.x upgrade", servingStateStr)
 
 	return dr, nil
 }

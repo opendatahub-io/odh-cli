@@ -8,10 +8,9 @@ import (
 
 	"github.com/blang/semver/v4"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 )
 
@@ -99,28 +98,13 @@ func (c *ImpactedWorkloadsCheck) Validate(
 	dr.Annotations[check.AnnotationImpactedWorkloadCount] = strconv.Itoa(totalImpacted)
 
 	if totalImpacted == 0 {
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionTrue,
-				check.ReasonVersionCompatible,
-				"No InferenceServices or ServingRuntimes using deprecated deployment modes found - ready for RHOAI 3.x upgrade",
-			),
-		}
+		results.SetCompatibilitySuccessf(dr, "No InferenceServices or ServingRuntimes using deprecated deployment modes found - ready for RHOAI 3.x upgrade")
 
 		return dr, nil
 	}
 
 	message := c.buildImpactMessage(impactedISVCs, impactedSRs)
-
-	dr.Status.Conditions = []metav1.Condition{
-		check.NewCondition(
-			check.ConditionTypeCompatible,
-			metav1.ConditionFalse,
-			check.ReasonVersionIncompatible,
-			message,
-		),
-	}
+	results.SetCompatibilityFailuref(dr, "%s", message)
 
 	return dr, nil
 }
@@ -136,8 +120,7 @@ func (c *ImpactedWorkloadsCheck) findImpactedInferenceServices(
 
 	var impacted []impactedResource
 
-	for i := range inferenceServices {
-		isvc := &inferenceServices[i]
+	for _, isvc := range inferenceServices {
 		annotations := isvc.GetAnnotations()
 
 		mode := annotations[annotationDeploymentMode]
@@ -164,8 +147,7 @@ func (c *ImpactedWorkloadsCheck) findImpactedServingRuntimes(
 
 	var impacted []impactedResource
 
-	for i := range servingRuntimes {
-		sr := &servingRuntimes[i]
+	for _, sr := range servingRuntimes {
 		annotations := sr.GetAnnotations()
 
 		mode := annotations[annotationDeploymentMode]

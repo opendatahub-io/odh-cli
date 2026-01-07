@@ -7,7 +7,6 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
@@ -82,14 +81,7 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 
 	if managementStateStr == "" {
 		// Kueue component not defined in spec - check passes
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeConfigured,
-				metav1.ConditionFalse,
-				check.ReasonResourceNotFound,
-				"Kueue component is not configured in DataScienceCluster",
-			),
-		}
+		results.SetComponentNotConfigured(dr, "Kueue")
 
 		return dr, nil
 	}
@@ -102,27 +94,13 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target *check.CheckT
 
 	// Check if kueue is Managed (old way - needs migration)
 	if managementStateStr == check.ManagementStateManaged {
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionFalse,
-				check.ReasonVersionIncompatible,
-				fmt.Sprintf("Kueue is managed by OpenShift AI (state: %s) but will be removed in RHOAI 3.x - migrate to RHBOK operator", managementStateStr),
-			),
-		}
+		results.SetCompatibilityFailuref(dr, "Kueue is managed by OpenShift AI (state: %s) but will be removed in RHOAI 3.x - migrate to RHBOK operator", managementStateStr)
 
 		return dr, nil
 	}
 
 	// Kueue is Unmanaged (using RHBOK operator) or Removed - check passes
-	dr.Status.Conditions = []metav1.Condition{
-		check.NewCondition(
-			check.ConditionTypeCompatible,
-			metav1.ConditionTrue,
-			check.ReasonVersionCompatible,
-			fmt.Sprintf("Kueue configuration (state: %s) is compatible with RHOAI 3.x", managementStateStr),
-		),
-	}
+	results.SetCompatibilitySuccessf(dr, "Kueue configuration (state: %s) is compatible with RHOAI 3.x", managementStateStr)
 
 	return dr, nil
 }

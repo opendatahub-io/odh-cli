@@ -7,7 +7,6 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
@@ -82,14 +81,7 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 
 	if managementStateStr == "" {
 		// ModelMesh component not defined in spec - check passes
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeConfigured,
-				metav1.ConditionFalse,
-				check.ReasonResourceNotFound,
-				"ModelMesh component is not configured in DataScienceCluster",
-			),
-		}
+		results.SetComponentNotConfigured(dr, "ModelMesh")
 
 		return dr, nil
 	}
@@ -102,27 +94,13 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 
 	// Check if modelmesh is enabled (Managed or Unmanaged)
 	if managementStateStr == check.ManagementStateManaged || managementStateStr == check.ManagementStateUnmanaged {
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionFalse,
-				check.ReasonVersionIncompatible,
-				fmt.Sprintf("ModelMesh is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr),
-			),
-		}
+		results.SetCompatibilityFailuref(dr, "ModelMesh is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr)
 
 		return dr, nil
 	}
 
 	// ModelMesh is disabled (Removed) - check passes
-	dr.Status.Conditions = []metav1.Condition{
-		check.NewCondition(
-			check.ConditionTypeCompatible,
-			metav1.ConditionTrue,
-			check.ReasonVersionCompatible,
-			fmt.Sprintf("ModelMesh is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
-		),
-	}
+	results.SetCompatibilitySuccessf(dr, "ModelMesh is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr)
 
 	return dr, nil
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/blang/semver/v4"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
@@ -82,14 +81,7 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 
 	if managementStateStr == "" {
 		// ServiceMesh not defined in spec - check passes
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeConfigured,
-				metav1.ConditionFalse,
-				check.ReasonResourceNotFound,
-				"ServiceMesh is not configured in DSCInitialization",
-			),
-		}
+		results.SetServiceNotConfigured(dr, "ServiceMesh")
 
 		return dr, nil
 	}
@@ -99,27 +91,13 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 
 	// Check if servicemesh is enabled (Managed or Unmanaged)
 	if managementStateStr == check.ManagementStateManaged || managementStateStr == check.ManagementStateUnmanaged {
-		dr.Status.Conditions = []metav1.Condition{
-			check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionFalse,
-				check.ReasonVersionIncompatible,
-				fmt.Sprintf("ServiceMesh is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr),
-			),
-		}
+		results.SetCompatibilityFailuref(dr, "ServiceMesh is enabled (state: %s) but will be removed in RHOAI 3.x", managementStateStr)
 
 		return dr, nil
 	}
 
 	// ServiceMesh is disabled (Removed) - check passes
-	dr.Status.Conditions = []metav1.Condition{
-		check.NewCondition(
-			check.ConditionTypeCompatible,
-			metav1.ConditionTrue,
-			check.ReasonVersionCompatible,
-			fmt.Sprintf("ServiceMesh is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr),
-		),
-	}
+	results.SetCompatibilitySuccessf(dr, "ServiceMesh is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementStateStr)
 
 	return dr, nil
 }
