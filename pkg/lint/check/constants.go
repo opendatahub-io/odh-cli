@@ -13,6 +13,7 @@ const (
 	ComponentModelMesh = "modelmesh"
 	ComponentKServe    = "kserve"
 	ComponentKueue     = "kueue"
+	ComponentRay       = "ray"
 )
 
 // Service names for diagnostic results.

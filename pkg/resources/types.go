@@ -161,4 +161,12 @@ var (
 		Kind:     "ServingRuntime",
 		Resource: "servingruntimes",
 	}
+
+	// RayCluster is the Ray RayCluster resource.
+	RayCluster = ResourceType{
+		Group:    "ray.io",
+		Version:  "v1",
+		Kind:     "RayCluster",
+		Resource: "rayclusters",
+	}
 )
