@@ -110,7 +110,7 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster with modelmesh Managed (blocking upgrade)
+	// Create DataScienceCluster with modelmeshserving Managed (blocking upgrade)
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -120,7 +120,7 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"components": map[string]any{
-					"modelmesh": map[string]any{
+					"modelmeshserving": map[string]any{
 						"managementState": "Managed",
 					},
 				},
@@ -163,7 +163,7 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster with modelmesh Unmanaged (also blocking)
+	// Create DataScienceCluster with modelmeshserving Unmanaged (also blocking)
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -173,7 +173,7 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"components": map[string]any{
-					"modelmesh": map[string]any{
+					"modelmeshserving": map[string]any{
 						"managementState": "Unmanaged",
 					},
 				},
@@ -213,7 +213,7 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DataScienceCluster with modelmesh Removed (ready for upgrade)
+	// Create DataScienceCluster with modelmeshserving Removed (ready for upgrade)
 	dsc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DataScienceCluster.APIVersion(),
@@ -223,7 +223,7 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 			},
 			"spec": map[string]any{
 				"components": map[string]any{
-					"modelmesh": map[string]any{
+					"modelmeshserving": map[string]any{
 						"managementState": "Removed",
 					},
 				},

@@ -58,10 +58,10 @@ func (c *RemovalCheck) Validate(ctx context.Context, target *check.CheckTarget) 
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	// Query modelmesh component management state using JQ
-	managementStateStr, err := jq.Query[string](dsc, ".spec.components.modelmesh.managementState")
+	// Query modelmeshserving component management state using JQ
+	managementStateStr, err := jq.Query[string](dsc, ".spec.components.modelmeshserving.managementState")
 	if err != nil {
-		return nil, fmt.Errorf("querying modelmesh managementState: %w", err)
+		return nil, fmt.Errorf("querying modelmeshserving managementState: %w", err)
 	}
 
 	if managementStateStr == "" {
