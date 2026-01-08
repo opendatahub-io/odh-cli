@@ -105,7 +105,7 @@ func TestImpactedWorkloadsCheck_ModelMeshInferenceService(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("test-ns/my-model (ModelMesh)"), ContainSubstring("1 InferenceService")),
+		"Message": And(ContainSubstring("Found 1 deprecated KServe workload(s)"), ContainSubstring("[1 ModelMesh]")),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
 }
@@ -151,7 +151,7 @@ func TestImpactedWorkloadsCheck_ServerlessInferenceService(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("test-ns/serverless-model (Serverless)"), ContainSubstring("1 InferenceService")),
+		"Message": And(ContainSubstring("Found 1 deprecated KServe workload(s)"), ContainSubstring("[1 Serverless]")),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
 }
@@ -197,7 +197,7 @@ func TestImpactedWorkloadsCheck_ModelMeshServingRuntime(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("test-ns/my-runtime (ModelMesh)"), ContainSubstring("1 ServingRuntime")),
+		"Message": And(ContainSubstring("Found 1 deprecated KServe workload(s)"), ContainSubstring("[1 ModelMesh]")),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
 }
@@ -419,11 +419,9 @@ func TestImpactedWorkloadsCheck_MixedWorkloads(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
-			ContainSubstring("2 InferenceService"),
-			ContainSubstring("ns1/modelmesh-model (ModelMesh)"),
-			ContainSubstring("ns2/serverless-model (Serverless)"),
-			ContainSubstring("1 ServingRuntime"),
-			ContainSubstring("ns4/modelmesh-runtime (ModelMesh)"),
+			ContainSubstring("Found 3 deprecated KServe workload(s)"),
+			ContainSubstring("(2 InferenceService(s), 1 ServingRuntime(s))"),
+			ContainSubstring("[1 Serverless, 2 ModelMesh]"),
 		),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "3"))
