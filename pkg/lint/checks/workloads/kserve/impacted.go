@@ -105,7 +105,7 @@ func (c *ImpactedWorkloadsCheck) findImpactedInferenceServices(
 	ctx context.Context,
 	target *check.CheckTarget,
 ) ([]impactedResource, error) {
-	inferenceServices, err := target.Client.List(ctx, resources.InferenceService)
+	inferenceServices, err := target.Client.ListMetadata(ctx, resources.InferenceService)
 	if err != nil {
 		return nil, fmt.Errorf("listing InferenceServices: %w", err)
 	}
@@ -132,7 +132,7 @@ func (c *ImpactedWorkloadsCheck) findImpactedServingRuntimes(
 	ctx context.Context,
 	target *check.CheckTarget,
 ) ([]impactedResource, error) {
-	servingRuntimes, err := target.Client.List(ctx, resources.ServingRuntime)
+	servingRuntimes, err := target.Client.ListMetadata(ctx, resources.ServingRuntime)
 	if err != nil {
 		return nil, fmt.Errorf("listing ServingRuntimes: %w", err)
 	}

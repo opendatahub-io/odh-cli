@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	metadatafake "k8s.io/client-go/metadata/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/ray"
@@ -31,15 +32,40 @@ var listKinds = map[schema.GroupVersionResource]string{
 	resources.RayCluster.GVR(): resources.RayCluster.ListKind(),
 }
 
+func toPartialObjectMetadata(objs ...*unstructured.Unstructured) []runtime.Object {
+	result := make([]runtime.Object, 0, len(objs))
+	for _, obj := range objs {
+		pom := &metav1.PartialObjectMetadata{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: obj.GetAPIVersion(),
+				Kind:       obj.GetKind(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        obj.GetName(),
+				Namespace:   obj.GetNamespace(),
+				Labels:      obj.GetLabels(),
+				Annotations: obj.GetAnnotations(),
+				Finalizers:  obj.GetFinalizers(),
+			},
+		}
+		result = append(result, pom)
+	}
+
+	return result
+}
+
 func TestImpactedWorkloadsCheck_NoResources(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
 	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
 
 	c := &client.Client{
-		Dynamic: dynamicClient,
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
 	}
 
 	target := &check.CheckTarget{
@@ -82,10 +108,13 @@ func TestImpactedWorkloadsCheck_WithCodeFlareFinalizer(t *testing.T) {
 	}
 
 	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, rayCluster)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, toPartialObjectMetadata(rayCluster)...)
 
 	c := &client.Client{
-		Dynamic: dynamicClient,
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
 	}
 
 	target := &check.CheckTarget{
@@ -131,10 +160,13 @@ func TestImpactedWorkloadsCheck_WithoutCodeFlareFinalizer(t *testing.T) {
 	}
 
 	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, rayCluster)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, toPartialObjectMetadata(rayCluster)...)
 
 	c := &client.Client{
-		Dynamic: dynamicClient,
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
 	}
 
 	target := &check.CheckTarget{
@@ -172,10 +204,13 @@ func TestImpactedWorkloadsCheck_NoFinalizers(t *testing.T) {
 	}
 
 	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, rayCluster)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, toPartialObjectMetadata(rayCluster)...)
 
 	c := &client.Client{
-		Dynamic: dynamicClient,
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
 	}
 
 	target := &check.CheckTarget{
@@ -242,6 +277,7 @@ func TestImpactedWorkloadsCheck_MultipleClusters(t *testing.T) {
 	}
 
 	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
 		scheme,
 		listKinds,
@@ -249,9 +285,11 @@ func TestImpactedWorkloadsCheck_MultipleClusters(t *testing.T) {
 		cluster2,
 		cluster3,
 	)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, toPartialObjectMetadata(cluster1, cluster2, cluster3)...)
 
 	c := &client.Client{
-		Dynamic: dynamicClient,
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
 	}
 
 	target := &check.CheckTarget{

@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/restmapper"
 )
 
@@ -20,6 +21,7 @@ type Client struct {
 	Discovery     discovery.DiscoveryInterface
 	APIExtensions apiextensionsclientset.Interface
 	OLM           olmclientset.Interface
+	Metadata      metadata.Interface
 	RESTMapper    meta.RESTMapper
 }
 
@@ -50,6 +52,11 @@ func NewClient(configFlags *genericclioptions.ConfigFlags) (*Client, error) {
 		return nil, fmt.Errorf("failed to create OLM client: %w", err)
 	}
 
+	metadataClient, err := metadata.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metadata client: %w", err)
+	}
+
 	// Create RESTMapper with caching for efficient GVK→GVR mapping
 	restMapper := restmapper.NewDeferredDiscoveryRESTMapper(
 		memory.NewMemCacheClient(discoveryClient),
@@ -60,6 +67,7 @@ func NewClient(configFlags *genericclioptions.ConfigFlags) (*Client, error) {
 		Discovery:     discoveryClient,
 		APIExtensions: apiExtensionsClient,
 		OLM:           olmClient,
+		Metadata:      metadataClient,
 		RESTMapper:    restMapper,
 	}, nil
 }

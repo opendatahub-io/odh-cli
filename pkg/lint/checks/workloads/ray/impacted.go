@@ -96,7 +96,7 @@ func (c *ImpactedWorkloadsCheck) findImpactedRayClusters(
 	ctx context.Context,
 	target *check.CheckTarget,
 ) ([]impactedResource, error) {
-	rayClusters, err := target.Client.List(ctx, resources.RayCluster)
+	rayClusters, err := target.Client.ListMetadata(ctx, resources.RayCluster)
 	if err != nil {
 		return nil, fmt.Errorf("listing RayClusters: %w", err)
 	}

@@ -123,6 +123,35 @@ func (c *Client) List(ctx context.Context, resourceType resources.ResourceType, 
 	return c.ListResources(ctx, resourceType.GVR(), opts...)
 }
 
+// ListMetadata lists instances of a resource type returning only metadata.
+// This is more efficient than List when only metadata fields (name, namespace, labels, annotations) are needed.
+func (c *Client) ListMetadata(ctx context.Context, resourceType resources.ResourceType, opts ...ListResourcesOption) ([]metav1.PartialObjectMetadata, error) {
+	cfg := &ListResourcesConfig{}
+	util.ApplyOptions(cfg, opts...)
+
+	listOpts := metav1.ListOptions{
+		LabelSelector: cfg.LabelSelector,
+		FieldSelector: cfg.FieldSelector,
+	}
+
+	var list *metav1.PartialObjectMetadataList
+	var err error
+
+	gvr := resourceType.GVR()
+
+	if cfg.Namespace != "" {
+		list, err = c.Metadata.Resource(gvr).Namespace(cfg.Namespace).List(ctx, listOpts)
+	} else {
+		list, err = c.Metadata.Resource(gvr).List(ctx, listOpts)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("listing metadata for resources: %w", err)
+	}
+
+	return list.Items, nil
+}
+
 // GetResource is a convenience wrapper around Get that accepts ResourceType.
 func (c *Client) GetResource(ctx context.Context, resourceType resources.ResourceType, name string, opts ...GetOption) (*unstructured.Unstructured, error) {
 	return c.Get(ctx, resourceType.GVR(), name, opts...)
