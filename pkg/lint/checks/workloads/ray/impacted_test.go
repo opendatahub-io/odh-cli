@@ -81,10 +81,10 @@ func TestImpactedWorkloadsCheck_NoResources(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeCompatible),
+		"Type":    Equal(ray.ConditionTypeCodeFlareRayClusterCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("No CodeFlare-managed RayClusters found"),
+		"Message": ContainSubstring("No CodeFlare-managed RayCluster(s) found"),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
 }
@@ -130,12 +130,12 @@ func TestImpactedWorkloadsCheck_WithCodeFlareFinalizer(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(check.ConditionTypeCompatible),
+		"Type":   Equal(ray.ConditionTypeCodeFlareRayClusterCompatible),
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
 			ContainSubstring("Found 1 CodeFlare-managed RayCluster(s)"),
-			ContainSubstring("CodeFlare not available in RHOAI 3.x"),
+			ContainSubstring("will be impacted in RHOAI 3.x"),
 		),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
@@ -182,7 +182,7 @@ func TestImpactedWorkloadsCheck_WithoutCodeFlareFinalizer(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(check.ConditionTypeCompatible),
+		"Type":   Equal(ray.ConditionTypeCodeFlareRayClusterCompatible),
 		"Status": Equal(metav1.ConditionTrue),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
@@ -226,7 +226,7 @@ func TestImpactedWorkloadsCheck_NoFinalizers(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(check.ConditionTypeCompatible),
+		"Type":   Equal(ray.ConditionTypeCodeFlareRayClusterCompatible),
 		"Status": Equal(metav1.ConditionTrue),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
@@ -305,12 +305,12 @@ func TestImpactedWorkloadsCheck_MultipleClusters(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(check.ConditionTypeCompatible),
+		"Type":   Equal(ray.ConditionTypeCodeFlareRayClusterCompatible),
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
 			ContainSubstring("Found 2 CodeFlare-managed RayCluster(s)"),
-			ContainSubstring("CodeFlare not available in RHOAI 3.x"),
+			ContainSubstring("will be impacted in RHOAI 3.x"),
 		),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))

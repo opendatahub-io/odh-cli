@@ -8,12 +8,11 @@ import (
 
 	"github.com/blang/semver/v4"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 )
 
@@ -21,10 +20,9 @@ const (
 	finalizerCodeFlareOAuth = "ray.openshift.ai/oauth-finalizer"
 )
 
-type impactedResource struct {
-	namespace string
-	name      string
-}
+const (
+	ConditionTypeCodeFlareRayClusterCompatible = "CodeFlareRayClustersCompatible"
+)
 
 // ImpactedWorkloadsCheck lists RayClusters managed by CodeFlare.
 type ImpactedWorkloadsCheck struct {
@@ -77,17 +75,15 @@ func (c *ImpactedWorkloadsCheck) Validate(
 	totalImpacted := len(impactedClusters)
 	dr.Annotations[check.AnnotationImpactedWorkloadCount] = strconv.Itoa(totalImpacted)
 
-	if totalImpacted == 0 {
-		results.SetCompatibilitySuccessf(dr, "No CodeFlare-managed RayClusters found - ready for RHOAI 3.x upgrade")
+	// Add condition for CodeFlare RayClusters
+	dr.Status.Conditions = append(dr.Status.Conditions,
+		newCodeFlareRayClusterCondition(totalImpacted),
+	)
 
-		return dr, nil
+	// Populate ImpactedObjects if any workloads found
+	if totalImpacted > 0 {
+		populateImpactedObjects(dr, impactedClusters)
 	}
-
-	// Populate ImpactedObjects with PartialObjectMetadata
-	c.populateImpactedObjects(dr, impactedClusters)
-
-	message := c.buildImpactMessage(impactedClusters)
-	results.SetCompatibilityFailuref(dr, "%s", message)
 
 	return dr, nil
 }
@@ -95,56 +91,26 @@ func (c *ImpactedWorkloadsCheck) Validate(
 func (c *ImpactedWorkloadsCheck) findImpactedRayClusters(
 	ctx context.Context,
 	target *check.CheckTarget,
-) ([]impactedResource, error) {
+) ([]types.NamespacedName, error) {
 	rayClusters, err := target.Client.ListMetadata(ctx, resources.RayCluster)
 	if err != nil {
 		return nil, fmt.Errorf("listing RayClusters: %w", err)
 	}
 
-	var impacted []impactedResource
+	var impacted []types.NamespacedName
 
 	for _, cluster := range rayClusters {
 		finalizers := cluster.GetFinalizers()
 
 		if slices.Contains(finalizers, finalizerCodeFlareOAuth) {
-			impacted = append(impacted, impactedResource{
-				namespace: cluster.GetNamespace(),
-				name:      cluster.GetName(),
+			impacted = append(impacted, types.NamespacedName{
+				Namespace: cluster.GetNamespace(),
+				Name:      cluster.GetName(),
 			})
 		}
 	}
 
 	return impacted, nil
-}
-
-func (c *ImpactedWorkloadsCheck) populateImpactedObjects(
-	dr *result.DiagnosticResult,
-	impactedClusters []impactedResource,
-) {
-	dr.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(impactedClusters))
-
-	for _, r := range impactedClusters {
-		obj := metav1.PartialObjectMetadata{
-			TypeMeta: resources.RayCluster.TypeMeta(),
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: r.namespace,
-				Name:      r.name,
-				Annotations: map[string]string{
-					"managed-by": "CodeFlare",
-				},
-			},
-		}
-		dr.ImpactedObjects = append(dr.ImpactedObjects, obj)
-	}
-}
-
-func (c *ImpactedWorkloadsCheck) buildImpactMessage(
-	impactedClusters []impactedResource,
-) string {
-	return fmt.Sprintf(
-		"Found %d CodeFlare-managed RayCluster(s) that will be impacted (CodeFlare not available in RHOAI 3.x)",
-		len(impactedClusters),
-	)
 }
 
 // Register the check in the global registry.
