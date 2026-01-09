@@ -1,4 +1,4 @@
-package check_test
+package result_test
 
 import (
 	"testing"
