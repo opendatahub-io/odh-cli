@@ -4,17 +4,19 @@ CLI tool for ODH (Open Data Hub) and RHOAI (Red Hat OpenShift AI) for interactin
 
 ## Quick Start
 
-### Using Docker
+### Using Containers
 
 Run the CLI using the pre-built container image:
 
 ```bash
-docker run --rm -ti \
+podman run --rm -ti \
   -v $KUBECONFIG:/kubeconfig \
   quay.io/lburgazzoli/odh-cli:latest lint
 ```
 
 The container has `KUBECONFIG=/kubeconfig` set by default, so you just need to mount your kubeconfig to that path.
+
+> **Note:** The images are OCI-compliant and work with both Podman and Docker.
 
 **Available commands:**
 - `lint` - Validate cluster configuration and assess upgrade readiness

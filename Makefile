@@ -90,38 +90,30 @@ check: lint vulncheck
 test:
 	go test ./...
 
-# Ensure buildx builder exists for multi-platform builds
-.PHONY: buildx-setup
-buildx-setup:
-	@docker buildx inspect multiplatform >/dev/null 2>&1 || \
-		(echo "Creating buildx builder for multi-platform builds..." && \
-		 docker buildx create --name multiplatform --driver docker-container --bootstrap --use)
-
-# Build and push container image using Docker buildx
+# Build and push container image using Podman manifest
 .PHONY: publish
-publish: buildx-setup
+publish:
 	@echo "Building and pushing container image to $(CONTAINER_REPO):$(CONTAINER_TAGS)"
-	@TAGS="$(CONTAINER_TAGS)"; \
-	TAG_ARGS=""; \
-	for tag in $${TAGS//,/ }; do \
-		TAG_ARGS="$$TAG_ARGS --tag=$(CONTAINER_REPO):$$tag"; \
-	done; \
-	docker buildx build \
-		--builder=multiplatform \
+	@MANIFEST_NAME="localhost/odh-cli-build:$(VERSION)"; \
+	podman build \
 		--platform=$(CONTAINER_PLATFORMS) \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg DATE=$(DATE) \
-		$$TAG_ARGS \
-		--push \
-		.
+		--manifest=$$MANIFEST_NAME \
+		.; \
+	TAGS="$(CONTAINER_TAGS)"; \
+	for tag in $${TAGS//,/ }; do \
+		podman manifest push $$MANIFEST_NAME docker://$(CONTAINER_REPO):$$tag; \
+	done; \
+	podman manifest rm $$MANIFEST_NAME 2>/dev/null || true
 
 # Help target
 .PHONY: help
 help:
 	@echo "Available targets:"
 	@echo "  build       - Build the kubectl-odh binary"
-	@echo "  publish     - Build and push container image using Docker buildx"
+	@echo "  publish     - Build and push container image using Podman manifest"
 	@echo "  run         - Run the doctor command"
 	@echo "  tidy        - Tidy up Go module dependencies"
 	@echo "  clean       - Remove build artifacts and test cache"
