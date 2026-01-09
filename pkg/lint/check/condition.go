@@ -1,6 +1,8 @@
 package check
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -9,20 +11,39 @@ import (
 // This helper ensures LastTransitionTime is automatically set to the current time,
 // providing consistent condition creation across all checks.
 //
+// The message parameter supports printf-style formatting via optional variadic args.
+// If args are provided, fmt.Sprintf is applied to the message.
+//
 // Example usage:
 //
+//	// Simple message
 //	condition := check.NewCondition(
 //	    check.ConditionTypeValidated,
 //	    metav1.ConditionTrue,
 //	    check.ReasonRequirementsMet,
 //	    "All version requirements validated successfully",
 //	)
+//
+//	// Formatted message
+//	condition := check.NewCondition(
+//	    check.ConditionTypeCompatible,
+//	    metav1.ConditionFalse,
+//	    check.ReasonVersionIncompatible,
+//	    "Found %d %s - will be impacted",
+//	    count,
+//	    resourceType,
+//	)
 func NewCondition(
 	conditionType string,
 	status metav1.ConditionStatus,
 	reason string,
 	message string,
+	args ...any,
 ) metav1.Condition {
+	if len(args) > 0 {
+		message = fmt.Sprintf(message, args...)
+	}
+
 	return metav1.Condition{
 		Type:               conditionType,
 		Status:             status,

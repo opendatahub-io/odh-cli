@@ -1,8 +1,6 @@
 package ray
 
 import (
-	"fmt"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -24,7 +22,9 @@ func newWorkloadCompatibilityCondition(
 			conditionType,
 			metav1.ConditionFalse,
 			check.ReasonVersionIncompatible,
-			fmt.Sprintf("Found %d %s - will be impacted in RHOAI 3.x (CodeFlare not available)", count, workloadDescription),
+			"Found %d %s - will be impacted in RHOAI 3.x (CodeFlare not available)",
+			count,
+			workloadDescription,
 		)
 	}
 
@@ -32,7 +32,8 @@ func newWorkloadCompatibilityCondition(
 		conditionType,
 		metav1.ConditionTrue,
 		check.ReasonVersionCompatible,
-		fmt.Sprintf("No %s found - ready for RHOAI 3.x upgrade", workloadDescription),
+		"No %s found - ready for RHOAI 3.x upgrade",
+		workloadDescription,
 	)
 }
 

@@ -113,7 +113,6 @@ func (e *Executor) executeCheck(ctx context.Context, target *CheckTarget, check 
 			reason = ReasonCheckExecutionFailed
 			message = "API server is unavailable or overloaded"
 		default:
-			message = fmt.Sprintf("Check execution failed: %v", err)
 			reason = ReasonCheckExecutionFailed
 		}
 
@@ -123,14 +122,26 @@ func (e *Executor) executeCheck(ctx context.Context, target *CheckTarget, check 
 			check.Name(),
 			check.Description(),
 		)
-		errorResult.Status.Conditions = []metav1.Condition{
-			NewCondition(
+
+		var condition metav1.Condition
+		if reason == ReasonCheckExecutionFailed && message == "" {
+			condition = NewCondition(
+				ConditionTypeValidated,
+				metav1.ConditionUnknown,
+				reason,
+				"Check execution failed: %v",
+				err,
+			)
+		} else {
+			condition = NewCondition(
 				ConditionTypeValidated,
 				metav1.ConditionUnknown,
 				reason,
 				message,
-			),
+			)
 		}
+
+		errorResult.Status.Conditions = []metav1.Condition{condition}
 
 		return CheckExecution{
 			Check:  check,
@@ -152,7 +163,8 @@ func (e *Executor) executeCheck(ctx context.Context, target *CheckTarget, check 
 				ConditionTypeValidated,
 				metav1.ConditionUnknown,
 				ReasonCheckExecutionFailed,
-				fmt.Sprintf("Invalid check result: %v", err),
+				"Invalid check result: %v",
+				err,
 			),
 		}
 
