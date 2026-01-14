@@ -2,6 +2,7 @@ package kserve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,14 +55,14 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 	// Query kserve component management state using JQ
 	kserveStateStr, err := jq.Query[string](dsc, ".spec.components.kserve.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			// KServe component not defined in spec - check passes
+			results.SetComponentNotConfigured(dr, "KServe")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying kserve managementState: %w", err)
-	}
-
-	if kserveStateStr == "" {
-		// KServe component not defined in spec - check passes
-		results.SetComponentNotConfigured(dr, "KServe")
-
-		return dr, nil
 	}
 
 	dr.Annotations[check.AnnotationComponentKServeState] = kserveStateStr
@@ -77,14 +78,14 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 	// Query serverless (serving) management state
 	servingStateStr, err := jq.Query[string](dsc, ".spec.components.kserve.serving.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			// Serverless not configured - check passes
+			results.SetCompatibilitySuccessf(dr, "KServe serverless mode is not configured - ready for RHOAI 3.x upgrade")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying kserve serving managementState: %w", err)
-	}
-
-	if servingStateStr == "" {
-		// Serverless not configured - check passes
-		results.SetCompatibilitySuccessf(dr, "KServe serverless mode is not configured - ready for RHOAI 3.x upgrade")
-
-		return dr, nil
 	}
 
 	dr.Annotations[check.AnnotationComponentServingState] = servingStateStr

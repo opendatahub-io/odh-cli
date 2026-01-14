@@ -2,6 +2,7 @@ package codeflare
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,14 +55,14 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 	// Query codeflare component management state using JQ
 	managementStateStr, err := jq.Query[string](dsc, ".spec.components.codeflare.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			// CodeFlare component not defined in spec - check passes
+			results.SetComponentNotConfigured(dr, "CodeFlare")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying codeflare managementState: %w", err)
-	}
-
-	if managementStateStr == "" {
-		// CodeFlare component not defined in spec - check passes
-		results.SetComponentNotConfigured(dr, "CodeFlare")
-
-		return dr, nil
 	}
 
 	// Add management state as annotation

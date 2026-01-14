@@ -169,6 +169,9 @@ const (
 
 	// ReasonPermissionGranted indicates required permissions are granted.
 	ReasonPermissionGranted = "PermissionGranted"
+
+	// ReasonComponentRenamed indicates a component was renamed in a new version.
+	ReasonComponentRenamed = "ComponentRenamed"
 )
 
 // Standard Reason Values - Failure.
@@ -199,6 +202,9 @@ const (
 
 	// ReasonWorkloadsImpacted indicates workloads will be affected by changes.
 	ReasonWorkloadsImpacted = "WorkloadsImpacted"
+
+	// ReasonFeatureRemoved indicates a feature was removed in a new version.
+	ReasonFeatureRemoved = "FeatureRemoved"
 )
 
 // Standard Reason Values - Unknown/Error.

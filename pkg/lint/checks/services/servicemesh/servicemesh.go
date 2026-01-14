@@ -2,6 +2,7 @@ package servicemesh
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,14 +70,14 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 	// Query servicemesh management state using JQ
 	managementStateStr, err := jq.Query[string](dsci, ".spec.serviceMesh.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			// ServiceMesh not defined in spec - check passes
+			results.SetServiceNotConfigured(dr, "ServiceMesh")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying servicemesh managementState: %w", err)
-	}
-
-	if managementStateStr == "" {
-		// ServiceMesh not defined in spec - check passes
-		results.SetServiceNotConfigured(dr, "ServiceMesh")
-
-		return dr, nil
 	}
 
 	// Add management state as annotation

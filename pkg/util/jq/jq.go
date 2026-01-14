@@ -11,6 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// ErrNotFound is returned when a JQ query doesn't find the requested field.
+var ErrNotFound = errors.New("field not found")
+
 // convertValue converts a value to a JQ-compatible format.
 // It handles special types like unstructured.Unstructured by extracting their Object field,
 // and passes through maps and slices directly without marshaling/unmarshaling.
@@ -98,9 +101,9 @@ func Query[T any](value any, jqQuery string) (T, error) {
 		return zero, fmt.Errorf("jq query error: %w", err)
 	}
 
-	// Handle nil result - return zero value
+	// Handle nil result - return ErrNotFound instead of zero value
 	if result == nil {
-		return zero, nil
+		return zero, ErrNotFound
 	}
 
 	// Type assertion to T

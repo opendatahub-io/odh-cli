@@ -14,6 +14,7 @@ import (
 	// These blank imports are REQUIRED for checks to register with the global registry.
 	// DO NOT REMOVE - they appear unused but are essential for runtime check discovery.
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/codeflare"
+	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/datasciencepipelines"
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kserve"
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kueue"
 	_ "github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/modelmesh"

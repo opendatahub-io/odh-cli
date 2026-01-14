@@ -2,6 +2,7 @@ package kueue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,14 +55,14 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target check.Target)
 	// Query kueue component management state using JQ
 	managementStateStr, err := jq.Query[string](dsc, ".spec.components.kueue.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			// Kueue component not defined in spec - check passes
+			results.SetComponentNotConfigured(dr, "Kueue")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying kueue managementState: %w", err)
-	}
-
-	if managementStateStr == "" {
-		// Kueue component not defined in spec - check passes
-		results.SetComponentNotConfigured(dr, "Kueue")
-
-		return dr, nil
 	}
 
 	// Add management state as annotation

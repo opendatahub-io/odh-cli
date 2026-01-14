@@ -9,12 +9,13 @@ const (
 
 // Component names for diagnostic results.
 const (
-	ComponentCodeFlare        = "codeflare"
-	ComponentModelMesh        = "modelmesh"
-	ComponentKServe           = "kserve"
-	ComponentKueue            = "kueue"
-	ComponentRay              = "ray"
-	ComponentTrainingOperator = "trainingoperator"
+	ComponentCodeFlare            = "codeflare"
+	ComponentDataSciencePipelines = "datasciencepipelines"
+	ComponentModelMesh            = "modelmesh"
+	ComponentKServe               = "kserve"
+	ComponentKueue                = "kueue"
+	ComponentRay                  = "ray"
+	ComponentTrainingOperator     = "trainingoperator"
 )
 
 // Service names for diagnostic results.
@@ -34,7 +35,9 @@ const (
 const (
 	CheckTypeRemoval            = "removal"
 	CheckTypeInstalled          = "installed"
+	CheckTypeInstructLabRemoval = "instructlab-removal"
 	CheckTypeManagedRemoval     = "managed-removal"
+	CheckTypeRenaming           = "renaming"
 	CheckTypeServerlessRemoval  = "serverless-removal"
 	CheckTypeImpactedWorkloads  = "impacted-workloads"
 	CheckTypeDeprecation        = "deprecation"

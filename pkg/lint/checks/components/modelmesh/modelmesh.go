@@ -2,6 +2,7 @@ package modelmesh
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,14 +55,14 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 	// Query modelmeshserving component management state using JQ
 	managementStateStr, err := jq.Query[string](dsc, ".spec.components.modelmeshserving.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			// ModelMesh component not defined in spec - check passes
+			results.SetComponentNotConfigured(dr, "ModelMesh")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying modelmeshserving managementState: %w", err)
-	}
-
-	if managementStateStr == "" {
-		// ModelMesh component not defined in spec - check passes
-		results.SetComponentNotConfigured(dr, "ModelMesh")
-
-		return dr, nil
 	}
 
 	// Add management state as annotation

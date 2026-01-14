@@ -73,6 +73,22 @@ var (
 		Resource: "dscinitializations",
 	}
 
+	// DataSciencePipelinesApplicationV1 is the DSP DataSciencePipelinesApplication resource (v1).
+	DataSciencePipelinesApplicationV1 = ResourceType{
+		Group:    "datasciencepipelinesapplications.opendatahub.io",
+		Version:  "v1",
+		Kind:     "DataSciencePipelinesApplication",
+		Resource: "datasciencepipelinesapplications",
+	}
+
+	// DataSciencePipelinesApplicationV1Alpha1 is the DSP DataSciencePipelinesApplication resource (v1alpha1).
+	DataSciencePipelinesApplicationV1Alpha1 = ResourceType{
+		Group:    "datasciencepipelinesapplications.opendatahub.io",
+		Version:  "v1alpha1",
+		Kind:     "DataSciencePipelinesApplication",
+		Resource: "datasciencepipelinesapplications",
+	}
+
 	// Deployment is the Kubernetes Deployment resource.
 	Deployment = ResourceType{
 		Group:    "apps",

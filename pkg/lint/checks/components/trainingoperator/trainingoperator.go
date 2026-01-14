@@ -2,6 +2,7 @@ package trainingoperator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -53,13 +54,13 @@ func (c *DeprecationCheck) Validate(
 
 	managementStateStr, err := jq.Query[string](dsc, ".spec.components.trainingoperator.managementState")
 	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			results.SetComponentNotConfigured(dr, "TrainingOperator")
+
+			return dr, nil
+		}
+
 		return nil, fmt.Errorf("querying trainingoperator managementState: %w", err)
-	}
-
-	if managementStateStr == "" {
-		results.SetComponentNotConfigured(dr, "TrainingOperator")
-
-		return dr, nil
 	}
 
 	dr.Annotations[check.AnnotationComponentManagementState] = managementStateStr

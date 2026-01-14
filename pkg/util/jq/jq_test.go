@@ -135,8 +135,8 @@ func TestQuery_MissingField(t *testing.T) {
 	}
 
 	value, err := jq.Query[string](obj, ".spec.nonexistent")
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(value).To(Equal("")) // Zero value for string
+	g.Expect(err).To(MatchError(jq.ErrNotFound))
+	g.Expect(value).To(Equal("")) // Zero value for string returned with error
 }
 
 func TestTransform_WithPrintfFormatting(t *testing.T) {
