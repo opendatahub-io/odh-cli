@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"sort"
 	"time"
 
 	"github.com/fatih/color"
@@ -290,11 +291,28 @@ type LintOutput struct {
 }
 
 // FlattenResults converts a map of results by group to a flat sorted array.
-// Results are sorted by group in the canonical order: Dependency, Service, Component, Workload.
+// Results are sorted by:
+// 1. Group (canonical order: Dependency, Service, Component, Workload)
+// 2. Kind (alphabetically within each group)
+// 3. Name (alphabetically within each kind).
 func FlattenResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) []check.CheckExecution {
 	flattened := make([]check.CheckExecution, 0)
+
+	// Iterate through groups in canonical order
 	for _, group := range check.CanonicalGroupOrder {
-		flattened = append(flattened, resultsByGroup[group]...)
+		groupResults := resultsByGroup[group]
+
+		// Sort within group by Kind, then by Name
+		sort.Slice(groupResults, func(i, j int) bool {
+			// First compare by Kind
+			if groupResults[i].Result.Kind != groupResults[j].Result.Kind {
+				return groupResults[i].Result.Kind < groupResults[j].Result.Kind
+			}
+			// If Kind is the same, compare by Name
+			return groupResults[i].Result.Name < groupResults[j].Result.Name
+		})
+
+		flattened = append(flattened, groupResults...)
 	}
 
 	return flattened
