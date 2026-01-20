@@ -96,8 +96,3 @@ func (c *RenamingCheck) Validate(
 
 	return dr, nil
 }
-
-//nolint:gochecknoinits
-func init() {
-	check.MustRegisterCheck(NewRenamingCheck())
-}
