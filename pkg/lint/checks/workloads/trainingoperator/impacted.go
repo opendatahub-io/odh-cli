@@ -111,8 +111,3 @@ func (c *ImpactedWorkloadsCheck) findImpactedPyTorchJobs(
 
 	return impacted, nil
 }
-
-//nolint:gochecknoinits
-func init() {
-	check.MustRegisterCheck(NewImpactedWorkloadsCheck())
-}
