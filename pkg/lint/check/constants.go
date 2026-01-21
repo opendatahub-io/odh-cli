@@ -16,6 +16,7 @@ const (
 	ComponentKueue                = "kueue"
 	ComponentRay                  = "ray"
 	ComponentTrainingOperator     = "trainingoperator"
+	ComponentNotebook             = "notebook"
 )
 
 // Service names for diagnostic results.
