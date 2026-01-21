@@ -3,6 +3,8 @@ package dependencies
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
@@ -67,9 +69,15 @@ func ResolveSecrets(
 		return nil, fmt.Errorf("extracting Secret references: %w", err)
 	}
 
-	items, err := kube.FetchResourcesByName(ctx, c, namespace, resources.Secret, names)
+	items, notFound, err := kube.FetchResourcesByNameWithMissing(ctx, c, namespace, resources.Secret, names)
 	if err != nil {
 		return nil, fmt.Errorf("fetching Secrets: %w", err)
+	}
+
+	// Log warning about missing secrets to stderr
+	if len(notFound) > 0 {
+		fmt.Fprintf(os.Stderr, "  Warning: Secret(s) not found or inaccessible: %s\n",
+			strings.Join(notFound, ", "))
 	}
 
 	deps := make([]Dependency, 0, len(items))

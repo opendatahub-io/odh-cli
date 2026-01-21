@@ -34,7 +34,7 @@ func (w *WriterStage) Run(
 			}
 
 			if err := w.writeWorkloadWithDeps(item); err != nil {
-				w.IO.Errorf("    Warning: Failed to write %s/%s: %v\n",
+				w.IO.Errorf("    Warning: Failed to write %s/%s: %v",
 					item.Instance.GetNamespace(), item.Instance.GetName(), err)
 			}
 		}
@@ -51,7 +51,7 @@ func (w *WriterStage) writeWorkloadWithDeps(item WorkloadWithDeps) error {
 	// Write dependencies
 	for _, dep := range item.Dependencies {
 		if err := w.WriteResource(dep.GVR, dep.Resource); err != nil {
-			w.IO.Errorf("        Warning: Failed to write dependency %s/%s: %v\n",
+			w.IO.Errorf("  Warning: Failed to write dependency %s/%s: %v",
 				dep.Resource.GetNamespace(), dep.Resource.GetName(), err)
 		}
 	}

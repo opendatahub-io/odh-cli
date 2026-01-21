@@ -23,8 +23,20 @@ func FetchResourcesByName(
 	resourceType resources.ResourceType,
 	names []string,
 ) ([]*unstructured.Unstructured, error) {
+	items, _, err := FetchResourcesByNameWithMissing(ctx, c, namespace, resourceType, names)
+	return items, err
+}
+
+// FetchResourcesByNameWithMissing fetches resources and returns both found items and missing names.
+func FetchResourcesByNameWithMissing(
+	ctx context.Context,
+	c *client.Client,
+	namespace string,
+	resourceType resources.ResourceType,
+	names []string,
+) ([]*unstructured.Unstructured, []string, error) {
 	if len(names) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	gvr := resourceType.GVR()
@@ -32,12 +44,14 @@ func FetchResourcesByName(
 	// Use errgroup for concurrent fetches
 	g, ctx := errgroup.WithContext(ctx)
 	items := make([]*unstructured.Unstructured, len(names))
+	notFound := make([]bool, len(names))
 
 	for i, name := range names {
 		g.Go(func() error {
 			resource, err := c.Get(ctx, gvr, name, client.InNamespace(namespace))
 			if err != nil {
-				// Skip not found errors (ConfigMap might not exist)
+				// Mark as not found
+				notFound[i] = true
 				return nil
 			}
 			items[i] = resource
@@ -47,18 +61,21 @@ func FetchResourcesByName(
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, fmt.Errorf("waiting for parallel fetches: %w", err)
+		return nil, nil, fmt.Errorf("waiting for parallel fetches: %w", err)
 	}
 
-	// Filter out nil entries (not found resources)
+	// Separate found items and missing names
 	result := make([]*unstructured.Unstructured, 0, len(items))
-	for _, item := range items {
+	missing := make([]string, 0)
+	for i, item := range items {
 		if item != nil {
 			result = append(result, item)
+		} else if notFound[i] {
+			missing = append(missing, names[i])
 		}
 	}
 
-	return result, nil
+	return result, missing, nil
 }
 
 // ExtractConfigMapRefsFromVolumes extracts ConfigMap names from volume definitions.

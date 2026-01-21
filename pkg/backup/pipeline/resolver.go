@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -58,7 +59,7 @@ func (r *ResolverStage) worker(
 
 			result, err := r.resolveWorkload(ctx, item)
 			if err != nil {
-				r.IO.Errorf("    Warning: Failed to resolve %s/%s: %v\n",
+				r.IO.Errorf("    Warning: Failed to resolve %s/%s: %v",
 					item.Instance.GetNamespace(), item.Instance.GetName(), err)
 
 				continue
@@ -78,11 +79,6 @@ func (r *ResolverStage) resolveWorkload(
 	ctx context.Context,
 	item WorkloadItem,
 ) (WorkloadWithDeps, error) {
-	if r.Verbose {
-		r.IO.Errorf("    Resolving %s/%s...\n",
-			item.Instance.GetNamespace(), item.Instance.GetName())
-	}
-
 	resolver, err := r.DepRegistry.GetResolver(item.GVR)
 	if err != nil {
 		// No resolver - return workload with empty dependencies
@@ -98,8 +94,10 @@ func (r *ResolverStage) resolveWorkload(
 		return WorkloadWithDeps{}, fmt.Errorf("resolving dependencies: %w", err)
 	}
 
-	if r.Verbose {
-		r.IO.Errorf("      Found %d dependencies\n", len(deps))
+	if r.Verbose && len(deps) > 0 {
+		r.IO.Errorf("Resolving %s/%s...",
+			item.Instance.GetNamespace(), item.Instance.GetName())
+		r.logDependencies(deps)
 	}
 
 	return WorkloadWithDeps{
@@ -107,4 +105,33 @@ func (r *ResolverStage) resolveWorkload(
 		Instance:     item.Instance,
 		Dependencies: deps,
 	}, nil
+}
+
+// logDependencies logs each dependency with type and name.
+func (r *ResolverStage) logDependencies(deps []dependencies.Dependency) {
+	for i := range deps {
+		resourceType := r.formatResourceType(deps[i].GVR.Resource)
+		r.IO.Errorf("  → %s: %s", resourceType, deps[i].Resource.GetName())
+	}
+}
+
+// formatResourceType converts plural resource name to singular display name.
+func (r *ResolverStage) formatResourceType(resource string) string {
+	switch resource {
+	case "configmaps":
+		return "ConfigMap"
+	case "secrets":
+		return "Secret"
+	case "persistentvolumeclaims":
+		return "PVC"
+	default:
+		// Fallback: capitalize first letter and remove trailing 's'
+		if len(resource) > 0 {
+			singular := strings.TrimSuffix(resource, "s")
+
+			return strings.ToUpper(singular[:1]) + singular[1:]
+		}
+
+		return resource
+	}
 }
