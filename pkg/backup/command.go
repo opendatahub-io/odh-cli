@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/spf13/pflag"
@@ -36,6 +37,7 @@ type Command struct {
 	Excludes     []string
 	MaxWorkers   int
 	Dependencies bool
+	DryRun       bool
 
 	depRegistry *dependencies.Registry
 }
@@ -56,6 +58,7 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&c.Excludes, "exclude", nil, "Workload types to exclude (repeatable)")
 	fs.IntVar(&c.MaxWorkers, "max-workers", 0, "Maximum concurrent workers (0 = auto-detect based on CPU count)")
 	fs.BoolVarP(&c.Verbose, "verbose", "v", false, "Enable verbose output")
+	fs.BoolVar(&c.DryRun, "dry-run", false, "Preview backup without writing files (automatically enables verbose)")
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, "Timeout for backup operation")
 
 	// Throttling settings
@@ -70,6 +73,11 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 func (c *Command) Complete() error {
 	if err := c.SharedOptions.Complete(); err != nil {
 		return err
+	}
+
+	// Auto-enable verbose mode for dry-run
+	if c.DryRun {
+		c.Verbose = true
 	}
 
 	if len(c.Includes) == 0 {
@@ -125,8 +133,14 @@ func (c *Command) Run(ctx context.Context) error {
 		if !c.Dependencies {
 			mode = "without dependencies"
 		}
-		c.IO.Errorf("Backing up %d workload types %s (%d workers)...\n",
-			len(gvrsToBackup), mode, c.MaxWorkers)
+
+		action := "Backing up"
+		if c.DryRun {
+			action = "Dry-run:"
+		}
+
+		c.IO.Errorf("%s %d workload types %s (%d workers)...",
+			action, len(gvrsToBackup), mode, c.MaxWorkers)
 	}
 
 	// Create pipeline stages
@@ -146,6 +160,8 @@ func (c *Command) Run(ctx context.Context) error {
 	writer := &pipeline.WriterStage{
 		WriteResource: c.writeResource,
 		IO:            c.IO,
+		DryRun:        c.DryRun,
+		OutputDir:     c.OutputDir,
 	}
 
 	// Process each workload type
@@ -155,10 +171,12 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 	}
 
-	if c.OutputDir == "" && c.Verbose {
-		c.IO.Errorf("Backup complete (stdout)\n")
+	if c.DryRun {
+		c.IO.Errorf("Dry-run complete (no files written)")
+	} else if c.OutputDir == "" && c.Verbose {
+		c.IO.Errorf("Backup complete (stdout)")
 	} else {
-		c.IO.Errorf("Backup complete: %s\n", c.OutputDir)
+		c.IO.Errorf("Backup complete: %s", c.OutputDir)
 	}
 
 	return nil
@@ -240,9 +258,48 @@ func (c *Command) writeResource(
 		return fmt.Errorf("stripping fields: %w", err)
 	}
 
+	// Dry-run mode: Log what would be written without actually writing
+	if c.DryRun {
+		return c.logDryRunResource(gvr, stripped)
+	}
+
 	if c.OutputDir == "" {
 		return WriteResourceToStdout(c.IO.Out(), gvr, stripped)
 	}
 
 	return WriteResourceToFile(c.OutputDir, gvr, stripped)
+}
+
+// logDryRunResource logs the file path that would be created in dry-run mode.
+func (c *Command) logDryRunResource(
+	gvr schema.GroupVersionResource,
+	obj *unstructured.Unstructured,
+) error {
+	namespace := obj.GetNamespace()
+	name := obj.GetName()
+
+	if c.OutputDir == "" {
+		// Stdout mode: Show resource that would be written
+		c.IO.Errorf("Would write to stdout: %s/%s (%s)",
+			namespace, name, gvr.Resource)
+
+		return nil
+	}
+
+	// File mode: Show file path that would be created
+	if namespace == "" {
+		namespace = "cluster-scoped"
+	}
+
+	gvrStr := gvr.Resource
+	if gvr.Group != "" {
+		gvrStr = gvr.Resource + "." + gvr.Group
+	}
+
+	filename := fmt.Sprintf("%s-%s.yaml", gvrStr, name)
+	filePath := filepath.Join(c.OutputDir, namespace, filename)
+
+	c.IO.Errorf("Would create: %s", filePath)
+
+	return nil
 }
