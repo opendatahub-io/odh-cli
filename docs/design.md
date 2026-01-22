@@ -164,15 +164,28 @@ The `backup` command backs up OpenShift AI workloads and optionally their depend
 
 **Dependency Resolution:**
 
-By default, the backup command resolves and backs up workload dependencies (ConfigMaps, PVCs, etc.):
+By default, the backup command resolves and backs up all workload dependencies:
 
 ```bash
-# Full backup (default - includes dependencies)
+# Full backup with all dependencies (ConfigMaps, PVCs, Secrets)
 kubectl odh backup --output-dir /tmp/backup
 
-# Workloads only (skip dependencies)
+# Workloads only (skip all dependencies)
 kubectl odh backup --dependencies=false --output-dir /tmp/backup
 ```
+
+**What gets backed up (with --dependencies=true):**
+- ConfigMaps (excluding trusted-ca-bundle cluster CA bundles)
+- PersistentVolumeClaims
+- Secrets
+
+**Security Note:** When `--dependencies=true`, Secrets are backed up along with other dependencies. Ensure your backup location is secure:
+- Use encrypted storage
+- Restrict access to backup files
+- Use secure transmission channels
+- Consider rotating secrets after backup/restore operations
+
+To exclude all dependencies (including Secrets), use `--dependencies=false`.
 
 **Use Cases:**
 
@@ -195,7 +208,7 @@ kubectl odh backup --dependencies=false --output-dir /tmp/backup
 
 **Example:**
 ```bash
-# Full backup with dependencies
+# Full backup with all dependencies (including Secrets)
 kubectl odh backup --output-dir /tmp/full-backup --verbose
 
 # Fast workload-only backup

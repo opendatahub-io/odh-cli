@@ -29,7 +29,7 @@ func (d *DiscoveryStage) Run(
 	}
 
 	if d.Verbose {
-		d.IO.Errorf("  Found %d instances of %s\n", len(instances), gvr.Resource)
+		d.IO.Errorf("Found %d %s\n", len(instances), gvr.Resource)
 	}
 
 	for i := range instances {

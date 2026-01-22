@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 )
 
 // CheckExecution bundles a check with its execution result and any error encountered.
@@ -20,12 +21,14 @@ type CheckExecution struct {
 // Executor orchestrates check execution.
 type Executor struct {
 	registry *CheckRegistry
+	io       iostreams.Interface
 }
 
 // NewExecutor creates a new check executor.
-func NewExecutor(registry *CheckRegistry) *Executor {
+func NewExecutor(registry *CheckRegistry, io iostreams.Interface) *Executor {
 	return &Executor{
 		registry: registry,
+		io:       io,
 	}
 }
 
@@ -82,6 +85,11 @@ func (e *Executor) executeChecks(ctx context.Context, target Target, checks []Ch
 
 // executeCheck runs a single check and captures the result or error.
 func (e *Executor) executeCheck(ctx context.Context, target Target, check Check) CheckExecution {
+	// Ensure target has IOStreams for permission error logging
+	if target.IO == nil {
+		target.IO = e.io
+	}
+
 	checkResult, err := check.Validate(ctx, target)
 
 	// If check returned an error, create a diagnostic result with error condition
@@ -94,6 +102,17 @@ func (e *Executor) executeCheck(ctx context.Context, target Target, check Check)
 		case apierrors.IsForbidden(err):
 			reason = ReasonAPIAccessDenied
 			message = "Insufficient permissions to access cluster resources"
+			// Log to stderr if verbose
+			if e.io != nil {
+				e.io.Errorf("Permission denied: %s - Check: %s", message, check.Name())
+			}
+		case apierrors.IsUnauthorized(err):
+			reason = ReasonAPIAccessDenied
+			message = "Authentication required to access cluster resources"
+			// Log to stderr if verbose
+			if e.io != nil {
+				e.io.Errorf("Unauthorized: %s - Check: %s", message, check.Name())
+			}
 		case apierrors.IsTimeout(err):
 			reason = ReasonCheckExecutionFailed
 			message = "Request timed out"

@@ -117,6 +117,11 @@ func (c *Client) ListResources(ctx context.Context, gvr schema.GroupVersionResou
 		}
 
 		if err != nil {
+			// Permission errors are non-fatal - return empty list
+			if IsPermissionError(err) {
+				return []*unstructured.Unstructured{}, nil
+			}
+
 			return nil, fmt.Errorf("listing resources: %w", err)
 		}
 
@@ -171,6 +176,11 @@ func (c *Client) ListMetadata(ctx context.Context, resourceType resources.Resour
 		}
 
 		if err != nil {
+			// Permission errors are non-fatal - return empty list
+			if IsPermissionError(err) {
+				return []*metav1.PartialObjectMetadata{}, nil
+			}
+
 			return nil, fmt.Errorf("listing metadata for resources: %w", err)
 		}
 
@@ -256,6 +266,11 @@ func (c *Client) Get(ctx context.Context, gvr schema.GroupVersionResource, name 
 	}
 
 	if err != nil {
+		// Permission errors are non-fatal - return nil resource
+		if IsPermissionError(err) {
+			return nil, nil
+		}
+
 		return nil, fmt.Errorf("getting resource: %w", err)
 	}
 

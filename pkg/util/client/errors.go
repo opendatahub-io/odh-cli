@@ -23,3 +23,9 @@ func IsUnrecoverableError(err error) bool {
 func IsResourceTypeNotFound(err error) bool {
 	return meta.IsNoMatchError(err)
 }
+
+// IsPermissionError checks if an error is due to insufficient permissions.
+// Returns true for Forbidden (403) and Unauthorized (401) errors.
+func IsPermissionError(err error) bool {
+	return apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err)
+}

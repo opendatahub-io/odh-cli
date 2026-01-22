@@ -24,6 +24,7 @@ func FetchResourcesByName(
 	names []string,
 ) ([]*unstructured.Unstructured, error) {
 	items, _, err := FetchResourcesByNameWithMissing(ctx, c, namespace, resourceType, names)
+
 	return items, err
 }
 
@@ -68,14 +69,27 @@ func FetchResourcesByNameWithErrors(
 	fetchErrors := make([]error, len(names))
 
 	for i, name := range names {
+		// Capture loop variables for goroutine
+		idx := i
+		resourceName := name
+
 		g.Go(func() error {
-			resource, err := c.Get(ctx, gvr, name, client.InNamespace(namespace))
+			resource, err := c.Get(ctx, gvr, resourceName, client.InNamespace(namespace))
 			if err != nil {
 				// Store the error for this resource
-				fetchErrors[i] = err
+				fetchErrors[idx] = err
+
 				return nil
 			}
-			items[i] = resource
+			if resource == nil {
+				// Resource is nil but no error - the client swallowed a permission error
+				// Treat this as a permission/authorization error
+				fetchErrors[idx] = fmt.Errorf("secrets %q is forbidden: User cannot get resource %q in API group %q in the namespace %q",
+					resourceName, gvr.Resource, gvr.Group, namespace)
+
+				return nil
+			}
+			items[idx] = resource
 
 			return nil
 		})

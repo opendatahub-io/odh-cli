@@ -6,6 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 )
 
 // Target holds all context needed for executing diagnostic checks, including cluster version and optional resource.
@@ -29,4 +30,9 @@ type Target struct {
 	// Only set for workload checks that operate on discovered CRs
 	// Nil for component and service checks
 	Resource *unstructured.Unstructured
+
+	// IO provides access to input/output streams for logging (optional)
+	// Used by checks to log warnings (e.g., permission errors) when verbose mode is enabled
+	// If nil, checks should skip logging
+	IO iostreams.Interface
 }

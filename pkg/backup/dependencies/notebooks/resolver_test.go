@@ -22,7 +22,7 @@ var listKinds = map[schema.GroupVersionResource]string{
 	resources.Secret.GVR():    "SecretList",
 }
 
-func TestResolverWithSecretsEnabled(t *testing.T) {
+func TestResolverWithSecrets(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -31,9 +31,7 @@ func TestResolverWithSecretsEnabled(t *testing.T) {
 
 	fakeClient := createFakeClient(t, notebook, secret)
 
-	resolver := notebooks.NewResolver(
-		notebooks.WithBackupSecrets(true),
-	)
+	resolver := notebooks.NewResolver()
 
 	deps, err := resolver.Resolve(ctx, fakeClient, notebook)
 
@@ -41,40 +39,6 @@ func TestResolverWithSecretsEnabled(t *testing.T) {
 	g.Expect(deps).To(HaveLen(1))
 	g.Expect(deps[0].GVR).To(Equal(resources.Secret.GVR()))
 	g.Expect(deps[0].Resource.GetName()).To(Equal("test-secret"))
-}
-
-func TestResolverWithSecretsDisabled(t *testing.T) {
-	g := NewWithT(t)
-	ctx := t.Context()
-
-	notebook := createNotebookWithSecret("test-notebook", "default", "test-secret")
-	secret := createSecret("test-secret", "default")
-
-	fakeClient := createFakeClient(t, notebook, secret)
-
-	resolver := notebooks.NewResolver()
-
-	deps, err := resolver.Resolve(ctx, fakeClient, notebook)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(deps).To(BeEmpty())
-}
-
-func TestResolverDefaultBehavior(t *testing.T) {
-	g := NewWithT(t)
-	ctx := t.Context()
-
-	notebook := createNotebookWithSecret("test-notebook", "default", "test-secret")
-	secret := createSecret("test-secret", "default")
-
-	fakeClient := createFakeClient(t, notebook, secret)
-
-	resolver := notebooks.NewResolver()
-
-	deps, err := resolver.Resolve(ctx, fakeClient, notebook)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(deps).To(BeEmpty())
 }
 
 func TestResolverWithConfigMapAndSecret(t *testing.T) {
@@ -92,9 +56,7 @@ func TestResolverWithConfigMapAndSecret(t *testing.T) {
 
 	fakeClient := createFakeClient(t, notebook, configMap, secret)
 
-	resolver := notebooks.NewResolver(
-		notebooks.WithBackupSecrets(true),
-	)
+	resolver := notebooks.NewResolver()
 
 	deps, err := resolver.Resolve(ctx, fakeClient, notebook)
 

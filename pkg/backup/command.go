@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -31,13 +30,12 @@ const (
 type Command struct {
 	*SharedOptions
 
-	OutputDir     string
-	StripFields   []string
-	Includes      []string
-	Excludes      []string
-	MaxWorkers    int
-	Dependencies  bool
-	BackupSecrets bool
+	OutputDir    string
+	StripFields  []string
+	Includes     []string
+	Excludes     []string
+	MaxWorkers   int
+	Dependencies bool
 
 	depRegistry *dependencies.Registry
 }
@@ -65,8 +63,7 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&c.Burst, "burst", c.Burst, "Kubernetes API burst capacity")
 
 	// Dependency resolution
-	fs.BoolVar(&c.Dependencies, "dependencies", true, "Resolve and backup workload dependencies (ConfigMaps, PVCs, etc.)")
-	fs.BoolVar(&c.BackupSecrets, "backup-secrets", false, "Include Secrets in dependency backup (requires --dependencies=true)")
+	fs.BoolVar(&c.Dependencies, "dependencies", true, "Resolve and backup workload dependencies (ConfigMaps, PVCs, Secrets)")
 }
 
 // Complete populates derived values and performs setup.
@@ -95,9 +92,7 @@ func (c *Command) Complete() error {
 
 	// Only register resolvers if dependency resolution is enabled
 	if c.Dependencies {
-		c.depRegistry.MustRegister(notebooks.NewResolver(
-			notebooks.WithBackupSecrets(c.BackupSecrets),
-		))
+		c.depRegistry.MustRegister(notebooks.NewResolver())
 	}
 
 	return nil
@@ -107,11 +102,6 @@ func (c *Command) Complete() error {
 func (c *Command) Validate() error {
 	if err := c.SharedOptions.Validate(); err != nil {
 		return err
-	}
-
-	// BackupSecrets requires Dependencies
-	if c.BackupSecrets && !c.Dependencies {
-		return errors.New("--backup-secrets requires --dependencies=true")
 	}
 
 	return nil
@@ -135,7 +125,7 @@ func (c *Command) Run(ctx context.Context) error {
 		if !c.Dependencies {
 			mode = "without dependencies"
 		}
-		c.IO.Errorf("Backing up %d workload types %s (using %d resolver workers)...\n",
+		c.IO.Errorf("Backing up %d workload types %s (%d workers)...\n",
 			len(gvrsToBackup), mode, c.MaxWorkers)
 	}
 

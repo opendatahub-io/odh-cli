@@ -18,7 +18,7 @@ import (
 // BenchmarkExecuteSelective_FullSuite benchmarks execution of all checks.
 func BenchmarkExecuteSelective_FullSuite(b *testing.B) {
 	registry := setupBenchmarkRegistry()
-	executor := check.NewExecutor(registry)
+	executor := check.NewExecutor(registry, nil)
 
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
@@ -46,7 +46,7 @@ func BenchmarkExecuteSelective_FullSuite(b *testing.B) {
 // BenchmarkExecuteSelective_GroupFilter benchmarks execution with group filter.
 func BenchmarkExecuteSelective_GroupFilter(b *testing.B) {
 	registry := setupBenchmarkRegistry()
-	executor := check.NewExecutor(registry)
+	executor := check.NewExecutor(registry, nil)
 
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)
@@ -74,7 +74,7 @@ func BenchmarkExecuteSelective_GroupFilter(b *testing.B) {
 // BenchmarkExecuteSelective_SingleCheck benchmarks execution of a single check.
 func BenchmarkExecuteSelective_SingleCheck(b *testing.B) {
 	registry := setupBenchmarkRegistry()
-	executor := check.NewExecutor(registry)
+	executor := check.NewExecutor(registry, nil)
 
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme)

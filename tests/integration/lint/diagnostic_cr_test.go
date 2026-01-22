@@ -52,7 +52,7 @@ func TestDiagnosticCR_EndToEndExecution(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// Create executor and target
-	executor := check.NewExecutor(registry)
+	executor := check.NewExecutor(registry, nil)
 	ver := semver.MustParse("2.25.0")
 	target := check.Target{
 		Client:         k8sClient,

@@ -202,9 +202,10 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Versio
 		CurrentVersion: clusterVersion, // For lint mode, current = target
 		TargetVersion:  clusterVersion,
 		Resource:       nil, // No specific resource for component/service checks
+		IO:             c.IO,
 	}
 
-	executor := check.NewExecutor(c.registry)
+	executor := check.NewExecutor(c.registry, c.IO)
 
 	// Execute checks in canonical order: dependencies → services → components → workloads
 	// Store results by group for later organization
@@ -248,6 +249,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Versio
 				CurrentVersion: clusterVersion, // For lint mode, current = target
 				TargetVersion:  clusterVersion,
 				Resource:       instances[i],
+				IO:             c.IO,
 			}
 
 			results, err := executor.ExecuteSelective(ctx, workloadTarget, c.CheckSelector, check.GroupWorkload)
@@ -294,7 +296,7 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 
 	// Execute checks using target version for applicability filtering
 	c.IO.Errorf("Running upgrade compatibility checks...")
-	executor := check.NewExecutor(c.registry)
+	executor := check.NewExecutor(c.registry, c.IO)
 
 	// Create check target with BOTH current and target versions for upgrade checks
 	checkTarget := check.Target{
@@ -302,6 +304,7 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 		CurrentVersion: currentVersion,        // The version we're upgrading FROM
 		TargetVersion:  c.parsedTargetVersion, // The version we're upgrading TO
 		Resource:       nil,
+		IO:             c.IO,
 	}
 
 	// Execute checks in canonical order: dependencies → services → components → workloads
