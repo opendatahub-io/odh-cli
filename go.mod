@@ -1,6 +1,6 @@
 module github.com/lburgazzoli/odh-cli
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/blang/semver/v4 v4.0.0
@@ -8,7 +8,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/itchyny/gojq v0.12.18
 	github.com/olekukonko/tablewriter v1.1.3
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/gomega v1.39.1
 	github.com/operator-framework/api v0.38.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
