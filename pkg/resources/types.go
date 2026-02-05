@@ -242,4 +242,12 @@ var (
 		Kind:     "ClusterVersion",
 		Resource: "clusterversions",
 	}
+
+	// AcceleratorProfile is the OpenShift AI AcceleratorProfile resource.
+	AcceleratorProfile = ResourceType{
+		Group:    "dashboard.opendatahub.io",
+		Version:  "v1",
+		Kind:     "AcceleratorProfile",
+		Resource: "acceleratorprofiles",
+	}
 )

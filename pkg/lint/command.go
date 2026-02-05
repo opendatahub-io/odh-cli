@@ -91,9 +91,11 @@ func NewCommand(
 	// Services (1)
 	registry.MustRegister(servicemesh.NewRemovalCheck())
 
-	// Workloads (5)
+	// Workloads (7)
 	registry.MustRegister(guardrails.NewOtelMigrationCheck())
+	registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewImpactedWorkloadsCheck())
+	registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())

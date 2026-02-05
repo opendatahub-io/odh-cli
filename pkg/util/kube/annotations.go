@@ -21,3 +21,19 @@ func IsManaged(obj client.Object) bool {
 
 	return annotations[AnnotationManaged] != managedFalseValue
 }
+
+// GetAnnotation returns the value of an annotation on a Kubernetes object.
+// Returns empty string if the annotation doesn't exist or annotations map is nil.
+func GetAnnotation(obj client.Object, key string) string {
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		return ""
+	}
+
+	return annotations[key]
+}
+
+// HasAnnotation checks if a Kubernetes object has a specific annotation with a non-empty value.
+func HasAnnotation(obj client.Object, key string) bool {
+	return GetAnnotation(obj, key) != ""
+}

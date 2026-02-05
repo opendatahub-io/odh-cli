@@ -81,3 +81,123 @@ func TestIsManaged(t *testing.T) {
 		})
 	}
 }
+
+func TestGetAnnotation(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		key         string
+		expected    string
+	}{
+		{
+			name:        "nil annotations returns empty string",
+			annotations: nil,
+			key:         "test.key",
+			expected:    "",
+		},
+		{
+			name:        "empty annotations map returns empty string",
+			annotations: map[string]string{},
+			key:         "test.key",
+			expected:    "",
+		},
+		{
+			name: "key not present returns empty string",
+			annotations: map[string]string{
+				"other.key": "value",
+			},
+			key:      "test.key",
+			expected: "",
+		},
+		{
+			name: "key present returns value",
+			annotations: map[string]string{
+				"test.key": "test-value",
+			},
+			key:      "test.key",
+			expected: "test-value",
+		},
+		{
+			name: "key with empty value returns empty string",
+			annotations: map[string]string{
+				"test.key": "",
+			},
+			key:      "test.key",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-configmap",
+					Namespace:   "test-namespace",
+					Annotations: tt.annotations,
+				},
+			}
+
+			result := kube.GetAnnotation(configMap, tt.key)
+			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
+func TestHasAnnotation(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		key         string
+		expected    bool
+	}{
+		{
+			name:        "nil annotations returns false",
+			annotations: nil,
+			key:         "test.key",
+			expected:    false,
+		},
+		{
+			name: "key not present returns false",
+			annotations: map[string]string{
+				"other.key": "value",
+			},
+			key:      "test.key",
+			expected: false,
+		},
+		{
+			name: "key present with value returns true",
+			annotations: map[string]string{
+				"test.key": "test-value",
+			},
+			key:      "test.key",
+			expected: true,
+		},
+		{
+			name: "key present with empty value returns false",
+			annotations: map[string]string{
+				"test.key": "",
+			},
+			key:      "test.key",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-configmap",
+					Namespace:   "test-namespace",
+					Annotations: tt.annotations,
+				},
+			}
+
+			result := kube.HasAnnotation(configMap, tt.key)
+			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
