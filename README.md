@@ -37,6 +37,19 @@ kubectl-odh lint --target-version 3.3.0
 
 Available tools: `kubectl` (latest stable), `oc` (latest stable), `wget`, `curl`, `tar`, `gzip`, `bash`
 
+**Token Authentication:**
+
+For environments where you have a token and server URL instead of a kubeconfig file:
+
+```bash
+podman run --rm -ti \
+  quay.io/lburgazzoli/odh-cli:latest \
+  lint \
+  --target-version 3.3.0 \
+  --token=sha256~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --server=https://api.my-cluster.p3.openshiftapps.com:6443
+```
+
 ### Using Go Run (No Installation Required)
 
 If you have Go installed, you can run the CLI directly from GitHub without cloning:
@@ -53,6 +66,16 @@ go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest lint --target-version 3
 ```
 
 > **Note:** Replace `@latest` with `@v1.2.3` to run a specific version, or `@main` for the latest development version.
+
+**Token Authentication:**
+
+```bash
+go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest \
+  lint \
+  --target-version 3.3.0 \
+  --token=sha256~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --server=https://api.my-cluster.p3.openshiftapps.com:6443
+```
 
 **Available commands:**
 - `lint` - Validate cluster configuration and assess upgrade readiness
