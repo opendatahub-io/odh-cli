@@ -13,14 +13,11 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-const (
-	configMapName          = "kueue-manager-config"
-	annotationManagedKey   = "opendatahub.io/managed"
-	annotationManagedFalse = "false"
-)
+const configMapName = "kueue-manager-config"
 
 // ConfigMapManagedCheck validates that kueue-manager-config ConfigMap is managed by the operator.
 // If the ConfigMap has the annotation opendatahub.io/managed=false, the migration to 3.x will
@@ -92,22 +89,19 @@ func (c *ConfigMapManagedCheck) Validate(
 		return dr, nil
 	}
 
-	// Check annotation on the ConfigMap
-	annotations := configMap.GetAnnotations()
-	managedValue := annotations[annotationManagedKey]
-
 	if target.TargetVersion != nil {
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
 	}
 
-	if managedValue == annotationManagedFalse {
+	// Check if ConfigMap is managed using the kube helper
+	if !kube.IsManaged(configMap) {
 		// ConfigMap has managed=false - advisory warning (non-blocking)
 		results.SetCondition(dr, check.NewCondition(
 			check.ConditionTypeConfigured,
 			metav1.ConditionFalse,
 			check.ReasonConfigurationInvalid,
-			"ConfigMap %s/%s has annotation %s=%s - migration will not update this ConfigMap and it may become out of sync with operator defaults",
-			applicationsNamespace, configMapName, annotationManagedKey, annotationManagedFalse,
+			"ConfigMap %s/%s has annotation %s=false - migration will not update this ConfigMap and it may become out of sync with operator defaults",
+			applicationsNamespace, configMapName, kube.AnnotationManaged,
 			check.WithImpact(result.ImpactAdvisory),
 		))
 
@@ -117,7 +111,7 @@ func (c *ConfigMapManagedCheck) Validate(
 	// ConfigMap exists without managed=false annotation - check passes
 	results.SetCompatibilitySuccessf(dr,
 		"ConfigMap %s/%s is managed by operator (annotation %s not set to false)",
-		applicationsNamespace, configMapName, annotationManagedKey)
+		applicationsNamespace, configMapName, kube.AnnotationManaged)
 
 	return dr, nil
 }

@@ -2,7 +2,6 @@ package kserve
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,17 +13,12 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
+	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-const (
-	// inferenceServiceConfigName is the name of the KServe configuration ConfigMap.
-	inferenceServiceConfigName = "inferenceservice-config"
-
-	// managedAnnotationFalse is the value indicating the resource is not managed.
-	managedAnnotationFalse = "false"
-)
+// inferenceServiceConfigName is the name of the KServe configuration ConfigMap.
+const inferenceServiceConfigName = "inferenceservice-config"
 
 // InferenceServiceConfigCheck validates that the inferenceservice-config ConfigMap
 // is managed by the operator before upgrading to 3.x.
@@ -99,31 +93,19 @@ func (c *InferenceServiceConfigCheck) Validate(
 		return dr, nil
 	}
 
-	// Check the opendatahub.io/managed annotation
-	managedValue, err := jq.Query[string](configMap, `.metadata.annotations["opendatahub.io/managed"]`)
-	if err != nil && !errors.Is(err, jq.ErrNotFound) {
-		return nil, fmt.Errorf("querying managed annotation: %w", err)
-	}
-
-	// No annotation means it's managed by default
-	if errors.Is(err, jq.ErrNotFound) {
-		managedValue = ""
-	}
-
-	// Add annotation for tracking
-	dr.Annotations[check.AnnotationInferenceServiceConfigManaged] = managedValue
 	if target.TargetVersion != nil {
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
 	}
 
-	// Check if ConfigMap is explicitly not managed
-	if managedValue == managedAnnotationFalse {
+	// Check if ConfigMap is managed using the kube helper
+	if !kube.IsManaged(configMap) {
 		// ConfigMap is not managed - advisory warning (non-blocking)
 		results.SetCondition(dr, check.NewCondition(
 			check.ConditionTypeConfigured,
 			metav1.ConditionFalse,
-			check.ReasonConfigurationUnmanaged,
-			"inferenceservice-config ConfigMap has opendatahub.io/managed=false - migration will not update it and configuration may become out of sync after upgrade to RHOAI 3.x",
+			check.ReasonConfigurationInvalid,
+			"inferenceservice-config ConfigMap has %s=false - migration will not update it and configuration may become out of sync after upgrade to RHOAI 3.x",
+			kube.AnnotationManaged,
 			check.WithImpact(result.ImpactAdvisory),
 		))
 

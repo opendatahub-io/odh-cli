@@ -165,12 +165,11 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedFalse(t *testing.T) {
 	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(check.ConditionTypeConfigured),
 		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonConfigurationUnmanaged),
-		"Message": And(ContainSubstring("managed=false"), ContainSubstring("out of sync")),
+		"Reason":  Equal(check.ReasonConfigurationInvalid),
+		"Message": And(ContainSubstring("opendatahub.io/managed"), ContainSubstring("=false"), ContainSubstring("out of sync")),
 	}))
 	// Verify it's advisory (non-blocking)
 	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
-	g.Expect(checkResult.Annotations).To(HaveKeyWithValue(check.AnnotationInferenceServiceConfigManaged, "false"))
 }
 
 func TestInferenceServiceConfigCheck_ConfigMapManagedTrue(t *testing.T) {
@@ -234,7 +233,6 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedTrue(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionCompatible),
 		"Message": ContainSubstring("managed by operator"),
 	}))
-	g.Expect(checkResult.Annotations).To(HaveKeyWithValue(check.AnnotationInferenceServiceConfigManaged, "true"))
 }
 
 func TestInferenceServiceConfigCheck_ConfigMapNoAnnotation(t *testing.T) {
@@ -295,8 +293,6 @@ func TestInferenceServiceConfigCheck_ConfigMapNoAnnotation(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionCompatible),
 		"Message": ContainSubstring("managed by operator"),
 	}))
-	// Empty annotation value when not present
-	g.Expect(checkResult.Annotations).To(HaveKeyWithValue(check.AnnotationInferenceServiceConfigManaged, ""))
 }
 
 func TestInferenceServiceConfigCheck_ConfigMapEmptyAnnotations(t *testing.T) {
