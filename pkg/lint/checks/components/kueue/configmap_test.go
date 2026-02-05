@@ -108,7 +108,7 @@ func TestConfigMapManagedCheck_DSCINoNamespace(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create DSCI without applicationsNamespace
+	// Create DSCI without applicationsNamespace - treated as NotFound since namespace is required
 	dsci := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.DSCInitialization.APIVersion(),
@@ -142,13 +142,15 @@ func TestConfigMapManagedCheck_DSCINoNamespace(t *testing.T) {
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)
 
+	// When applicationsNamespace is not set, the helper returns NotFound,
+	// which results in DSCInitializationNotFound being returned.
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(dr.Status.Conditions).To(HaveLen(1))
 	g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("applicationsNamespace not set"),
+		"Type":    Equal(check.ConditionTypeAvailable),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonResourceNotFound),
+		"Message": ContainSubstring("No DSCInitialization"),
 	}))
 }
 

@@ -2,7 +2,6 @@ package kueue
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,7 +13,6 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
@@ -58,35 +56,16 @@ func (c *ConfigMapManagedCheck) Validate(
 ) (*result.DiagnosticResult, error) {
 	dr := c.NewResult()
 
-	// Get DSCInitialization to find applications namespace
-	dsci, err := target.Client.GetDSCInitialization(ctx)
-	switch {
-	case apierrors.IsNotFound(err):
-		return results.DSCInitializationNotFound(
-			string(c.Group()), c.Kind, c.CheckType, c.Description(),
-		), nil
-	case err != nil:
-		return nil, fmt.Errorf("getting DSCInitialization: %w", err)
-	}
-
-	// Query applications namespace from DSCI
-	applicationsNamespace, err := jq.Query[string](dsci, ".spec.applicationsNamespace")
+	// Get the applications namespace from DSCI
+	applicationsNamespace, err := target.Client.GetApplicationsNamespace(ctx)
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			results.SetCompatibilitySuccessf(dr,
-				"DSCInitialization found but applicationsNamespace not set - cannot check ConfigMap")
-
-			return dr, nil
+		if apierrors.IsNotFound(err) {
+			return results.DSCInitializationNotFound(
+				string(c.Group()), c.Kind, c.CheckType, c.Description(),
+			), nil
 		}
 
-		return nil, fmt.Errorf("querying applicationsNamespace: %w", err)
-	}
-
-	if applicationsNamespace == "" {
-		results.SetCompatibilitySuccessf(dr,
-			"DSCInitialization applicationsNamespace is empty - cannot check ConfigMap")
-
-		return dr, nil
+		return nil, fmt.Errorf("getting applications namespace: %w", err)
 	}
 
 	// Check if ConfigMap exists in that namespace

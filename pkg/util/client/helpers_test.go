@@ -6,6 +6,7 @@ import (
 
 	"github.com/onsi/gomega/types"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -361,4 +362,136 @@ func TestListResources_ClusterScoped(t *testing.T) {
 // In real usage, ListMetadata works correctly with proper Kubernetes API server.
 func TestListMetadata_NamespaceScoped(t *testing.T) {
 	t.Skip("Skipping ListMetadata test due to fake client limitations")
+}
+
+// createDSCInitialization creates a DSCInitialization object with the given applications namespace.
+func createDSCInitialization(applicationsNamespace string) runtime.Object {
+	dsci := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "dscinitialization.opendatahub.io/v1",
+			"kind":       "DSCInitialization",
+			"metadata": map[string]any{
+				"name": "default-dsci",
+			},
+		},
+	}
+
+	if applicationsNamespace != "" {
+		dsci.Object["spec"] = map[string]any{
+			"applicationsNamespace": applicationsNamespace,
+		}
+	}
+
+	return dsci
+}
+
+// createDSCInitializationWithEmptySpec creates a DSCI with spec but no applicationsNamespace.
+func createDSCInitializationWithEmptySpec() runtime.Object {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "dscinitialization.opendatahub.io/v1",
+			"kind":       "DSCInitialization",
+			"metadata": map[string]any{
+				"name": "default-dsci",
+			},
+			"spec": map[string]any{
+				"otherField": "value",
+			},
+		},
+	}
+}
+
+func TestGetApplicationsNamespace_DSCINotFound(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+
+	// Create fake client with custom list kinds for DSCInitialization
+	gvrListMap := map[schema.GroupVersionResource]string{
+		resources.DSCInitialization.GVR(): "DSCInitializationList",
+	}
+
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrListMap)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
+
+	client := &Client{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	}
+
+	namespace, err := client.GetApplicationsNamespace(ctx)
+
+	g.Expect(err).To(Satisfy(apierrors.IsNotFound))
+	g.Expect(namespace).To(BeEmpty())
+}
+
+func TestGetApplicationsNamespace_NamespaceSet(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	const expectedNamespace = "my-odh-namespace"
+
+	dsci := createDSCInitialization(expectedNamespace)
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+
+	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme, dsci)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, dsci)
+
+	client := &Client{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	}
+
+	namespace, err := client.GetApplicationsNamespace(ctx)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(namespace).To(Equal(expectedNamespace))
+}
+
+func TestGetApplicationsNamespace_NamespaceNotSet(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	dsci := createDSCInitializationWithEmptySpec()
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+
+	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme, dsci)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, dsci)
+
+	client := &Client{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	}
+
+	namespace, err := client.GetApplicationsNamespace(ctx)
+
+	g.Expect(err).To(Satisfy(apierrors.IsNotFound))
+	g.Expect(namespace).To(BeEmpty())
+}
+
+func TestGetApplicationsNamespace_EmptyNamespace(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	// Create DSCI with empty applicationsNamespace
+	dsci := createDSCInitialization("")
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+
+	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme, dsci)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, dsci)
+
+	client := &Client{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	}
+
+	namespace, err := client.GetApplicationsNamespace(ctx)
+
+	g.Expect(err).To(Satisfy(apierrors.IsNotFound))
+	g.Expect(namespace).To(BeEmpty())
 }

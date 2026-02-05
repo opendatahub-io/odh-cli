@@ -22,9 +22,6 @@ const (
 	// inferenceServiceConfigName is the name of the KServe configuration ConfigMap.
 	inferenceServiceConfigName = "inferenceservice-config"
 
-	// defaultApplicationsNamespace is the default namespace when not specified in DSCI.
-	defaultApplicationsNamespace = "opendatahub"
-
 	// managedAnnotationFalse is the value indicating the resource is not managed.
 	managedAnnotationFalse = "false"
 )
@@ -61,29 +58,14 @@ func (c *InferenceServiceConfigCheck) Validate(
 ) (*result.DiagnosticResult, error) {
 	dr := c.NewResult()
 
-	// Get DSCInitialization to find the applications namespace
-	dsci, err := target.Client.GetDSCInitialization(ctx)
-	switch {
-	case apierrors.IsNotFound(err):
-		return results.DSCInitializationNotFound(string(c.Group()), c.Kind, c.CheckType, c.Description()), nil
-	case err != nil:
-		return nil, fmt.Errorf("getting DSCInitialization: %w", err)
-	}
+	// Get the applications namespace from DSCI
+	applicationsNamespace, err := target.Client.GetApplicationsNamespace(ctx)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return results.DSCInitializationNotFound(string(c.Group()), c.Kind, c.CheckType, c.Description()), nil
+		}
 
-	// Query the applications namespace from DSCI
-	applicationsNamespace, err := jq.Query[string](dsci, ".spec.applicationsNamespace")
-	if err != nil && !errors.Is(err, jq.ErrNotFound) {
-		return nil, fmt.Errorf("querying applicationsNamespace: %w", err)
-	}
-
-	// Use default namespace if not specified or not found
-	if errors.Is(err, jq.ErrNotFound) {
-		applicationsNamespace = defaultApplicationsNamespace
-	}
-
-	// Handle empty string (treat as default)
-	if applicationsNamespace == "" {
-		applicationsNamespace = defaultApplicationsNamespace
+		return nil, fmt.Errorf("getting applications namespace: %w", err)
 	}
 
 	// Get the inferenceservice-config ConfigMap from the applications namespace

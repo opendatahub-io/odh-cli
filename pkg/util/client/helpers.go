@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util"
+	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 // DiscoverGVRsConfig configures CRD discovery.
@@ -233,6 +235,38 @@ func (c *Client) GetDataScienceCluster(ctx context.Context) (*unstructured.Unstr
 // GetDSCInitialization is a convenience wrapper for retrieving the cluster's DSCInitialization resource.
 func (c *Client) GetDSCInitialization(ctx context.Context) (*unstructured.Unstructured, error) {
 	return c.GetSingleton(ctx, resources.DSCInitialization)
+}
+
+// GetApplicationsNamespace retrieves the applications namespace from DSCInitialization.
+// Returns the namespace string and nil error if found. Returns empty string and NotFound
+// error if DSCI doesn't exist or if applicationsNamespace is not set or empty. Returns
+// empty string and wrapped error for other failures.
+func (c *Client) GetApplicationsNamespace(ctx context.Context) (string, error) {
+	dsci, err := c.GetDSCInitialization(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	namespace, err := jq.Query[string](dsci, ".spec.applicationsNamespace")
+	if err != nil {
+		if errors.Is(err, jq.ErrNotFound) {
+			return "", apierrors.NewNotFound(
+				schema.GroupResource{Resource: "applicationsNamespace"},
+				"spec.applicationsNamespace",
+			)
+		}
+
+		return "", fmt.Errorf("querying applicationsNamespace: %w", err)
+	}
+
+	if namespace == "" {
+		return "", apierrors.NewNotFound(
+			schema.GroupResource{Resource: "applicationsNamespace"},
+			"spec.applicationsNamespace",
+		)
+	}
+
+	return namespace, nil
 }
 
 // GetConfig holds options for customizing Get operations (e.g., namespace scope).
