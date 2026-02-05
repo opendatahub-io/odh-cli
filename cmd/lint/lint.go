@@ -74,11 +74,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 		ErrOut: root.ErrOrStderr(),
 	}
 
-	// Create command using new pattern (FR-014: SharedOptions initialized internally)
-	command := lintpkg.NewCommand(streams)
-
-	// Use the ConfigFlags from parent instead of creating new ones
-	command.ConfigFlags = flags
+	// Create command with ConfigFlags from parent to ensure CLI auth flags are used
+	command := lintpkg.NewCommand(streams, flags)
 
 	cmd := &cobra.Command{
 		Use:           cmdName,

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/lburgazzoli/odh-cli/pkg/cmd"
@@ -13,6 +14,11 @@ import (
 
 	. "github.com/onsi/gomega"
 )
+
+// testConfigFlags creates ConfigFlags for testing.
+func testConfigFlags() *genericclioptions.ConfigFlags {
+	return genericclioptions.NewConfigFlags(true)
+}
 
 // T022: Test lint mode (no --target-version flag).
 func TestLintMode_NoVersionFlag(t *testing.T) {
@@ -27,7 +33,7 @@ func TestLintMode_NoVersionFlag(t *testing.T) {
 		}
 
 		// Use current non-deprecated constructor
-		cmd := lint.NewCommand(streams)
+		cmd := lint.NewCommand(streams, testConfigFlags())
 
 		// No --target-version flag set (lint mode)
 		g.Expect(cmd.TargetVersion).To(BeEmpty())
@@ -51,7 +57,7 @@ func TestUpgradeMode_WithVersionFlag(t *testing.T) {
 		}
 
 		// Use current non-deprecated constructor
-		cmd := lint.NewCommand(streams)
+		cmd := lint.NewCommand(streams, testConfigFlags())
 
 		// Set --target-version flag (upgrade mode)
 		cmd.TargetVersion = "3.0.0"
@@ -75,7 +81,7 @@ func TestLintMode_CheckTargetVersionMatches(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams)
+		command := lint.NewCommand(streams, testConfigFlags())
 		g.Expect(command).ToNot(BeNil())
 
 		// Verify no --target-version flag set (lint mode)
@@ -101,7 +107,7 @@ func TestUpgradeMode_CheckTargetVersionDiffers(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams)
+		command := lint.NewCommand(streams, testConfigFlags())
 		g.Expect(command).ToNot(BeNil())
 
 		// Set --target-version flag (upgrade mode)
@@ -133,12 +139,12 @@ func TestIntegration_LintAndUpgradeModes(t *testing.T) {
 		}
 
 		// Test lint mode configuration
-		lintCmd := lint.NewCommand(streams)
+		lintCmd := lint.NewCommand(streams, testConfigFlags())
 		g.Expect(lintCmd).ToNot(BeNil())
 		g.Expect(lintCmd.TargetVersion).To(BeEmpty())
 
 		// Test upgrade mode configuration
-		upgradeCmd := lint.NewCommand(streams)
+		upgradeCmd := lint.NewCommand(streams, testConfigFlags())
 		upgradeCmd.TargetVersion = "3.0.0"
 		g.Expect(upgradeCmd.TargetVersion).To(Equal("3.0.0"))
 
@@ -178,7 +184,7 @@ func TestCommand_AddFlags(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams)
+		command := lint.NewCommand(streams, testConfigFlags())
 		g.Expect(command).ToNot(BeNil())
 
 		// Create a FlagSet and call AddFlags
@@ -207,7 +213,7 @@ func TestCommand_ImplementsInterface(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams)
+		command := lint.NewCommand(streams, testConfigFlags())
 		g.Expect(command).ToNot(BeNil())
 
 		// Verify interface implementation at compile time
@@ -227,7 +233,7 @@ func TestCommand_NewCommand(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams)
+		command := lint.NewCommand(streams, testConfigFlags())
 		g.Expect(command).ToNot(BeNil())
 
 		// Per FR-014, SharedOptions should be initialized internally
@@ -238,9 +244,9 @@ func TestCommand_NewCommand(t *testing.T) {
 	})
 }
 
-// T058: Test struct-based initialization.
-func TestCommand_StructBasedInitialization(t *testing.T) {
-	t.Run("struct-based initialization should set all fields", func(t *testing.T) {
+// T058: Test functional options with NewCommand.
+func TestCommand_FunctionalOptions(t *testing.T) {
+	t.Run("WithTargetVersion should set target version", func(t *testing.T) {
 		g := NewWithT(t)
 
 		var out, errOut bytes.Buffer
@@ -250,71 +256,12 @@ func TestCommand_StructBasedInitialization(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		// This will fail until T062 (CommandOptions struct) is implemented
-		opts := lint.CommandOptions{
-			Streams:       streams,
-			TargetVersion: "3.0.0",
-		}
-
-		// This will fail until T066 (NewCommand accepting CommandOptions) is implemented
-		command := lint.NewCommandWithOptions(opts)
-		g.Expect(command).ToNot(BeNil())
-		g.Expect(command.TargetVersion).To(Equal("3.0.0"))
-		g.Expect(command.IO).ToNot(BeNil())
-	})
-}
-
-// T059: Test functional options initialization.
-func TestCommand_FunctionalOptionsInitialization(t *testing.T) {
-	t.Run("functional options should set all fields", func(t *testing.T) {
-		g := NewWithT(t)
-
-		var out, errOut bytes.Buffer
-		streams := genericiooptions.IOStreams{
-			In:     &bytes.Buffer{},
-			Out:    &out,
-			ErrOut: &errOut,
-		}
-
-		// This will fail until T064-T067 are implemented
-		command := lint.NewCommandWithFunctionalOptions(
-			lint.WithStreams(streams),
+		command := lint.NewCommand(streams, testConfigFlags(),
 			lint.WithTargetVersion("3.0.0"),
 		)
 
 		g.Expect(command).ToNot(BeNil())
 		g.Expect(command.TargetVersion).To(Equal("3.0.0"))
 		g.Expect(command.IO).ToNot(BeNil())
-	})
-}
-
-// T060: Test both patterns produce identical state.
-func TestCommand_InitializationPatternsEquivalence(t *testing.T) {
-	t.Run("struct-based and functional options should produce identical state", func(t *testing.T) {
-		g := NewWithT(t)
-
-		var out, errOut bytes.Buffer
-		streams := genericiooptions.IOStreams{
-			In:     &bytes.Buffer{},
-			Out:    &out,
-			ErrOut: &errOut,
-		}
-
-		// Struct-based initialization
-		structCmd := lint.NewCommandWithOptions(lint.CommandOptions{
-			Streams:       streams,
-			TargetVersion: "3.0.0",
-		})
-
-		// Functional options initialization
-		funcCmd := lint.NewCommandWithFunctionalOptions(
-			lint.WithStreams(streams),
-			lint.WithTargetVersion("3.0.0"),
-		)
-
-		// Verify identical state
-		g.Expect(funcCmd.TargetVersion).To(Equal(structCmd.TargetVersion))
-		g.Expect(funcCmd.IO).ToNot(BeNil())
-		g.Expect(structCmd.IO).ToNot(BeNil())
 	})
 }

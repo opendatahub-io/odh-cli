@@ -8,6 +8,7 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/spf13/pflag"
 
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/lburgazzoli/odh-cli/pkg/cmd"
@@ -58,8 +59,14 @@ type Command struct {
 
 // NewCommand creates a new Command with defaults.
 // Per FR-014, SharedOptions are initialized internally.
-func NewCommand(streams genericiooptions.IOStreams) *Command {
-	shared := NewSharedOptions(streams)
+// ConfigFlags must be provided to ensure CLI auth flags are properly propagated.
+// Optional configuration can be provided via functional options (e.g., WithTargetVersion).
+func NewCommand(
+	streams genericiooptions.IOStreams,
+	configFlags *genericclioptions.ConfigFlags,
+	options ...CommandOption,
+) *Command {
+	shared := NewSharedOptions(streams, configFlags)
 	registry := check.NewRegistry()
 
 	// Explicitly register all checks (no global state, full test isolation)
@@ -87,10 +94,17 @@ func NewCommand(streams genericiooptions.IOStreams) *Command {
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 
-	return &Command{
+	c := &Command{
 		SharedOptions: shared,
 		registry:      registry,
 	}
+
+	// Apply functional options
+	for _, opt := range options {
+		opt(c)
+	}
+
+	return c
 }
 
 // AddFlags registers command-specific flags with the provided FlagSet.

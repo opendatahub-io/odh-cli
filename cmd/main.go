@@ -12,12 +12,18 @@ import (
 )
 
 func main() {
-	flags := genericclioptions.NewConfigFlags(true)
+	flags := genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag()
 
 	cmd := &cobra.Command{
 		Use:   "kubectl-odh",
 		Short: "kubectl plugin for ODH/RHOAI",
 	}
+
+	// Add kubectl-style flags to root command (inherited by subcommands).
+	// This exposes standard authentication flags: --server, --username, --password,
+	// --token, --kubeconfig, --context, --cluster, --certificate-authority,
+	// --client-certificate, --client-key, --insecure-skip-tls-verify, etc.
+	flags.AddFlags(cmd.PersistentFlags())
 
 	version.AddCommand(cmd, flags)
 	lint.AddCommand(cmd, flags)
