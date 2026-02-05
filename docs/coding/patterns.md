@@ -187,3 +187,57 @@ err := client.List(ctx, objectList)  // No namespace restriction
 **Rationale:** OpenShift AI is a cluster-wide platform. Operations often require visibility into all namespaces.
 
 For lint command requirements, see [../lint/writing-checks.md](../lint/writing-checks.md#cluster-wide-scope).
+
+## Metadata-Only Resource Retrieval
+
+When you only need resource metadata (name, namespace, labels, annotations) and not spec/status fields, use `PartialObjectMetadata` for efficient retrieval.
+
+**Use `Client.ListMetadata()` for discovery:**
+```go
+import "github.com/lburgazzoli/odh-cli/pkg/resources"
+
+// Efficiently list only metadata (no spec/status)
+notebooks, err := client.ListMetadata(ctx, resources.Notebook)
+if err != nil {
+    return fmt.Errorf("listing notebooks: %w", err)
+}
+
+for _, nb := range notebooks {
+    // Access metadata fields
+    name := nb.GetName()
+    namespace := nb.GetNamespace()
+    annotations := nb.GetAnnotations()
+}
+```
+
+**When to use metadata-only retrieval:**
+- Checking for resource existence
+- Reading annotations or labels
+- Building lists of resource references
+- Counting resources by type
+
+**When full object retrieval is required:**
+- Accessing `.spec` fields (configuration)
+- Accessing `.status` fields (current state)
+- Using JQ queries on nested structures
+
+**Creating PartialObjectMetadata for output:**
+```go
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+obj := metav1.PartialObjectMetadata{
+    TypeMeta: resources.Notebook.TypeMeta(),
+    ObjectMeta: metav1.ObjectMeta{
+        Namespace: "my-namespace",
+        Name:      "my-notebook",
+        Annotations: map[string]string{
+            "context-key": "context-value",
+        },
+    },
+}
+```
+
+**Benefits:**
+- Reduced memory usage (no spec/status data)
+- Faster API responses (server-side filtering)
+- Cleaner code when full object not needed

@@ -502,6 +502,86 @@ for _, item := range notebooks.Items {
 }
 ```
 
+## Efficient Resource Discovery
+
+When discovering resources in lint checks, choose the appropriate retrieval method based on what data you need.
+
+### Using ListMetadata for Annotation/Label Checks
+
+When you only need metadata (annotations, labels, name, namespace), use `ListMetadata()`:
+
+```go
+// ✓ CORRECT: Only need annotations - use ListMetadata
+notebooks, err := target.Client.ListMetadata(ctx, resources.Notebook)
+if err != nil {
+    return nil, fmt.Errorf("listing notebooks: %w", err)
+}
+
+for _, nb := range notebooks {
+    profileName := kube.GetAnnotation(nb, "notebooks.opendatahub.io/accelerator-name")
+    if profileName != "" {
+        // Process notebook with accelerator annotation
+    }
+}
+```
+
+### When Full Objects Are Required
+
+Use full object retrieval when you need spec or status fields:
+
+```go
+// ✓ CORRECT: Need spec fields - use List with unstructured
+dspas := &unstructured.UnstructuredList{}
+dspas.SetGroupVersionKind(resources.DataSciencePipelinesApplication.GVK())
+
+err := target.Client.List(ctx, dspas)
+if err != nil {
+    return nil, fmt.Errorf("listing DSPAs: %w", err)
+}
+
+for _, dspa := range dspas.Items {
+    // Need to check .spec.apiServer.managedPipelines.instructLab
+    instructLab, _ := jq.Query[bool](&dspa, ".spec.apiServer.managedPipelines.instructLab")
+}
+```
+
+### Populating ImpactedObjects
+
+The `DiagnosticResult.ImpactedObjects` field uses `[]metav1.PartialObjectMetadata`. Populate it with resource references and optional context annotations:
+
+```go
+func populateImpactedObjects(
+    dr *result.DiagnosticResult,
+    impactedItems []types.NamespacedName,
+) {
+    dr.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(impactedItems))
+
+    for _, item := range impactedItems {
+        obj := metav1.PartialObjectMetadata{
+            TypeMeta: resources.Notebook.TypeMeta(),
+            ObjectMeta: metav1.ObjectMeta{
+                Namespace: item.Namespace,
+                Name:      item.Name,
+                // Optional: Add context via annotations
+                Annotations: map[string]string{
+                    "status": "impacted",
+                },
+            },
+        }
+        dr.ImpactedObjects = append(dr.ImpactedObjects, obj)
+    }
+}
+```
+
+### Decision Guide
+
+| Need | Method | Returns |
+|------|--------|---------|
+| Name, namespace, labels, annotations | `ListMetadata()` | `[]*metav1.PartialObjectMetadata` |
+| Spec fields | `List()` with unstructured | `*unstructured.UnstructuredList` |
+| Status fields | `List()` with unstructured | `*unstructured.UnstructuredList` |
+| Mixed (some metadata, some spec) | `List()` full objects | `*unstructured.UnstructuredList` |
+
 ## Complete Example
 
 Here's a complete lint check implementation using BaseCheck and the Impact-based API:
