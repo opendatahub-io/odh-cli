@@ -37,7 +37,7 @@ func (c *RemovalCheck) CanApply(_ context.Context, target check.Target) bool {
 
 func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	// Note: No InState filter - we need to handle all states explicitly
-	return validate.Component(c, "modelmeshserving", target).
+	return validate.Component(c, target).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 			// Check if modelmesh is enabled (Managed or Unmanaged)
 			switch req.ManagementState {

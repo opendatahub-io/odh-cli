@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,27 +20,29 @@ import (
 // ComponentBuilder provides a fluent API for component-based validation.
 // It handles DSC fetching, component state filtering, and annotation population automatically.
 type ComponentBuilder struct {
-	check          check.Check
-	componentName  string
-	target         check.Target
-	requiredStates []string
+	check                     check.Check
+	componentName             string
+	target                    check.Target
+	requiredStates            []string
+	loadApplicationsNamespace bool
 }
 
 // Component creates a builder for component validation.
-// The componentName is the lowercase key under spec.components (e.g. "kueue", "kserve", "codeflare").
+// The component name is derived from c.CheckKind(), which should be the lowercase key
+// under spec.components (e.g. "kueue", "kserve", "codeflare").
 //
 // Example:
 //
-//	validate.Component(c, "codeflare", target).
+//	validate.Component(c, target).
 //	    InState(check.ManagementStateManaged, check.ManagementStateUnmanaged).
 //	    Run(ctx, func(ctx context.Context, req *ComponentRequest) error {
 //	        // Validation logic here
 //	        return nil
 //	    })
-func Component(c check.Check, name string, target check.Target) *ComponentBuilder {
+func Component(c check.Check, target check.Target) *ComponentBuilder {
 	return &ComponentBuilder{
 		check:         c,
-		componentName: name,
+		componentName: c.CheckKind(),
 		target:        target,
 	}
 }
@@ -62,20 +63,10 @@ type ComponentRequest struct {
 	// Client provides read-only access to the Kubernetes API.
 	Client client.Reader
 
-	// applicationsNamespace fields for lazy loading
-	applicationsNamespace     string
-	applicationsNamespaceErr  error
-	applicationsNamespaceOnce sync.Once
-}
-
-// ApplicationsNamespace returns the applications namespace from DSCI.
-// Lazily fetches on first call. Returns empty string and error if DSCI not found.
-func (r *ComponentRequest) ApplicationsNamespace(ctx context.Context) (string, error) {
-	r.applicationsNamespaceOnce.Do(func() {
-		r.applicationsNamespace, r.applicationsNamespaceErr = client.GetApplicationsNamespace(ctx, r.Client)
-	})
-
-	return r.applicationsNamespace, r.applicationsNamespaceErr
+	// ApplicationsNamespace is populated when WithApplicationsNamespace() is used.
+	// Empty string if not requested. If DSCI is not found, Run() returns early
+	// with a "not found" diagnostic result before calling the validation function.
+	ApplicationsNamespace string
 }
 
 // ComponentValidateFn is the validation function called after DSC is fetched and state is verified.
@@ -91,6 +82,16 @@ type ComponentValidateFn func(ctx context.Context, req *ComponentRequest) error
 //   - InState(check.ManagementStateManaged, check.ManagementStateUnmanaged) - validate when enabled
 func (b *ComponentBuilder) InState(states ...string) *ComponentBuilder {
 	b.requiredStates = states
+
+	return b
+}
+
+// WithApplicationsNamespace requests that ApplicationsNamespace be populated in the ComponentRequest.
+// This fetches the applications namespace from DSCI before calling the validation function.
+// If DSCI is not found, Run() returns early with a "not found" diagnostic result.
+// If not called, ApplicationsNamespace will be empty in the request.
+func (b *ComponentBuilder) WithApplicationsNamespace() *ComponentBuilder {
+	b.loadApplicationsNamespace = true
 
 	return b
 }
@@ -161,6 +162,21 @@ func (b *ComponentBuilder) Run(
 		DSC:             dsc,
 		ManagementState: state,
 		Client:          b.target.Client,
+	}
+
+	// Load applications namespace if requested
+	if b.loadApplicationsNamespace {
+		ns, nsErr := client.GetApplicationsNamespace(ctx, b.target.Client)
+		switch {
+		case apierrors.IsNotFound(nsErr):
+			results.SetDSCInitializationNotFound(dr)
+
+			return dr, nil
+		case nsErr != nil:
+			return nil, fmt.Errorf("getting applications namespace: %w", nsErr)
+		}
+
+		req.ApplicationsNamespace = ns
 	}
 
 	// Execute the validation function

@@ -48,52 +48,34 @@ func (c *ConfigMapManagedCheck) CanApply(_ context.Context, target check.Target)
 }
 
 func (c *ConfigMapManagedCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	return validate.Component(c, "kueue", target).
+	return validate.Component(c, target).
 		InState(check.ManagementStateManaged).
+		WithApplicationsNamespace().
 		Run(ctx, func(ctx context.Context, req *validate.ComponentRequest) error {
-			applicationsNamespace, err := req.ApplicationsNamespace(ctx)
+			res, err := req.Client.GetResourceMetadata(
+				ctx,
+				resources.ConfigMap,
+				configMapName,
+				client.InNamespace(req.ApplicationsNamespace),
+			)
+
 			switch {
 			case apierrors.IsNotFound(err):
-				results.SetDSCInitializationNotFound(req.Result)
-
-				return nil
-			case err != nil:
-				return fmt.Errorf("getting applications namespace: %w", err)
-			}
-
-			configMap, err := req.Client.GetResource(
-				ctx, resources.ConfigMap, configMapName, client.InNamespace(applicationsNamespace),
-			)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					results.SetCompatibilitySuccessf(req.Result,
-						"ConfigMap %s/%s not found - no action required", applicationsNamespace, configMapName)
-
-					return nil
-				}
-
-				return fmt.Errorf("getting ConfigMap %s/%s: %w", applicationsNamespace, configMapName, err)
-			}
-
-			if configMap == nil {
 				results.SetCompatibilitySuccessf(req.Result,
-					"ConfigMap %s/%s not accessible - no action required", applicationsNamespace, configMapName)
-
-				return nil
-			}
-
-			switch {
-			case kube.IsManaged(configMap):
+					"ConfigMap %s/%s not found - no action required", req.ApplicationsNamespace, configMapName)
+			case err != nil:
+				return fmt.Errorf("getting ConfigMap %s/%s: %w", req.ApplicationsNamespace, configMapName, err)
+			case kube.IsManaged(res):
 				results.SetCompatibilitySuccessf(req.Result,
 					"ConfigMap %s/%s is managed by operator (annotation %s not set to false)",
-					applicationsNamespace, configMapName, kube.AnnotationManaged)
+					req.ApplicationsNamespace, configMapName, kube.AnnotationManaged)
 			default:
 				results.SetCondition(req.Result, check.NewCondition(
 					check.ConditionTypeConfigured,
 					metav1.ConditionFalse,
 					check.ReasonConfigurationInvalid,
 					"ConfigMap %s/%s has annotation %s=false - migration will not update this ConfigMap and it may become out of sync with operator defaults",
-					applicationsNamespace, configMapName, kube.AnnotationManaged,
+					req.ApplicationsNamespace, configMapName, kube.AnnotationManaged,
 					check.WithImpact(result.ImpactAdvisory),
 				))
 			}

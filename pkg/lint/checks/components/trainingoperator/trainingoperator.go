@@ -37,7 +37,7 @@ func (c *DeprecationCheck) CanApply(_ context.Context, target check.Target) bool
 
 func (c *DeprecationCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	// Note: No InState filter - we need to handle all states explicitly
-	return validate.Component(c, "trainingoperator", target).
+	return validate.Component(c, target).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 			// Check if trainingoperator is enabled (Managed or Unmanaged)
 			switch req.ManagementState {

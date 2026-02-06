@@ -44,7 +44,7 @@ func TestKServeServerlessRemovalCheck_NoDSC(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -93,7 +93,7 @@ func TestKServeServerlessRemovalCheck_KServeNotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -142,7 +142,7 @@ func TestKServeServerlessRemovalCheck_KServeNotManaged(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -192,7 +192,7 @@ func TestKServeServerlessRemovalCheck_ServerlessNotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -244,7 +244,7 @@ func TestKServeServerlessRemovalCheck_ServerlessManagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -300,7 +300,7 @@ func TestKServeServerlessRemovalCheck_ServerlessUnmanagedBlocking(t *testing.T) 
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -352,7 +352,7 @@ func TestKServeServerlessRemovalCheck_ServerlessRemovedReady(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kserveCheck := &kserve.ServerlessRemovalCheck{}
+	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

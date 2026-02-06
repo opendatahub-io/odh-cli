@@ -44,7 +44,7 @@ func TestKueueManagedRemovalCheck_NoDSC(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueCheck := &kueue.ManagedRemovalCheck{}
+	kueueCheck := kueue.NewManagedRemovalCheck()
 	result, err := kueueCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -93,7 +93,7 @@ func TestKueueManagedRemovalCheck_NotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueCheck := &kueue.ManagedRemovalCheck{}
+	kueueCheck := kueue.NewManagedRemovalCheck()
 	result, err := kueueCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -143,7 +143,7 @@ func TestKueueManagedRemovalCheck_ManagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueCheck := &kueue.ManagedRemovalCheck{}
+	kueueCheck := kueue.NewManagedRemovalCheck()
 	result, err := kueueCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -195,7 +195,7 @@ func TestKueueManagedRemovalCheck_UnmanagedAllowed(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueCheck := &kueue.ManagedRemovalCheck{}
+	kueueCheck := kueue.NewManagedRemovalCheck()
 	result, err := kueueCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -244,7 +244,7 @@ func TestKueueManagedRemovalCheck_RemovedAllowed(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueCheck := &kueue.ManagedRemovalCheck{}
+	kueueCheck := kueue.NewManagedRemovalCheck()
 	result, err := kueueCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

@@ -37,7 +37,7 @@ func (c *RemovalCheck) CanApply(_ context.Context, target check.Target) bool {
 
 // Validate executes the check against the provided target.
 func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	return validate.Component(c, "codeflare", target).
+	return validate.Component(c, target).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 			switch req.ManagementState {
 			case check.ManagementStateManaged:

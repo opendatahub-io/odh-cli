@@ -47,49 +47,26 @@ func (c *InferenceServiceConfigCheck) CanApply(_ context.Context, target check.T
 }
 
 func (c *InferenceServiceConfigCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	return validate.Component(c, "kserve", target).
+	return validate.Component(c, target).
 		InState(check.ManagementStateManaged).
+		WithApplicationsNamespace().
 		Run(ctx, func(ctx context.Context, req *validate.ComponentRequest) error {
-			applicationsNamespace, err := req.ApplicationsNamespace(ctx)
-			switch {
-			case apierrors.IsNotFound(err):
-				results.SetDSCInitializationNotFound(req.Result)
-
-				return nil
-			case err != nil:
-				return fmt.Errorf("getting applications namespace: %w", err)
-			}
-
-			configMap, err := req.Client.GetResource(
+			res, err := req.Client.GetResourceMetadata(
 				ctx,
 				resources.ConfigMap,
 				inferenceServiceConfigName,
-				client.InNamespace(applicationsNamespace),
+				client.InNamespace(req.ApplicationsNamespace),
 			)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					results.SetCompatibilitySuccessf(req.Result,
-						"inferenceservice-config ConfigMap not found in namespace %s - no migration needed",
-						applicationsNamespace,
-					)
-
-					return nil
-				}
-
-				return fmt.Errorf("getting inferenceservice-config ConfigMap: %w", err)
-			}
-
-			if configMap == nil {
-				results.SetCompatibilitySuccessf(req.Result,
-					"inferenceservice-config ConfigMap not found in namespace %s - no migration needed",
-					applicationsNamespace,
-				)
-
-				return nil
-			}
 
 			switch {
-			case kube.IsManaged(configMap):
+			case apierrors.IsNotFound(err):
+				results.SetCompatibilitySuccessf(req.Result,
+					"inferenceservice-config ConfigMap not found in namespace %s - no migration needed",
+					req.ApplicationsNamespace,
+				)
+			case err != nil:
+				return fmt.Errorf("getting inferenceservice-config ConfigMap: %w", err)
+			case kube.IsManaged(res):
 				results.SetCompatibilitySuccessf(req.Result,
 					"inferenceservice-config ConfigMap is managed by operator - ready for RHOAI 3.x upgrade",
 				)

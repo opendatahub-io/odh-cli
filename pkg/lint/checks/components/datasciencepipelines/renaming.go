@@ -37,7 +37,7 @@ func (c *RenamingCheck) CanApply(_ context.Context, target check.Target) bool {
 }
 
 func (c *RenamingCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	return validate.Component(c, "datasciencepipelines", target).
+	return validate.Component(c, target).
 		InState(check.ManagementStateManaged).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 			results.SetCondition(req.Result, check.NewCondition(

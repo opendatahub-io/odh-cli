@@ -76,7 +76,7 @@ func TestComponentBuilder(t *testing.T) {
 		}
 
 		chk := newTestCheck()
-		dr, err := validate.Component(chk, "codeflare", target).
+		dr, err := validate.Component(chk, target).
 			Run(ctx, func(_ context.Context, _ *validate.ComponentRequest) error {
 				t.Fatal("validation function should not be called when DSC not found")
 
@@ -104,7 +104,7 @@ func TestComponentBuilder(t *testing.T) {
 		}
 
 		chk := newTestCheck()
-		dr, err := validate.Component(chk, "codeflare", target).
+		dr, err := validate.Component(chk, target).
 			InState(check.ManagementStateManaged, check.ManagementStateUnmanaged).
 			Run(ctx, func(_ context.Context, _ *validate.ComponentRequest) error {
 				t.Fatal("validation function should not be called when state not in required states")
@@ -135,7 +135,7 @@ func TestComponentBuilder(t *testing.T) {
 
 		validationCalled := false
 		chk := newTestCheck()
-		dr, err := validate.Component(chk, "codeflare", target).
+		dr, err := validate.Component(chk, target).
 			InState(check.ManagementStateManaged, check.ManagementStateUnmanaged).
 			Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 				validationCalled = true
@@ -174,7 +174,7 @@ func TestComponentBuilder(t *testing.T) {
 
 		validationCalled := false
 		chk := newTestCheck()
-		dr, err := validate.Component(chk, "codeflare", target).
+		dr, err := validate.Component(chk, target).
 			Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 				validationCalled = true
 				g.Expect(req.ManagementState).To(Equal(check.ManagementStateRemoved))
@@ -202,7 +202,7 @@ func TestComponentBuilder(t *testing.T) {
 
 		expectedErr := errors.New("validation error")
 		chk := newTestCheck()
-		_, err := validate.Component(chk, "codeflare", target).
+		_, err := validate.Component(chk, target).
 			InState(check.ManagementStateManaged).
 			Run(ctx, func(_ context.Context, _ *validate.ComponentRequest) error {
 				return expectedErr

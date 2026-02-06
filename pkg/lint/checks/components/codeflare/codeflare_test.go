@@ -44,7 +44,7 @@ func TestCodeFlareRemovalCheck_NoDSC(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	codeflareCheck := &codeflare.RemovalCheck{}
+	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -93,7 +93,7 @@ func TestCodeFlareRemovalCheck_NotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	codeflareCheck := &codeflare.RemovalCheck{}
+	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -143,7 +143,7 @@ func TestCodeFlareRemovalCheck_ManagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	codeflareCheck := &codeflare.RemovalCheck{}
+	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -196,7 +196,7 @@ func TestCodeFlareRemovalCheck_UnmanagedReady(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	codeflareCheck := &codeflare.RemovalCheck{}
+	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -245,7 +245,7 @@ func TestCodeFlareRemovalCheck_RemovedReady(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	codeflareCheck := &codeflare.RemovalCheck{}
+	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

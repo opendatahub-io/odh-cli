@@ -207,6 +207,52 @@ func (c *defaultClient) GetResource(ctx context.Context, resourceType resources.
 	return c.Get(ctx, resourceType.GVR(), name, opts...)
 }
 
+// GetResourceMetadata retrieves only the metadata of a single resource.
+// Use this when you only need name, namespace, labels, or annotations.
+// More efficient than GetResource when spec/status fields are not needed.
+// Falls back to GetResource when metadata client is not available (e.g., in tests).
+func (c *defaultClient) GetResourceMetadata(ctx context.Context, resourceType resources.ResourceType, name string, opts ...GetOption) (*metav1.PartialObjectMetadata, error) {
+	cfg := &GetConfig{}
+	util.ApplyOptions(cfg, opts...)
+
+	gvr := resourceType.GVR()
+
+	// Fall back to dynamic client if metadata client is not available
+	if c.metadata == nil {
+		obj, err := c.GetResource(ctx, resourceType, name, opts...)
+		if err != nil {
+			return nil, err
+		}
+
+		return &metav1.PartialObjectMetadata{
+			TypeMeta: resourceType.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            obj.GetName(),
+				Namespace:       obj.GetNamespace(),
+				UID:             obj.GetUID(),
+				ResourceVersion: obj.GetResourceVersion(),
+				Labels:          obj.GetLabels(),
+				Annotations:     obj.GetAnnotations(),
+			},
+		}, nil
+	}
+
+	var resource *metav1.PartialObjectMetadata
+	var err error
+
+	if cfg.Namespace != "" {
+		resource, err = c.metadata.Resource(gvr).Namespace(cfg.Namespace).Get(ctx, name, metav1.GetOptions{})
+	} else {
+		resource, err = c.metadata.Resource(gvr).Get(ctx, name, metav1.GetOptions{})
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("getting resource metadata: %w", err)
+	}
+
+	return resource, nil
+}
+
 // GetConfig holds options for customizing Get operations (e.g., namespace scope).
 type GetConfig struct {
 	Namespace string

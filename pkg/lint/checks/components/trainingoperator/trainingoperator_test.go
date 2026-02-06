@@ -44,7 +44,7 @@ func TestTrainingOperatorDeprecationCheck_NoDSC(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	trainingoperatorCheck := &trainingoperator.DeprecationCheck{}
+	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -93,7 +93,7 @@ func TestTrainingOperatorDeprecationCheck_NotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	trainingoperatorCheck := &trainingoperator.DeprecationCheck{}
+	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -142,7 +142,7 @@ func TestTrainingOperatorDeprecationCheck_ManagedDeprecated(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	trainingoperatorCheck := &trainingoperator.DeprecationCheck{}
+	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -194,7 +194,7 @@ func TestTrainingOperatorDeprecationCheck_UnmanagedDeprecated(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	trainingoperatorCheck := &trainingoperator.DeprecationCheck{}
+	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -243,7 +243,7 @@ func TestTrainingOperatorDeprecationCheck_RemovedReady(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	trainingoperatorCheck := &trainingoperator.DeprecationCheck{}
+	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

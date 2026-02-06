@@ -44,7 +44,7 @@ func TestModelmeshRemovalCheck_NoDSC(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	modelmeshCheck := &modelmesh.RemovalCheck{}
+	modelmeshCheck := modelmesh.NewRemovalCheck()
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -93,7 +93,7 @@ func TestModelmeshRemovalCheck_NotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	modelmeshCheck := &modelmesh.RemovalCheck{}
+	modelmeshCheck := modelmesh.NewRemovalCheck()
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -143,7 +143,7 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	modelmeshCheck := &modelmesh.RemovalCheck{}
+	modelmeshCheck := modelmesh.NewRemovalCheck()
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -195,7 +195,7 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	modelmeshCheck := &modelmesh.RemovalCheck{}
+	modelmeshCheck := modelmesh.NewRemovalCheck()
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -244,7 +244,7 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	modelmeshCheck := &modelmesh.RemovalCheck{}
+	modelmeshCheck := modelmesh.NewRemovalCheck()
 	result, err := modelmeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

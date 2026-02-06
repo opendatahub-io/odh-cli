@@ -8,11 +8,13 @@ const (
 )
 
 // Component names for diagnostic results.
+// These values match the DSC spec component path keys
+// (the key used in .spec.components.<key>.managementState).
 const (
 	ComponentCodeFlare            = "codeflare"
 	ComponentDataSciencePipelines = "datasciencepipelines"
 	ComponentGuardrails           = "guardrails"
-	ComponentModelMesh            = "modelmesh"
+	ComponentModelMesh            = "modelmeshserving"
 	ComponentKServe               = "kserve"
 	ComponentKueue                = "kueue"
 	ComponentRay                  = "ray"

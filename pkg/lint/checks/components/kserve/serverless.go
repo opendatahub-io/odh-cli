@@ -39,7 +39,7 @@ func (c *ServerlessRemovalCheck) CanApply(_ context.Context, target check.Target
 }
 
 func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	return validate.Component(c, "kserve", target).
+	return validate.Component(c, target).
 		InState(check.ManagementStateManaged).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
 			servingStateStr, err := jq.Query[string](req.DSC, ".spec.components.kserve.serving.managementState")

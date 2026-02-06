@@ -45,7 +45,7 @@ func (c *InstructLabRemovalCheck) CanApply(_ context.Context, target check.Targe
 }
 
 func (c *InstructLabRemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	return validate.Component(c, "datasciencepipelines", target).
+	return validate.Component(c, target).
 		InState(check.ManagementStateManaged).
 		Run(ctx, func(ctx context.Context, req *validate.ComponentRequest) error {
 			dspas, usedResourceType, err := c.listDSPAs(ctx, req.Client)

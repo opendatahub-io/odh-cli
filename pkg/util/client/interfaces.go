@@ -58,6 +58,15 @@ type Reader interface {
 		opts ...GetOption,
 	) (*unstructured.Unstructured, error)
 
+	// GetResourceMetadata retrieves only the metadata of a single resource.
+	// Use this when you only need name, namespace, labels, or annotations.
+	GetResourceMetadata(
+		ctx context.Context,
+		resourceType resources.ResourceType,
+		name string,
+		opts ...GetOption,
+	) (*metav1.PartialObjectMetadata, error)
+
 	// OLM returns a read-only accessor for OLM resources (subscriptions, CSVs).
 	OLM() OLMReader
 }

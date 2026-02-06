@@ -97,6 +97,8 @@ type Check interface {
 
 	// CheckKind returns the kind of resource being checked (e.g., "kserve", "codeflare").
 	// Used by validation builders to construct diagnostic results.
+	// For component checks, this should match the DSC spec component path key
+	// (the key used in .spec.components.<key>.managementState).
 	CheckKind() string
 
 	// CheckType returns the type of check (e.g., "removal", "deprecation").
