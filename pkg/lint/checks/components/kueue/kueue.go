@@ -37,13 +37,13 @@ func (c *ManagedRemovalCheck) CanApply(_ context.Context, target check.Target) b
 
 func (c *ManagedRemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	return validate.Component(c, target).
+		InState(check.ManagementStateManaged).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
-			switch req.ManagementState {
-			case check.ManagementStateManaged:
-				results.SetCompatibilityFailuref(req.Result, "Kueue is managed by OpenShift AI (state: %s) but will be removed in RHOAI 3.x - migrate to RHBOK operator", req.ManagementState)
-			default:
-				results.SetCompatibilitySuccessf(req.Result, "Kueue configuration (state: %s) is compatible with RHOAI 3.x", req.ManagementState)
-			}
+			results.SetCompatibilityFailuref(
+				req.Result,
+				"Kueue is managed by OpenShift AI (state: %s) but will be removed in RHOAI 3.x - migrate to RHBOK operator",
+				req.ManagementState,
+			)
 
 			return nil
 		})
