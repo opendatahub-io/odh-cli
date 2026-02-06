@@ -69,7 +69,6 @@ func (c *MigrationCheck) Validate(
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
 	}
 
-	// List all AcceleratorProfiles
 	acceleratorProfiles, err := c.listAcceleratorProfiles(ctx, target)
 	if err != nil {
 		return nil, err
@@ -82,7 +81,7 @@ func (c *MigrationCheck) Validate(
 	if totalCount == 0 {
 		results.SetCondition(dr, check.NewCondition(
 			ConditionTypeMigrationRequired,
-			metav1.ConditionTrue,
+			metav1.ConditionFalse,
 			ReasonNoMigrationRequired,
 			"No AcceleratorProfiles found - no migration required",
 		))
@@ -93,7 +92,7 @@ func (c *MigrationCheck) Validate(
 	// AcceleratorProfiles found - advisory notice about auto-migration.
 	results.SetCondition(dr, check.NewCondition(
 		ConditionTypeMigrationRequired,
-		metav1.ConditionFalse,
+		metav1.ConditionTrue,
 		ReasonMigrationPending,
 		"Found %d AcceleratorProfile(s) that will be automatically migrated to HardwareProfiles during upgrade",
 		totalCount,

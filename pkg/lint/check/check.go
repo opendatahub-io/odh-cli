@@ -14,7 +14,7 @@ const (
 	GroupService        CheckGroup = "service"
 	GroupWorkload       CheckGroup = "workload"
 	GroupDependency     CheckGroup = "dependency"
-	GroupConfigurations CheckGroup = "configurations"
+	GroupConfigurations CheckGroup = "configuration"
 )
 
 // CanonicalGroupOrder defines the execution order for check groups.

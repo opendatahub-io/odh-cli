@@ -116,13 +116,15 @@ func TestMigrationCheck_Validate_NoProfiles(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(dr).ToNot(BeNil())
-	g.Expect(dr.Group).To(Equal("configurations"))
-	g.Expect(dr.Kind).To(Equal("acceleratorprofile"))
-	g.Expect(dr.Name).To(Equal("migration"))
+	g.Expect(dr).To(PointTo(MatchFields(IgnoreExtras, Fields{
+		"Group": Equal(string(check.GroupConfigurations)),
+		"Kind":  Equal(check.ConfigurationAcceleratorProfile),
+		"Name":  Equal(check.CheckTypeMigration),
+	})))
 	g.Expect(dr.Status.Conditions).To(HaveLen(1))
 	g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(acceleratorprofile.ConditionTypeMigrationRequired),
-		"Status": Equal(metav1.ConditionTrue),
+		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(acceleratorprofile.ReasonNoMigrationRequired),
 	}))
 	g.Expect(dr.ImpactedObjects).To(BeEmpty())
@@ -167,12 +169,14 @@ func TestMigrationCheck_Validate_WithProfiles(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(dr).ToNot(BeNil())
-	g.Expect(dr.Group).To(Equal("configurations"))
-	g.Expect(dr.Kind).To(Equal("acceleratorprofile"))
+	g.Expect(dr).To(PointTo(MatchFields(IgnoreExtras, Fields{
+		"Group": Equal(string(check.GroupConfigurations)),
+		"Kind":  Equal(check.ConfigurationAcceleratorProfile),
+	})))
 	g.Expect(dr.Status.Conditions).To(HaveLen(1))
 	g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(acceleratorprofile.ConditionTypeMigrationRequired),
-		"Status":  Equal(metav1.ConditionFalse),
+		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(acceleratorprofile.ReasonMigrationPending),
 		"Message": ContainSubstring("2 AcceleratorProfile"),
 	}))
