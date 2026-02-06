@@ -2,52 +2,32 @@ package kueueoperator
 
 import (
 	"context"
-	"fmt"
-
-	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/operators"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/validate"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 )
 
-const (
-	checkID          = "dependencies.kueueoperator.installed"
-	checkName        = "Dependencies :: KueueOperator :: Installed"
-	checkDescription = "Reports the kueue-operator installation status and version"
-)
-
-type Check struct{}
+// Check validates kueue-operator installation.
+type Check struct {
+	base.BaseCheck
+}
 
 // NewCheck creates a new kueue-operator installation check.
 func NewCheck() *Check {
-	return &Check{}
-}
-
-func (c *Check) ID() string {
-	return checkID
-}
-
-func (c *Check) Name() string {
-	return checkName
-}
-
-func (c *Check) Description() string {
-	return checkDescription
-}
-
-func (c *Check) Group() check.CheckGroup {
-	return check.GroupDependency
-}
-
-func (c *Check) CheckKind() string {
-	return check.DependencyKueueOperator
-}
-
-func (c *Check) CheckType() string {
-	return check.CheckTypeInstalled
+	return &Check{
+		BaseCheck: base.BaseCheck{
+			CheckGroup:       check.GroupDependency,
+			Kind:             check.DependencyKueueOperator,
+			Type:             check.CheckTypeInstalled,
+			CheckID:          "dependencies.kueueoperator.installed",
+			CheckName:        "Dependencies :: KueueOperator :: Installed",
+			CheckDescription: "Reports the kueue-operator installation status and version",
+		},
+	}
 }
 
 // CanApply returns whether this check should run for the given target.
@@ -66,22 +46,7 @@ func (c *Check) CanApply(ctx context.Context, target check.Target) bool {
 }
 
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-	// kueue-operator check uses all defaults from operators.CheckOperatorPresence
-	// since the subscription name matches the operator kind ("kueue-operator")
-	res, err := operators.CheckOperatorPresence(
-		ctx,
-		target.Client,
-		"kueue-operator",
-		operators.WithDescription(checkDescription),
-		operators.WithMatcher(func(subscription *operatorsv1alpha1.Subscription) bool {
-			op := operators.GetOperator(subscription)
-
-			return op.Name == "kueue-operator"
-		}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("checking kueue-operator presence: %w", err)
-	}
-
-	return res, nil
+	return validate.Operator(c, target).
+		WithNames("kueue-operator").
+		Run(ctx)
 }

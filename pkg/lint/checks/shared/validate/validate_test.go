@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
+	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,6 +24,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 )
 
 //nolint:gochecknoglobals // Test fixture - shared across test functions
@@ -299,6 +302,317 @@ func TestDSCIBuilder(t *testing.T) {
 			})
 
 		g.Expect(err).To(MatchError(expectedErr))
+	})
+}
+
+func newTestOperatorCheck() *testCheck {
+	return &testCheck{
+		BaseCheck: base.BaseCheck{
+			CheckGroup:       check.GroupDependency,
+			Kind:             check.DependencyCertManager,
+			Type:             check.CheckTypeInstalled,
+			CheckID:          "test.operator.check",
+			CheckName:        "Test Operator Check",
+			CheckDescription: "Test operator description",
+		},
+	}
+}
+
+func TestOperatorBuilder(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	t.Run("should return OLM unavailable when no OLM client", func(t *testing.T) {
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+
+		// No OLM client configured - OLM().Available() returns false.
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+		})
+
+		ver := semver.MustParse("2.17.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Message).To(Equal("OLM client not available"))
+		g.Expect(dr.Annotations[check.AnnotationCheckTargetVersion]).To(Equal("2.17.0"))
+	})
+
+	t.Run("should return not found when operator not installed", func(t *testing.T) {
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset()
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		ver := semver.MustParse("2.17.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Group).To(Equal("dependency"))
+		g.Expect(dr.Kind).To(Equal(check.DependencyCertManager))
+		g.Expect(dr.Name).To(Equal(check.CheckTypeInstalled))
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+			"Type":    Equal(check.ConditionTypeAvailable),
+			"Status":  Equal(metav1.ConditionFalse),
+			"Reason":  Equal(check.ReasonResourceNotFound),
+			"Message": ContainSubstring("not installed"),
+		}))
+	})
+
+	t.Run("should return found when operator is installed", func(t *testing.T) {
+		sub := &operatorsv1alpha1.Subscription{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "certmanager",
+				Namespace: "cert-manager",
+			},
+			Status: operatorsv1alpha1.SubscriptionStatus{
+				InstalledCSV: "cert-manager.v1.13.0",
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset(sub)
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		ver := semver.MustParse("2.17.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+			"Type":    Equal(check.ConditionTypeAvailable),
+			"Status":  Equal(metav1.ConditionTrue),
+			"Reason":  Equal(check.ReasonResourceFound),
+			"Message": ContainSubstring("cert-manager.v1.13.0"),
+		}))
+		g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationOperatorInstalledVersion, "cert-manager.v1.13.0"))
+		g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationCheckTargetVersion, "2.17.0"))
+	})
+
+	t.Run("should match with WithNames", func(t *testing.T) {
+		sub := &operatorsv1alpha1.Subscription{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "openshift-cert-manager-operator",
+				Namespace: "cert-manager-operator",
+			},
+			Status: operatorsv1alpha1.SubscriptionStatus{
+				InstalledCSV: "cert-manager-operator.v1.12.0",
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset(sub)
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		ver := semver.MustParse("2.17.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).
+			WithNames("cert-manager", "openshift-cert-manager-operator").
+			Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+			"Type":   Equal(check.ConditionTypeAvailable),
+			"Status": Equal(metav1.ConditionTrue),
+		}))
+		g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationOperatorInstalledVersion, "cert-manager-operator.v1.12.0"))
+	})
+
+	t.Run("should match with WithNames and WithChannels", func(t *testing.T) {
+		sub := &operatorsv1alpha1.Subscription{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "servicemeshoperator",
+				Namespace: "openshift-operators",
+			},
+			Spec: &operatorsv1alpha1.SubscriptionSpec{
+				Channel: "stable",
+			},
+			Status: operatorsv1alpha1.SubscriptionStatus{
+				InstalledCSV: "servicemeshoperator.v2.6.0",
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset(sub)
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		ver := semver.MustParse("3.0.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).
+			WithNames("servicemeshoperator").
+			WithChannels("stable", "v2.x").
+			Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+			"Type":   Equal(check.ConditionTypeAvailable),
+			"Status": Equal(metav1.ConditionTrue),
+		}))
+		g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationOperatorInstalledVersion, "servicemeshoperator.v2.6.0"))
+	})
+
+	t.Run("should not match when channel does not match", func(t *testing.T) {
+		sub := &operatorsv1alpha1.Subscription{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "servicemeshoperator",
+				Namespace: "openshift-operators",
+			},
+			Spec: &operatorsv1alpha1.SubscriptionSpec{
+				Channel: "v3.x",
+			},
+			Status: operatorsv1alpha1.SubscriptionStatus{
+				InstalledCSV: "servicemeshoperator.v3.0.0",
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset(sub)
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		ver := semver.MustParse("3.0.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).
+			WithNames("servicemeshoperator").
+			WithChannels("stable", "v2.x").
+			Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+			"Type":   Equal(check.ConditionTypeAvailable),
+			"Status": Equal(metav1.ConditionFalse),
+		}))
+	})
+
+	t.Run("should use custom condition builder", func(t *testing.T) {
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset()
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		ver := semver.MustParse("3.0.0")
+		target := check.Target{
+			Client:        c,
+			TargetVersion: &ver,
+		}
+
+		// Inverted logic: NOT finding operator is success.
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).
+			WithConditionBuilder(func(found bool, version string) result.Condition {
+				if !found {
+					return results.NewCompatibilitySuccess("Operator not installed - good")
+				}
+
+				return results.NewCompatibilityFailure("Operator (%s) should not be installed", version)
+			}).
+			Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Status.Conditions).To(HaveLen(1))
+		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+			"Type":    Equal(check.ConditionTypeCompatible),
+			"Status":  Equal(metav1.ConditionTrue),
+			"Reason":  Equal(check.ReasonVersionCompatible),
+			"Message": ContainSubstring("not installed"),
+		}))
+	})
+
+	t.Run("should not set version annotation when operator not found", func(t *testing.T) {
+		scheme := runtime.NewScheme()
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
+		olmClient := operatorfake.NewSimpleClientset()
+
+		c := client.NewForTesting(client.TestClientConfig{
+			Dynamic: dynamicClient,
+			OLM:     olmClient,
+		})
+
+		target := check.Target{
+			Client: c,
+		}
+
+		chk := newTestOperatorCheck()
+		dr, err := validate.Operator(chk, target).Run(ctx)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(dr).ToNot(BeNil())
+		g.Expect(dr.Annotations).ToNot(HaveKey(check.AnnotationOperatorInstalledVersion))
+		// No target version set, so annotation should also be absent.
+		g.Expect(dr.Annotations).ToNot(HaveKey(check.AnnotationCheckTargetVersion))
 	})
 }
 
