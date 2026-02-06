@@ -10,6 +10,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
@@ -70,7 +71,7 @@ func (c *ImpactedWorkloadsCheck) Validate(
 
 	// Populate ImpactedObjects if any notebooks found
 	if totalImpacted > 0 {
-		populateImpactedObjects(dr, notebooks)
+		results.PopulateImpactedObjects(dr, resources.Notebook, notebooks)
 	}
 
 	return dr, nil

@@ -11,6 +11,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
@@ -75,7 +76,7 @@ func (c *OtelMigrationCheck) Validate(
 
 	// Populate ImpactedObjects if any orchestrators found
 	if totalImpacted > 0 {
-		populateImpactedObjects(dr, impacted)
+		results.PopulateImpactedObjects(dr, resources.GuardrailsOrchestrator, impacted)
 	}
 
 	return dr, nil

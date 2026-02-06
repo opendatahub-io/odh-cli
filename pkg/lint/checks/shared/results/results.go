@@ -4,9 +4,11 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/resources"
 )
 
 // DataScienceClusterNotFound returns a standard passing result when DataScienceCluster is not found.
@@ -167,4 +169,24 @@ func SetComponentNotManaged(dr *result.DiagnosticResult, componentName string, s
 		"ComponentNotManaged",
 		fmt.Sprintf("%s component is not managed (state: %s)", componentName, state),
 	))
+}
+
+// PopulateImpactedObjects converts a list of NamespacedNames into PartialObjectMetadata
+// and sets them as impacted objects on the diagnostic result.
+func PopulateImpactedObjects(
+	dr *result.DiagnosticResult,
+	resourceType resources.ResourceType,
+	names []types.NamespacedName,
+) {
+	dr.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(names))
+
+	for _, n := range names {
+		dr.ImpactedObjects = append(dr.ImpactedObjects, metav1.PartialObjectMetadata{
+			TypeMeta: resourceType.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: n.Namespace,
+				Name:      n.Name,
+			},
+		})
+	}
 }

@@ -2,11 +2,9 @@ package guardrails
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
 )
 
 // deprecatedOtelFields lists the otelExporter fields that are deprecated in 3.x.
@@ -41,22 +39,4 @@ func newOtelMigrationCondition(count int) result.Condition {
 		count,
 		check.WithImpact(result.ImpactAdvisory),
 	)
-}
-
-func populateImpactedObjects(
-	dr *result.DiagnosticResult,
-	orchestrators []types.NamespacedName,
-) {
-	dr.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(orchestrators))
-
-	for _, orch := range orchestrators {
-		obj := metav1.PartialObjectMetadata{
-			TypeMeta: resources.GuardrailsOrchestrator.TypeMeta(),
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: orch.Namespace,
-				Name:      orch.Name,
-			},
-		}
-		dr.ImpactedObjects = append(dr.ImpactedObjects, obj)
-	}
 }

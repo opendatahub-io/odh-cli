@@ -100,7 +100,7 @@ func (c *MigrationCheck) Validate(
 	))
 
 	// Populate ImpactedObjects.
-	c.populateImpactedObjects(dr, acceleratorProfiles)
+	results.PopulateImpactedObjects(dr, resources.AcceleratorProfile, acceleratorProfiles)
 
 	return dr, nil
 }
@@ -131,23 +131,4 @@ func (c *MigrationCheck) listAcceleratorProfiles(
 	}
 
 	return profileNames, nil
-}
-
-// populateImpactedObjects adds AcceleratorProfile references to the result.
-func (c *MigrationCheck) populateImpactedObjects(
-	dr *result.DiagnosticResult,
-	profiles []types.NamespacedName,
-) {
-	dr.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(profiles))
-
-	for _, profile := range profiles {
-		obj := metav1.PartialObjectMetadata{
-			TypeMeta: resources.AcceleratorProfile.TypeMeta(),
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: profile.Namespace,
-				Name:      profile.Name,
-			},
-		}
-		dr.ImpactedObjects = append(dr.ImpactedObjects, obj)
-	}
 }
