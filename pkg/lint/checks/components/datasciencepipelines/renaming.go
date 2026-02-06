@@ -2,7 +2,6 @@ package datasciencepipelines
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -11,8 +10,8 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
@@ -55,18 +54,16 @@ func (c *RenamingCheck) Validate(
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	// Query datasciencepipelines component management state using JQ
 	// In DSC v1 (2.x): .spec.components.datasciencepipelines
-	dspStateStr, err := jq.Query[string](dsc, ".spec.components.datasciencepipelines.managementState")
+	dspStateStr, configured, err := components.GetManagementState(dsc, "datasciencepipelines")
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			// DataSciencePipelines component not defined in spec
-			results.SetComponentNotConfigured(dr, "DataSciencePipelines")
-
-			return dr, nil
-		}
-
 		return nil, fmt.Errorf("querying datasciencepipelines managementState: %w", err)
+	}
+
+	if !configured {
+		results.SetComponentNotConfigured(dr, "DataSciencePipelines")
+
+		return dr, nil
 	}
 
 	dr.Annotations[check.AnnotationComponentManagementState] = dspStateStr

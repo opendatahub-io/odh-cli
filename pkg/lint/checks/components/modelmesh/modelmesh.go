@@ -2,7 +2,6 @@ package modelmesh
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,8 +9,8 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
@@ -52,17 +51,15 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	// Query modelmeshserving component management state using JQ
-	managementStateStr, err := jq.Query[string](dsc, ".spec.components.modelmeshserving.managementState")
+	managementStateStr, configured, err := components.GetManagementState(dsc, "modelmeshserving")
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			// ModelMesh component not defined in spec - check passes
-			results.SetComponentNotConfigured(dr, "ModelMesh")
-
-			return dr, nil
-		}
-
 		return nil, fmt.Errorf("querying modelmeshserving managementState: %w", err)
+	}
+
+	if !configured {
+		results.SetComponentNotConfigured(dr, "ModelMesh")
+
+		return dr, nil
 	}
 
 	// Add management state as annotation

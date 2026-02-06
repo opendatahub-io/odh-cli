@@ -2,7 +2,6 @@ package kueue
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,8 +9,8 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
@@ -52,17 +51,15 @@ func (c *ManagedRemovalCheck) Validate(ctx context.Context, target check.Target)
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	// Query kueue component management state using JQ
-	managementStateStr, err := jq.Query[string](dsc, ".spec.components.kueue.managementState")
+	managementStateStr, configured, err := components.GetManagementState(dsc, "kueue")
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			// Kueue component not defined in spec - check passes
-			results.SetComponentNotConfigured(dr, "Kueue")
-
-			return dr, nil
-		}
-
 		return nil, fmt.Errorf("querying kueue managementState: %w", err)
+	}
+
+	if !configured {
+		results.SetComponentNotConfigured(dr, "Kueue")
+
+		return dr, nil
 	}
 
 	// Add management state as annotation

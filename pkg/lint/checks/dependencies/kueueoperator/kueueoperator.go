@@ -8,8 +8,8 @@ import (
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/operators"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 const (
@@ -48,24 +48,12 @@ func (c *Check) CanApply(target check.Target) bool {
 		return false
 	}
 
-	// Query DataScienceCluster to check if kueue component is enabled
-	ctx := context.Background()
-	dsc, err := target.Client.GetDataScienceCluster(ctx)
+	dsc, err := target.Client.GetDataScienceCluster(context.Background())
 	if err != nil {
-		// If DSC doesn't exist or error querying, don't apply check
 		return false
 	}
 
-	// Check kueue management state using JQ
-	managementState, err := jq.Query[string](dsc, ".spec.components.kueue.managementState")
-	if err != nil || managementState == "" {
-		// Kueue not configured, check doesn't apply
-		return false
-	}
-
-	// Check applies if kueue is Managed or Unmanaged (not Removed)
-	return managementState == check.ManagementStateManaged ||
-		managementState == check.ManagementStateUnmanaged
+	return components.HasManagementState(dsc, "kueue", check.ManagementStateManaged, check.ManagementStateUnmanaged)
 }
 
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {

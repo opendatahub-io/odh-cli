@@ -2,7 +2,6 @@ package trainingoperator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -11,8 +10,8 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
@@ -52,15 +51,15 @@ func (c *DeprecationCheck) Validate(
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	managementStateStr, err := jq.Query[string](dsc, ".spec.components.trainingoperator.managementState")
+	managementStateStr, configured, err := components.GetManagementState(dsc, "trainingoperator")
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			results.SetComponentNotConfigured(dr, "TrainingOperator")
-
-			return dr, nil
-		}
-
 		return nil, fmt.Errorf("querying trainingoperator managementState: %w", err)
+	}
+
+	if !configured {
+		results.SetComponentNotConfigured(dr, "TrainingOperator")
+
+		return dr, nil
 	}
 
 	dr.Annotations[check.AnnotationComponentManagementState] = managementStateStr

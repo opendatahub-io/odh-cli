@@ -10,6 +10,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
@@ -52,17 +53,15 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	// Query kserve component management state using JQ
-	kserveStateStr, err := jq.Query[string](dsc, ".spec.components.kserve.managementState")
+	kserveStateStr, configured, err := components.GetManagementState(dsc, "kserve")
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			// KServe component not defined in spec - check passes
-			results.SetComponentNotConfigured(dr, "KServe")
-
-			return dr, nil
-		}
-
 		return nil, fmt.Errorf("querying kserve managementState: %w", err)
+	}
+
+	if !configured {
+		results.SetComponentNotConfigured(dr, "KServe")
+
+		return dr, nil
 	}
 
 	dr.Annotations[check.AnnotationComponentKServeState] = kserveStateStr
