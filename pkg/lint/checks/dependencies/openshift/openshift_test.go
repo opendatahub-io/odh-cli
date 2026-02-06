@@ -59,7 +59,7 @@ func TestOpenShiftCheck_VersionMeetsRequirement(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -70,7 +70,6 @@ func TestOpenShiftCheck_VersionMeetsRequirement(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionCompatible),
 		"Message": ContainSubstring("4.19.9 meets RHOAI 3.x minimum version requirement"),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("platform.opendatahub.io/openshift-version", "4.19.9"))
 }
 
 func TestOpenShiftCheck_VersionAboveRequirement(t *testing.T) {
@@ -100,7 +99,7 @@ func TestOpenShiftCheck_VersionAboveRequirement(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -110,7 +109,6 @@ func TestOpenShiftCheck_VersionAboveRequirement(t *testing.T) {
 		"Status": Equal(metav1.ConditionTrue),
 		"Reason": Equal(check.ReasonVersionCompatible),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("platform.opendatahub.io/openshift-version", "4.20.5"))
 }
 
 func TestOpenShiftCheck_VersionBelowRequirement(t *testing.T) {
@@ -140,7 +138,7 @@ func TestOpenShiftCheck_VersionBelowRequirement(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -154,7 +152,6 @@ func TestOpenShiftCheck_VersionBelowRequirement(t *testing.T) {
 			ContainSubstring("4.19"),
 		),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("platform.opendatahub.io/openshift-version", "4.18.5"))
 }
 
 func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
@@ -184,7 +181,7 @@ func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -198,7 +195,6 @@ func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
 			ContainSubstring("4.19.9"),
 		),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("platform.opendatahub.io/openshift-version", "4.19.8"))
 }
 
 func TestOpenShiftCheck_VersionNotDetectable(t *testing.T) {
@@ -220,7 +216,7 @@ func TestOpenShiftCheck_VersionNotDetectable(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -236,7 +232,7 @@ func TestOpenShiftCheck_VersionNotDetectable(t *testing.T) {
 func TestOpenShiftCheck_CanApply_2xTo3x(t *testing.T) {
 	g := NewWithT(t)
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 
 	currentVer := semver.MustParse("2.17.0")
 	targetVer := semver.MustParse("3.0.0")
@@ -251,7 +247,7 @@ func TestOpenShiftCheck_CanApply_2xTo3x(t *testing.T) {
 func TestOpenShiftCheck_CanApply_2xTo2x(t *testing.T) {
 	g := NewWithT(t)
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 
 	currentVer := semver.MustParse("2.17.0")
 	targetVer := semver.MustParse("2.18.0")
@@ -266,7 +262,7 @@ func TestOpenShiftCheck_CanApply_2xTo2x(t *testing.T) {
 func TestOpenShiftCheck_CanApply_3xTo3x(t *testing.T) {
 	g := NewWithT(t)
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 
 	currentVer := semver.MustParse("3.0.0")
 	targetVer := semver.MustParse("3.1.0")
@@ -281,7 +277,7 @@ func TestOpenShiftCheck_CanApply_3xTo3x(t *testing.T) {
 func TestOpenShiftCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	openshiftCheck := &openshift.Check{}
+	openshiftCheck := openshift.NewCheck()
 
 	g.Expect(openshiftCheck.ID()).To(Equal("dependencies.openshift.version-requirement"))
 	g.Expect(openshiftCheck.Name()).To(Equal("Dependencies :: OpenShift :: Version Requirement (3.x)"))

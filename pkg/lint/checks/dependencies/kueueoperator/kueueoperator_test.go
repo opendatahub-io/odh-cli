@@ -39,7 +39,7 @@ func TestKueueOperatorCheck_NotInstalled(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueOperatorCheck := &kueueoperator.Check{}
+	kueueOperatorCheck := kueueoperator.NewCheck()
 	result, err := kueueOperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -81,7 +81,7 @@ func TestKueueOperatorCheck_Installed(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	kueueOperatorCheck := &kueueoperator.Check{}
+	kueueOperatorCheck := kueueoperator.NewCheck()
 	result, err := kueueOperatorCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -98,7 +98,7 @@ func TestKueueOperatorCheck_Installed(t *testing.T) {
 func TestKueueOperatorCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	kueueOperatorCheck := &kueueoperator.Check{}
+	kueueOperatorCheck := kueueoperator.NewCheck()
 
 	g.Expect(kueueOperatorCheck.ID()).To(Equal("dependencies.kueueoperator.installed"))
 	g.Expect(kueueOperatorCheck.Name()).To(Equal("Dependencies :: KueueOperator :: Installed"))

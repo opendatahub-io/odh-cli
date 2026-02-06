@@ -39,7 +39,7 @@ func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	serviceMeshOperator2Check := &servicemeshoperator.Check{}
+	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
 	result, err := serviceMeshOperator2Check.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -84,7 +84,7 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	serviceMeshOperator2Check := &servicemeshoperator.Check{}
+	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
 	result, err := serviceMeshOperator2Check.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -101,7 +101,7 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 func TestServiceMeshOperator2Check_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	serviceMeshOperator2Check := &servicemeshoperator.Check{}
+	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
 
 	g.Expect(serviceMeshOperator2Check.ID()).To(Equal("dependencies.servicemeshoperator2.upgrade"))
 	g.Expect(serviceMeshOperator2Check.Name()).To(Equal("Dependencies :: ServiceMeshOperator2 :: Upgrade (3.x)"))
