@@ -350,7 +350,7 @@ func TestOperatorBuilder(t *testing.T) {
 	t.Run("should return not found when operator not installed", func(t *testing.T) {
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset()
+		olmClient := operatorfake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,
@@ -393,7 +393,7 @@ func TestOperatorBuilder(t *testing.T) {
 
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset(sub)
+		olmClient := operatorfake.NewSimpleClientset(sub) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,
@@ -435,7 +435,7 @@ func TestOperatorBuilder(t *testing.T) {
 
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset(sub)
+		olmClient := operatorfake.NewSimpleClientset(sub) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,
@@ -479,7 +479,7 @@ func TestOperatorBuilder(t *testing.T) {
 
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset(sub)
+		olmClient := operatorfake.NewSimpleClientset(sub) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,
@@ -524,7 +524,7 @@ func TestOperatorBuilder(t *testing.T) {
 
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset(sub)
+		olmClient := operatorfake.NewSimpleClientset(sub) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,
@@ -555,7 +555,7 @@ func TestOperatorBuilder(t *testing.T) {
 	t.Run("should use custom condition builder", func(t *testing.T) {
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset()
+		olmClient := operatorfake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,
@@ -594,7 +594,7 @@ func TestOperatorBuilder(t *testing.T) {
 	t.Run("should not set version annotation when operator not found", func(t *testing.T) {
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-		olmClient := operatorfake.NewSimpleClientset()
+		olmClient := operatorfake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 		c := client.NewForTesting(client.TestClientConfig{
 			Dynamic: dynamicClient,

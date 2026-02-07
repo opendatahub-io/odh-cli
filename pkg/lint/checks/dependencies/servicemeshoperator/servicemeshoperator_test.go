@@ -26,7 +26,7 @@ func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-	olmClient := operatorfake.NewSimpleClientset()
+	olmClient := operatorfake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 	c := client.NewForTesting(client.TestClientConfig{
 		Dynamic: dynamicClient,
@@ -71,7 +71,7 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-	olmClient := operatorfake.NewSimpleClientset(sub)
+	olmClient := operatorfake.NewSimpleClientset(sub) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 	c := client.NewForTesting(client.TestClientConfig{
 		Dynamic: dynamicClient,

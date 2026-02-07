@@ -120,7 +120,7 @@ func TestDetect_FromOLM(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-	olmClient := operatorfake.NewSimpleClientset(csv)
+	olmClient := operatorfake.NewSimpleClientset(csv) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 
 	c := client.NewForTesting(client.TestClientConfig{
 		Dynamic: dynamicClient,
