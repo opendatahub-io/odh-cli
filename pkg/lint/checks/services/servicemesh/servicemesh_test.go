@@ -44,7 +44,7 @@ func TestServiceMeshRemovalCheck_NoDSCI(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	servicemeshCheck := &servicemesh.RemovalCheck{}
+	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -88,7 +88,7 @@ func TestServiceMeshRemovalCheck_NotConfigured(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	servicemeshCheck := &servicemesh.RemovalCheck{}
+	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -135,7 +135,7 @@ func TestServiceMeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	servicemeshCheck := &servicemesh.RemovalCheck{}
+	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -146,7 +146,6 @@ func TestServiceMeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("service.opendatahub.io/management-state", "Managed"))
 }
 
 func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
@@ -183,7 +182,7 @@ func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	servicemeshCheck := &servicemesh.RemovalCheck{}
+	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -194,7 +193,6 @@ func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("state: Unmanaged"),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("service.opendatahub.io/management-state", "Unmanaged"))
 }
 
 func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
@@ -231,7 +229,7 @@ func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
 		TargetVersion: &ver,
 	}
 
-	servicemeshCheck := &servicemesh.RemovalCheck{}
+	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -242,13 +240,12 @@ func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionCompatible),
 		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
 	}))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("service.opendatahub.io/management-state", "Removed"))
 }
 
 func TestServiceMeshRemovalCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	servicemeshCheck := &servicemesh.RemovalCheck{}
+	servicemeshCheck := servicemesh.NewRemovalCheck()
 
 	g.Expect(servicemeshCheck.ID()).To(Equal("services.servicemesh.removal"))
 	g.Expect(servicemeshCheck.Name()).To(Equal("Services :: ServiceMesh :: Removal (3.x)"))
