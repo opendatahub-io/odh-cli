@@ -20,6 +20,8 @@ type Check interface {
     Name() string
     Description() string
     Group() CheckGroup
+    CheckKind() string
+    CheckType() string
     CanApply(ctx context.Context, target Target) bool
     Validate(ctx context.Context, target Target) (*result.DiagnosticResult, error)
 }
@@ -28,6 +30,8 @@ type Check interface {
 **Key methods:**
 - `ID()` - Unique identifier for the lint check
 - `Group()` - Returns `CheckGroup` type: `GroupComponent`, `GroupService`, `GroupWorkload`, or `GroupDependency`
+- `CheckKind()` - Returns the kind of resource being checked (e.g., "kserve", "codeflare"). Used by validation builders to construct diagnostic results
+- `CheckType()` - Returns the type of check (e.g., "removal", "deprecation"). Used by validation builders to construct diagnostic results
 - `CanApply()` - Determines if lint check is applicable based on version context
 - `Validate()` - Executes the lint check and returns `(*result.DiagnosticResult, error)`
 
@@ -37,8 +41,9 @@ The `Target` struct provides lint checks with cluster context:
 
 ```go
 type Target struct {
-    // Client provides access to Kubernetes API for querying resources
-    Client *client.Client
+    // Client provides read-only access to Kubernetes API for querying resources.
+    // Uses the Reader interface to enforce that lint checks cannot perform write operations.
+    Client client.Reader
 
     // CurrentVersion contains the current/source cluster version as parsed semver
     // For lint mode: same as TargetVersion
@@ -81,24 +86,36 @@ func NewCommand(
     registry := check.NewRegistry()
 
     // Explicitly register all checks (no global state, full test isolation)
-    // Components
+    // Components (11)
     registry.MustRegister(codeflare.NewRemovalCheck())
+    registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
+    registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
+    registry.MustRegister(datasciencepipelines.NewInstructLabRemovalCheck())
+    registry.MustRegister(datasciencepipelines.NewRenamingCheck())
     registry.MustRegister(kserve.NewServerlessRemovalCheck())
+    registry.MustRegister(kserve.NewInferenceServiceConfigCheck())
+    registry.MustRegister(kueue.NewManagedRemovalCheck())
+    registry.MustRegister(kueue.NewConfigMapManagedCheck())
     registry.MustRegister(modelmesh.NewRemovalCheck())
-    // ... additional component checks
+    registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-    // Dependencies
+    // Dependencies (4)
     registry.MustRegister(certmanager.NewCheck())
     registry.MustRegister(kueueoperator.NewCheck())
-    // ... additional dependency checks
+    registry.MustRegister(openshift.NewCheck())
+    registry.MustRegister(servicemeshoperator.NewCheck())
 
-    // Services
+    // Services (1)
     registry.MustRegister(servicemesh.NewRemovalCheck())
 
-    // Workloads
+    // Workloads (7)
+    registry.MustRegister(guardrails.NewOtelMigrationCheck())
+    registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
     registry.MustRegister(kserveworkloads.NewImpactedWorkloadsCheck())
+    registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
     registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
-    // ... additional workload checks
+    registry.MustRegister(ray.NewImpactedWorkloadsCheck())
+    registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 
     return &Command{
         SharedOptions: shared,
@@ -498,7 +515,13 @@ pkg/
 │       ├── dependencies/ # Dependency checks (cert-manager, kueue, etc.)
 │       ├── services/     # Service checks
 │       ├── workloads/    # Workload checks
-│       └── shared/       # Shared utilities (base, results helpers)
+│       └── shared/       # Shared utilities
+│           ├── base/           # BaseCheck struct for composition
+│           ├── components/     # Component utility functions (management state)
+│           ├── migration/      # Migration check helper
+│           ├── operators/      # OLM operator utilities
+│           ├── results/        # Result helper functions
+│           └── validate/       # Fluent builders (Component, DSCI, Operator, Workloads)
 ├── printer/              # Output formatting
 ├── resources/            # Centralized GVK/GVR definitions
 └── util/

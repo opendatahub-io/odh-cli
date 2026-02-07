@@ -16,6 +16,8 @@ type Check interface {
     Name() string
     Description() string
     Group() CheckGroup
+    CheckKind() string
+    CheckType() string
     CanApply(ctx context.Context, target Target) bool
     Validate(ctx context.Context, target Target) (*result.DiagnosticResult, error)
 }
@@ -23,6 +25,8 @@ type Check interface {
 
 **Key differences from typical interfaces:**
 - `Group()` returns `CheckGroup` type (not string)
+- `CheckKind()` returns the kind of resource being checked (e.g., "kserve", "codeflare"). Used by validation builders to construct diagnostic results
+- `CheckType()` returns the type of check (e.g., "removal", "deprecation"). Used by validation builders to construct diagnostic results
 - `CanApply()` takes context and target
 - `Validate()` returns `(*result.DiagnosticResult, error)` - error for infrastructure failures
 
@@ -40,7 +44,6 @@ import (
     "github.com/lburgazzoli/odh-cli/pkg/lint/check"
     "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
     "github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
-    "github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
 type Check struct {
@@ -52,10 +55,11 @@ func NewCheck() *Check {
         BaseCheck: base.BaseCheck{
             CheckGroup:       check.GroupComponent,
             Kind:             check.ComponentDashboard,
-            CheckType:        check.CheckTypeInstalled,
+            Type:             check.CheckTypeInstalled,
             CheckID:          "components.dashboard.status",
             CheckName:        "Components :: Dashboard :: Status",
             CheckDescription: "Validates dashboard component configuration and availability",
+            CheckRemediation: "",
         },
     }
 }
@@ -87,16 +91,34 @@ registry.MustRegister(dashboard.NewCheck())
 
 **BaseCheck** eliminates boilerplate by providing common check metadata through composition:
 
+```go
+type BaseCheck struct {
+    CheckGroup       check.CheckGroup
+    Kind             string
+    Type             string
+    CheckID          string
+    CheckName        string
+    CheckDescription string
+    CheckRemediation string
+}
+```
+
+**Methods provided by BaseCheck:**
+- `ID()`, `Name()`, `Description()`, `Group()` - standard Check interface methods
+- `CheckKind()`, `CheckType()` - returns `Kind` and `Type` fields respectively
+- `Remediation()` - returns remediation guidance
+- `NewResult()` - creates a DiagnosticResult initialized with check metadata
+
 **Benefits:**
 - No need to define constants for ID, name, description
-- No need to implement `ID()`, `Name()`, `Description()`, `Group()` methods
+- No need to implement `ID()`, `Name()`, `Description()`, `Group()`, `CheckKind()`, `CheckType()` methods
 - `NewResult()` automatically creates results with check metadata
-- Public fields `Kind` and `CheckType` can be accessed directly
+- Public fields `Kind` and `Type` can be accessed directly
 - ~35% code reduction per check
 
 **When to use:**
 - All new checks should use BaseCheck
-- Access metadata via public fields: `c.Kind`, `c.CheckType`, `c.CheckGroup`, etc.
+- Access metadata via public fields: `c.Kind`, `c.Type`, `c.CheckGroup`, etc.
 
 ## Registration Pattern
 
@@ -112,10 +134,25 @@ func NewCommand(
     registry := check.NewRegistry()
 
     // Explicitly register all checks
-    registry.MustRegister(dashboard.NewCheck())
-    registry.MustRegister(kserve.NewServerlessRemovalCheck())
-    registry.MustRegister(modelmesh.NewRemovalCheck())
-    // ... more checks
+    // Components (11)
+    registry.MustRegister(codeflare.NewRemovalCheck())
+    registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
+    registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
+    registry.MustRegister(datasciencepipelines.NewInstructLabRemovalCheck())
+    // ... additional component checks
+
+    // Dependencies (4)
+    registry.MustRegister(certmanager.NewCheck())
+    // ... additional dependency checks
+
+    // Services (1)
+    registry.MustRegister(servicemesh.NewRemovalCheck())
+
+    // Workloads (7)
+    registry.MustRegister(guardrails.NewOtelMigrationCheck())
+    registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
+    registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
+    // ... additional workload checks
 
     return &Command{
         SharedOptions: shared,
@@ -396,11 +433,11 @@ apiVersion := resources.DataScienceCluster.APIVersion()
 ### Using in Lint Checks
 
 ```go
-// List DataScienceCluster resources
-dscList := &unstructured.UnstructuredList{}
-dscList.SetGroupVersionKind(resources.DataScienceCluster.GVK())
+// List DataScienceCluster resources via client.Reader
+dscList, err := target.Client.List(ctx, resources.DataScienceCluster)
 
-err := target.Client.List(ctx, dscList)
+// Or use standalone helper for singletons
+dsc, err := client.GetDataScienceCluster(ctx, target.Client)
 ```
 
 ### Prohibited
@@ -444,11 +481,21 @@ Lint checks MUST NOT target these as primary resources:
 ### Example
 
 ```go
-// ✓ CORRECT: Check Dashboard CR
+// ✓ CORRECT: Use validate.Component() builder (recommended)
+func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.Component(c, target).
+        InState(check.ManagementStateManaged).
+        Run(ctx, func(ctx context.Context, req *validate.ComponentRequest) error {
+            // Validate Dashboard component via req.DSC
+            return nil
+        })
+}
+
+// ✓ CORRECT: Manual approach using standalone helpers
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
     dr := c.NewResult()
 
-    dsc, err := target.Client.GetDataScienceCluster(ctx)
+    dsc, err := client.GetDataScienceCluster(ctx, target.Client)
     if err != nil {
         return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
     }
@@ -458,12 +505,8 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 
 // ❌ WRONG: Check Dashboard Deployment directly
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-    deployment := &appsv1.Deployment{}
-    err := target.Client.Get(ctx, client.ObjectKey{
-        Namespace: "opendatahub",
-        Name:      "odh-dashboard",
-    }, deployment)
-    // This violates high-level resource principle
+    // target.Client is client.Reader - it does not support arbitrary Get by ObjectKey
+    // This also violates high-level resource principle
 }
 ```
 
@@ -476,16 +519,20 @@ Lint checks MUST operate cluster-wide and scan all namespaces. Namespace filteri
 When discovering workloads or services, scan all namespaces:
 
 ```go
-// ✓ CORRECT: List across all namespaces
-notebooks := &unstructured.UnstructuredList{}
-notebooks.SetGroupVersionKind(resources.Notebook.GVK())
+// ✓ CORRECT: List across all namespaces using client.Reader
+notebooks, err := target.Client.List(ctx, resources.Notebook)  // No namespace restriction
+if err != nil {
+    return nil, fmt.Errorf("listing notebooks: %w", err)
+}
 
-err := target.Client.List(ctx, notebooks)  // No namespace restriction
-
-// ❌ WRONG: Restrict to specific namespace
-err := target.Client.List(ctx, notebooks, &client.ListOptions{
-    Namespace: "opendatahub",  // Prohibited
-})
+// ✓ CORRECT: Or use the workload builder (recommended)
+return validate.Workloads(c, target, resources.Notebook).
+    Run(ctx, func(ctx context.Context, req *validate.WorkloadRequest[*unstructured.Unstructured]) error {
+        for _, nb := range req.Items {
+            // Validate notebook configuration
+        }
+        return nil
+    })
 ```
 
 ### Handling Multi-Namespace Results
@@ -493,9 +540,9 @@ err := target.Client.List(ctx, notebooks, &client.ListOptions{
 Process resources from all namespaces:
 
 ```go
-for _, item := range notebooks.Items {
-    namespace, _ := jq.Query(&item, ".metadata.namespace")
-    name, _ := jq.Query(&item, ".metadata.name")
+for _, nb := range notebooks {
+    namespace := nb.GetNamespace()
+    name := nb.GetName()
 
     // Validate notebook configuration
     // Report issues with namespace context in condition message
@@ -530,18 +577,15 @@ for _, nb := range notebooks {
 Use full object retrieval when you need spec or status fields:
 
 ```go
-// ✓ CORRECT: Need spec fields - use List with unstructured
-dspas := &unstructured.UnstructuredList{}
-dspas.SetGroupVersionKind(resources.DataSciencePipelinesApplication.GVK())
-
-err := target.Client.List(ctx, dspas)
+// ✓ CORRECT: Need spec fields - use List with ResourceType
+dspas, err := target.Client.List(ctx, resources.DataSciencePipelinesApplication)
 if err != nil {
     return nil, fmt.Errorf("listing DSPAs: %w", err)
 }
 
-for _, dspa := range dspas.Items {
+for _, dspa := range dspas {
     // Need to check .spec.apiServer.managedPipelines.instructLab
-    instructLab, _ := jq.Query[bool](&dspa, ".spec.apiServer.managedPipelines.instructLab")
+    instructLab, _ := jq.Query[bool](dspa, ".spec.apiServer.managedPipelines.instructLab")
 }
 ```
 
@@ -578,179 +622,267 @@ func populateImpactedObjects(
 | Need | Method | Returns |
 |------|--------|---------|
 | Name, namespace, labels, annotations | `ListMetadata()` | `[]*metav1.PartialObjectMetadata` |
-| Spec fields | `List()` with unstructured | `*unstructured.UnstructuredList` |
-| Status fields | `List()` with unstructured | `*unstructured.UnstructuredList` |
-| Mixed (some metadata, some spec) | `List()` full objects | `*unstructured.UnstructuredList` |
+| Spec fields | `List()` | `[]*unstructured.Unstructured` |
+| Status fields | `List()` | `[]*unstructured.Unstructured` |
+| Mixed (some metadata, some spec) | `List()` full objects | `[]*unstructured.Unstructured` |
+
+## Validation Builders
+
+The `pkg/lint/checks/shared/validate/` package provides fluent builder APIs that eliminate boilerplate for common check patterns. Using builders is the recommended approach for new checks.
+
+### Component Builder
+
+`validate.Component()` handles DSC fetching, component state filtering, and annotation population automatically. Use for checks that validate a component's configuration in the DataScienceCluster.
+
+```go
+import "github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/validate"
+
+func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.Component(c, target).
+        InState(check.ManagementStateManaged).
+        Run(ctx, validate.Removal("CodeFlare is enabled (state: %s) but will be removed in RHOAI 3.x"))
+}
+```
+
+**Fluent API:**
+- `Component(c, target)` - Creates the builder. Component name is derived from `c.CheckKind()`
+- `.InState(states...)` - Only validate when component is in one of the specified management states. If not called, validates for any state
+- `.WithApplicationsNamespace()` - Also fetches the applications namespace from DSCI
+- `.Run(ctx, fn)` - Fetches DSC, checks state, populates annotations, and calls `fn`
+
+**The builder handles automatically:**
+- DSC not found: returns a standard "not found" diagnostic result (not an error)
+- DSC fetch error: returns wrapped error
+- Component not in required state: returns a "not configured" diagnostic result
+- Annotation population: management state and target version are automatically added
+
+**`validate.Removal()` helper:** Returns a `ComponentValidateFn` that sets a compatibility failure condition. The management state is automatically prepended as the first format argument:
+
+```go
+validate.Removal("CodeFlare is enabled (state: %s) but will be removed in RHOAI 3.x")
+```
+
+**`ComponentRequest` struct** provides pre-fetched data to the validation function:
+
+```go
+type ComponentRequest struct {
+    Result              *result.DiagnosticResult  // Pre-created with auto-populated annotations
+    DSC                 *unstructured.Unstructured // Fetched DataScienceCluster
+    ManagementState     string                     // Component's management state
+    Client              client.Reader              // Read-only API access
+    ApplicationsNamespace string                   // Populated when WithApplicationsNamespace() is used
+}
+```
+
+### DSCI Builder
+
+`validate.DSCI()` handles DSCInitialization fetching for service checks that read platform configuration from DSCI.
+
+```go
+func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.DSCI(c).Run(ctx, target, func(dr *result.DiagnosticResult, dsci *unstructured.Unstructured) error {
+        managementState, err := jq.Query[string](dsci, ".spec.serviceMesh.managementState")
+
+        switch {
+        case errors.Is(err, jq.ErrNotFound):
+            results.SetServiceNotConfigured(dr, "ServiceMesh")
+        case err != nil:
+            return fmt.Errorf("querying servicemesh managementState: %w", err)
+        case managementState == check.ManagementStateManaged:
+            results.SetCompatibilityFailuref(dr, "ServiceMesh is enabled (state: %s)", managementState)
+        default:
+            results.SetCompatibilitySuccessf(dr, "ServiceMesh is disabled (state: %s)", managementState)
+        }
+
+        return nil
+    })
+}
+```
+
+**Fluent API:**
+- `DSCI(c)` - Creates the builder
+- `.Run(ctx, target, fn)` - Fetches DSCI, populates annotations, and calls `fn` with the result and DSCI
+
+### Operator Builder
+
+`validate.Operator()` validates OLM operator presence via subscriptions. Use for dependency checks.
+
+```go
+func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.Operator(c, target).
+        WithNames("cert-manager", "openshift-cert-manager-operator").
+        Run(ctx)
+}
+```
+
+**Fluent API:**
+- `Operator(c, target)` - Creates the builder. Default matches subscription name == `c.CheckKind()`
+- `.WithNames(names...)` - Override subscription name matching (OR semantics)
+- `.WithChannels(channels...)` - Restrict matching to specific channels (must match both name AND channel)
+- `.WithConditionBuilder(builder)` - Override the default Available condition builder
+- `.Run(ctx)` - Checks OLM availability, finds subscriptions, and builds the result
+
+### Workload Builder
+
+`validate.Workloads()` and `validate.WorkloadsMetadata()` provide a generic builder for workload-based checks. The builder is parameterized over the item type (`*unstructured.Unstructured` or `*metav1.PartialObjectMetadata`).
+
+```go
+// Full objects (need spec/status fields)
+func (c *OtelMigrationCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.Workloads(c, target, resources.GuardrailsOrchestrator).
+        Filter(hasDeprecatedOtelFields).
+        Complete(ctx, newOtelMigrationCondition)
+}
+
+// Metadata-only (only need name/namespace/annotations)
+func (c *AcceleratorMigrationCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.WorkloadsMetadata(c, target, resources.Notebook).
+        Filter(hasAcceleratorAnnotation).
+        Complete(ctx, newAcceleratorMigrationCondition)
+}
+```
+
+**Fluent API:**
+- `Workloads(c, target, resourceType)` - Lists full unstructured objects
+- `WorkloadsMetadata(c, target, resourceType)` - Lists metadata-only objects
+- `.Filter(fn)` - Adds a predicate to select matching items. Items where `fn` returns false are excluded
+- `.Run(ctx, fn)` - Lists, filters, populates annotations, calls `fn`, and auto-populates `ImpactedObjects` if the callback didn't set them
+- `.Complete(ctx, fn)` - Higher-level alternative to `Run` for checks that only need to set conditions. `fn` returns `([]result.Condition, error)` and the builder sets them on the result
+
+**Auto-populated by the builder:**
+- Target version annotation
+- Impacted workload count annotation
+- `ImpactedObjects` (if callback doesn't set them)
+
+## Migration Helper
+
+The `pkg/lint/checks/shared/migration/` package provides a helper for API group migration checks that follow a common pattern: list resources, report count as advisory if found, report no-migration if empty.
+
+```go
+import "github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/migration"
+
+func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    dr := c.NewResult()
+
+    err := migration.ValidateResources(ctx, target, dr, migration.Config{
+        ResourceType:           resources.AcceleratorProfile,
+        ResourceLabel:          "AcceleratorProfile",
+        NoMigrationMessage:     "No AcceleratorProfiles found - no migration needed",
+        MigrationPendingMessage: "Found %d AcceleratorProfiles that will be auto-migrated to HardwareProfile API group",
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    return dr, nil
+}
+```
+
+**`migration.Config` fields:**
+- `ResourceType` - The Kubernetes resource type to discover
+- `ResourceLabel` - Human-readable name used in condition messages
+- `NoMigrationMessage` - Message when no resources are found
+- `MigrationPendingMessage` - Printf format for the message when resources are found (must contain `%d`)
+
+**The helper handles:**
+- Target version annotation population
+- Metadata-only listing for efficiency
+- CRD-not-found treated as empty list
+- Impacted workload count annotation
+- ImpactedObjects population
 
 ## Complete Example
 
-Here's a complete lint check implementation using BaseCheck and the Impact-based API:
+Here's a complete lint check implementation using the `validate.Component()` builder (the recommended pattern):
 
 ```go
-// pkg/lint/checks/components/kserve/serverless_removal.go
-package kserve
+// pkg/lint/checks/components/codeflare/codeflare.go
+package codeflare
 
 import (
     "context"
-    "fmt"
-
-    apierrors "k8s.io/apimachinery/pkg/api/errors"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
     "github.com/lburgazzoli/odh-cli/pkg/lint/check"
     "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
     "github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
-    "github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
-    "github.com/lburgazzoli/odh-cli/pkg/util/jq"
+    "github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/validate"
     "github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-type ServerlessRemovalCheck struct {
+type RemovalCheck struct {
     base.BaseCheck
 }
 
-func NewServerlessRemovalCheck() *ServerlessRemovalCheck {
-    return &ServerlessRemovalCheck{
+func NewRemovalCheck() *RemovalCheck {
+    return &RemovalCheck{
         BaseCheck: base.BaseCheck{
             CheckGroup:       check.GroupComponent,
-            Kind:             check.ComponentKServe,
-            CheckType:        check.CheckTypeRemoval,
-            CheckID:          "components.kserve.serverless-removal",
-            CheckName:        "Components :: KServe :: Serverless Removal (3.x)",
-            CheckDescription: "Validates that serverless components are removed when upgrading to 3.x",
+            Kind:             "codeflare",
+            Type:             check.CheckTypeRemoval,
+            CheckID:          "components.codeflare.removal",
+            CheckName:        "Components :: CodeFlare :: Removal (3.x)",
+            CheckDescription: "Validates that CodeFlare is disabled before upgrading from RHOAI 2.x to 3.x (component will be removed)",
         },
     }
 }
 
-// CanApply determines if this check should run.
-func (c *ServerlessRemovalCheck) CanApply(_ context.Context, target check.Target) bool {
-    // Only applies when upgrading to 3.x
-    return version.IsVersionAtLeast(target.TargetVersion, 3, 0)
+// CanApply returns whether this check should run for the given target.
+func (c *RemovalCheck) CanApply(_ context.Context, target check.Target) bool {
+    return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
 }
 
-// Validate - returns (*result.DiagnosticResult, error).
-func (c *ServerlessRemovalCheck) Validate(
-    ctx context.Context,
-    target check.Target,
-) (*result.DiagnosticResult, error) {
-    dr := c.NewResult()
-
-    // Get DataScienceCluster using client helper
-    dsc, err := target.Client.GetDataScienceCluster(ctx)
-    switch {
-    case apierrors.IsNotFound(err):
-        // Return result for "not found" case (not an error)
-        return results.DataScienceClusterNotFound(
-            string(c.Group()),
-            c.Kind,
-            c.CheckType,
-            c.Description(),
-        ), nil
-    case err != nil:
-        // Return error for infrastructure failures
-        return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
-    }
-
-    // Check serverless configuration using JQ
-    serverlessState, err := jq.Query[string](dsc, ".spec.components.kserve.serving.managementState")
-    if err != nil {
-        return nil, fmt.Errorf("querying serverless managementState: %w", err)
-    }
-
-    // Add annotations to flattened Annotations map
-    dr.Annotations[check.AnnotationComponentManagementState] = serverlessState
-    if target.TargetVersion != nil {
-        dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
-    }
-
-    // Evaluate serverless state
-    if serverlessState == "" || serverlessState == check.ManagementStateRemoved {
-        // Success: serverless removed or not configured
-        results.SetCompatibilitySuccessf(dr,
-            "Serverless components are removed (state: %s) - ready for 3.x upgrade",
-            serverlessState,
-        )
-        return dr, nil
-    }
-
-    // Failure: serverless still configured (blocking upgrade)
-    results.SetCondition(dr, check.NewCondition(
-        check.ConditionTypeCompatible,
-        metav1.ConditionFalse,
-        check.ReasonVersionIncompatible,
-        "Serverless components are still configured (state: %s) - must be removed before upgrading to 3.x",
-        serverlessState,
-        // Impact=Blocking is auto-derived from Status=False
-    ))
-
-    return dr, nil
+// Validate executes the check against the provided target.
+func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+    return validate.Component(c, target).
+        InState(check.ManagementStateManaged).
+        Run(ctx, validate.Removal("CodeFlare is enabled (state: %s) but will be removed in RHOAI 3.x"))
 }
 
 // Registration is done explicitly in pkg/lint/command.go:
-// registry.MustRegister(kserve.NewServerlessRemovalCheck())
+// registry.MustRegister(codeflare.NewRemovalCheck())
 ```
+
+**Note:** For complex checks that don't fit the builder pattern, you can still write checks without builders using `c.NewResult()` and manually fetching resources via `client.GetDataScienceCluster(ctx, target.Client)`.
 
 ## Testing Lint Checks
 
-Write tests using vanilla Gomega and fake clients:
+Write tests using vanilla Gomega. Note that `target.Client` is `client.Reader` (an interface), so tests provide a mock or fake implementation:
 
 ```go
-// pkg/lint/checks/components/kserve/serverless_removal_test.go
-package kserve
-
-import (
-    "testing"
-
-    "github.com/blang/semver/v4"
-    . "github.com/onsi/gomega"
-    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check"
-    "github.com/lburgazzoli/odh-cli/pkg/resources"
-    "github.com/lburgazzoli/odh-cli/pkg/util/client"
-)
-
-func TestServerlessRemovalCheck(t *testing.T) {
+func TestRemovalCheck(t *testing.T) {
     g := NewWithT(t)
 
-    t.Run("should pass when serverless is removed", func(t *testing.T) {
-        dsc := &unstructured.Unstructured{}
-        dsc.SetGroupVersionKind(resources.DataScienceCluster.GVK())
-        dsc.SetName("default")
-        dsc.Object["spec"] = map[string]any{
-            "components": map[string]any{
-                "kserve": map[string]any{
-                    "serving": map[string]any{
-                        "managementState": "Removed",
+    t.Run("should flag when component is managed", func(t *testing.T) {
+        // Build a fake client.Reader with a DSC that has the component managed
+        fakeReader := testclient.NewFakeReader(
+            testclient.WithDSC(map[string]any{
+                "components": map[string]any{
+                    "codeflare": map[string]any{
+                        "managementState": "Managed",
                     },
                 },
-            },
-        }
+            }),
+        )
 
-        fakeClient := fake.NewClientBuilder().WithObjects(dsc).Build()
         currentVer := semver.MustParse("2.17.0")
         targetVer := semver.MustParse("3.0.0")
 
-        // Target uses flattened version fields (*semver.Version)
         target := check.Target{
-            Client:         client.NewClientWithClient(fakeClient),
+            Client:         fakeReader,
             CurrentVersion: &currentVer,
             TargetVersion:  &targetVer,
         }
 
-        chk := NewServerlessRemovalCheck()
+        chk := NewRemovalCheck()
         result, err := chk.Validate(t.Context(), target)
 
         g.Expect(err).ToNot(HaveOccurred())
-        // Result has flattened fields (not Metadata.Group)
         g.Expect(result).To(HaveField("Group", "component"))
-        g.Expect(result).To(HaveField("Kind", "kserve"))
+        g.Expect(result).To(HaveField("Kind", "codeflare"))
         g.Expect(result.Status.Conditions).To(HaveLen(1))
         g.Expect(result.Status.Conditions[0]).To(MatchFields(IgnoreExtras, Fields{
             "Type":   Equal("Compatible"),
-            "Status": Equal(metav1.ConditionTrue),
+            "Status": Equal(metav1.ConditionFalse),
         }))
     })
 }
