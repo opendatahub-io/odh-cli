@@ -7,16 +7,12 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
-	metadatafake "k8s.io/client-go/metadata/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/ray"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -35,21 +31,10 @@ func TestImpactedWorkloadsCheck_NoResources(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := ray.NewImpactedWorkloadsCheck()
 	result, err := impactedCheck.Validate(ctx, target)
@@ -83,21 +68,11 @@ func TestImpactedWorkloadsCheck_WithCodeFlareFinalizer(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, rayCluster)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(rayCluster)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{rayCluster},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := ray.NewImpactedWorkloadsCheck()
 	result, err := impactedCheck.Validate(ctx, target)
@@ -134,21 +109,11 @@ func TestImpactedWorkloadsCheck_WithoutCodeFlareFinalizer(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, rayCluster)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(rayCluster)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{rayCluster},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := ray.NewImpactedWorkloadsCheck()
 	result, err := impactedCheck.Validate(ctx, target)
@@ -177,21 +142,11 @@ func TestImpactedWorkloadsCheck_NoFinalizers(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, rayCluster)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(rayCluster)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{rayCluster},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := ray.NewImpactedWorkloadsCheck()
 	result, err := impactedCheck.Validate(ctx, target)
@@ -249,27 +204,11 @@ func TestImpactedWorkloadsCheck_MultipleClusters(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		listKinds,
-		cluster1,
-		cluster2,
-		cluster3,
-	)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(cluster1, cluster2, cluster3)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{cluster1, cluster2, cluster3},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := ray.NewImpactedWorkloadsCheck()
 	result, err := impactedCheck.Validate(ctx, target)

@@ -7,17 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
-	metadatafake "k8s.io/client-go/metadata/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/kserve"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,44 +26,16 @@ var acceleratorListKinds = map[schema.GroupVersionResource]string{
 	resources.DSCInitialization.GVR():  resources.DSCInitialization.ListKind(),
 }
 
-func newDSCI(applicationsNamespace string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": applicationsNamespace,
-			},
-		},
-	}
-}
-
 func TestAcceleratorMigrationCheck_NoInferenceServices(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsci := newDSCI("redhat-ods-applications")
-
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications")},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)
@@ -88,8 +56,6 @@ func TestAcceleratorMigrationCheck_ISVCWithoutAcceleratorProfile(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsci := newDSCI("redhat-ods-applications")
-
 	// InferenceService without accelerator annotations
 	isvc := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -103,23 +69,12 @@ func TestAcceleratorMigrationCheck_ISVCWithoutAcceleratorProfile(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), isvc},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)
@@ -138,8 +93,6 @@ func TestAcceleratorMigrationCheck_ISVCWithoutAcceleratorProfile(t *testing.T) {
 func TestAcceleratorMigrationCheck_ISVCWithExistingAcceleratorProfile(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
-
-	dsci := newDSCI("redhat-ods-applications")
 
 	// AcceleratorProfile that exists
 	profile := &unstructured.Unstructured{
@@ -170,23 +123,12 @@ func TestAcceleratorMigrationCheck_ISVCWithExistingAcceleratorProfile(t *testing
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc, profile)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc, profile)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), isvc, profile},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)
@@ -212,8 +154,6 @@ func TestAcceleratorMigrationCheck_ISVCWithMissingAcceleratorProfile(t *testing.
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsci := newDSCI("redhat-ods-applications")
-
 	// InferenceService referencing non-existent AcceleratorProfile
 	isvc := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -231,23 +171,12 @@ func TestAcceleratorMigrationCheck_ISVCWithMissingAcceleratorProfile(t *testing.
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), isvc},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)
@@ -269,8 +198,6 @@ func TestAcceleratorMigrationCheck_ISVCWithMissingAcceleratorProfile(t *testing.
 func TestAcceleratorMigrationCheck_MixedInferenceServices(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
-
-	dsci := newDSCI("redhat-ods-applications")
 
 	// Existing AcceleratorProfile
 	profile := &unstructured.Unstructured{
@@ -331,34 +258,12 @@ func TestAcceleratorMigrationCheck_MixedInferenceServices(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		acceleratorListKinds,
-		dsci,
-		isvc1,
-		isvc2,
-		isvc3,
-		profile,
-	)
-	metadataClient := metadatafake.NewSimpleMetadataClient(
-		scheme,
-		kube.ToPartialObjectMetadata(isvc1, isvc2, isvc3, profile)...,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), isvc1, isvc2, isvc3, profile},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)
@@ -455,25 +360,12 @@ func TestAcceleratorMigrationCheck_AnnotationTargetVersion(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsci := newDSCI("redhat-ods-applications")
-
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications")},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)
@@ -485,8 +377,6 @@ func TestAcceleratorMigrationCheck_AnnotationTargetVersion(t *testing.T) {
 func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
-
-	dsci := newDSCI("redhat-ods-applications")
 
 	// AcceleratorProfile in the applications namespace
 	profile := &unstructured.Unstructured{
@@ -517,23 +407,12 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc, profile)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc, profile)...)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), isvc, profile},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	acceleratorCheck := kserve.NewAcceleratorMigrationCheck()
 	result, err := acceleratorCheck.Validate(ctx, target)

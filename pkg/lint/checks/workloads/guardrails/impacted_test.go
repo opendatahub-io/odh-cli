@@ -7,16 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
-	metadatafake "k8s.io/client-go/metadata/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/guardrails"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -80,37 +77,15 @@ func newTestConfigMap(
 	return &unstructured.Unstructured{Object: obj}
 }
 
-func newTestTarget(
-	t *testing.T,
-	objects ...runtime.Object,
-) check.Target {
-	t.Helper()
-
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, impactedListKinds, objects...)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
-	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-
-	return check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
-}
-
 func TestImpactedWorkloadsCheck_NoResources(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	target := newTestTarget(t)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)
@@ -147,7 +122,12 @@ func TestImpactedWorkloadsCheck_ValidCR(t *testing.T) {
 		"some-key": "some-value",
 	})
 
-	target := newTestTarget(t, orch, orchCM, gatewayCM)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		Objects:        []*unstructured.Unstructured{orch, orchCM, gatewayCM},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)
@@ -175,7 +155,12 @@ func TestImpactedWorkloadsCheck_InvalidCRSpec(t *testing.T) {
 		"enableBuiltInDetectors":  false,
 	})
 
-	target := newTestTarget(t, orch)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		Objects:        []*unstructured.Unstructured{orch},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)
@@ -226,7 +211,12 @@ func TestImpactedWorkloadsCheck_MissingOrchestratorConfigMap(t *testing.T) {
 		"some-key": "some-value",
 	})
 
-	target := newTestTarget(t, orch, gatewayCM)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		Objects:        []*unstructured.Unstructured{orch, gatewayCM},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)
@@ -293,7 +283,12 @@ func TestImpactedWorkloadsCheck_InvalidOrchestratorConfigMap(t *testing.T) {
 		"some-key": "some-value",
 	})
 
-	target := newTestTarget(t, orch, orchCM, gatewayCM)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		Objects:        []*unstructured.Unstructured{orch, orchCM, gatewayCM},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)
@@ -348,7 +343,12 @@ func TestImpactedWorkloadsCheck_MissingGatewayConfigMap(t *testing.T) {
 		"config.yaml": validConfigYAML,
 	})
 
-	target := newTestTarget(t, orch, orchCM)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		Objects:        []*unstructured.Unstructured{orch, orchCM},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)
@@ -456,7 +456,11 @@ func TestImpactedWorkloadsCheck_AnnotationTargetVersion(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	target := newTestTarget(t)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      impactedListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
 
 	chk := guardrails.NewImpactedWorkloadsCheck()
 	result, err := chk.Validate(ctx, target)

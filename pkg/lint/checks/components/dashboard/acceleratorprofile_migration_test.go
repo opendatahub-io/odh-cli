@@ -7,17 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
-	metadatafake "k8s.io/client-go/metadata/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/dashboard"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -94,24 +90,11 @@ func TestAcceleratorProfileMigrationCheck_Validate_NoProfiles(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorProfileListKinds)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorProfileListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	targetVer := semver.MustParse("3.0.0")
-	currentVer := semver.MustParse("2.17.0")
-
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	chk := dashboard.NewAcceleratorProfileMigrationCheck()
 	dr, err := chk.Validate(ctx, target)
@@ -139,32 +122,12 @@ func TestAcceleratorProfileMigrationCheck_Validate_WithProfiles(t *testing.T) {
 	profile1 := createAcceleratorProfile(testAcceleratorProfileNamespace1, testAcceleratorProfile1)
 	profile2 := createAcceleratorProfile(testAcceleratorProfileNamespace2, testAcceleratorProfile2)
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		acceleratorProfileListKinds,
-		profile1,
-		profile2,
-	)
-	metadataClient := metadatafake.NewSimpleMetadataClient(
-		scheme,
-		kube.ToPartialObjectMetadata(profile1, profile2)...,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorProfileListKinds,
+		Objects:        []*unstructured.Unstructured{profile1, profile2},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	targetVer := semver.MustParse("3.0.0")
-	currentVer := semver.MustParse("2.17.0")
-
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	chk := dashboard.NewAcceleratorProfileMigrationCheck()
 	dr, err := chk.Validate(ctx, target)
@@ -192,24 +155,11 @@ func TestAcceleratorProfileMigrationCheck_Validate_AnnotationsPresent(t *testing
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorProfileListKinds)
-	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic:  dynamicClient,
-		Metadata: metadataClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      acceleratorProfileListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.3.0",
 	})
-
-	targetVer := semver.MustParse("3.3.0")
-	currentVer := semver.MustParse("2.17.0")
-
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	chk := dashboard.NewAcceleratorProfileMigrationCheck()
 	dr, err := chk.Validate(ctx, target)

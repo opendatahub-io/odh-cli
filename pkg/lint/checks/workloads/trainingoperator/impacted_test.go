@@ -7,15 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/trainingoperator"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,18 +28,10 @@ func TestImpactedWorkloadsCheck_NoResources(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
 	result, err := impactedCheck.Validate(ctx, target)
@@ -80,18 +70,11 @@ func TestImpactedWorkloadsCheck_ActiveJobs(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, activeJob)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{activeJob},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
 	result, err := impactedCheck.Validate(ctx, target)
@@ -132,18 +115,11 @@ func TestImpactedWorkloadsCheck_CompletedJobsSucceeded(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, completedJob)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{completedJob},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
 	result, err := impactedCheck.Validate(ctx, target)
@@ -183,18 +159,11 @@ func TestImpactedWorkloadsCheck_CompletedJobsFailed(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, failedJob)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{failedJob},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
 	result, err := impactedCheck.Validate(ctx, target)
@@ -272,24 +241,11 @@ func TestImpactedWorkloadsCheck_MixedActiveAndCompleted(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		listKinds,
-		activeJob1,
-		activeJob2,
-		completedJob,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{activeJob1, activeJob2, completedJob},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
 	result, err := impactedCheck.Validate(ctx, target)
@@ -322,18 +278,11 @@ func TestImpactedWorkloadsCheck_JobWithoutStatus(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, jobWithoutStatus)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{jobWithoutStatus},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
 	result, err := impactedCheck.Validate(ctx, target)
