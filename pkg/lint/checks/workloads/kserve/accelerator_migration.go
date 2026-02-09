@@ -5,25 +5,18 @@ import (
 	"fmt"
 	"strconv"
 
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/accelerator"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/results"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-const (
-	ConditionTypeISVCAcceleratorProfileCompatible = "AcceleratorProfileCompatible"
-
-	// Annotations used by InferenceServices to reference AcceleratorProfiles.
-	annotationAcceleratorName      = "opendatahub.io/accelerator-name"
-	annotationAcceleratorNamespace = "opendatahub.io/accelerator-profile-namespace"
-)
+const ConditionTypeISVCAcceleratorProfileCompatible = "AcceleratorProfileCompatible"
 
 // AcceleratorMigrationCheck detects InferenceService CRs referencing AcceleratorProfiles
 // that need to be migrated to HardwareProfiles in RHOAI 3.x.
@@ -62,111 +55,61 @@ func (c *AcceleratorMigrationCheck) Validate(
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
 	}
 
-	// Find InferenceServices with accelerator profile references and check if the profiles exist
-	impacted, missingCount, err := c.findInferenceServicesWithAcceleratorProfiles(ctx, target)
+	impacted, missingCount, err := accelerator.FindWorkloadsWithAcceleratorRefs(ctx, target, resources.InferenceService)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finding InferenceServices with AcceleratorProfiles: %w", err)
 	}
 
 	totalImpacted := len(impacted)
 	dr.Annotations[check.AnnotationImpactedWorkloadCount] = strconv.Itoa(totalImpacted)
 
-	// Add condition based on findings
 	dr.Status.Conditions = append(
 		dr.Status.Conditions,
 		c.newISVCAcceleratorMigrationCondition(totalImpacted, missingCount),
 	)
 
-	// Populate ImpactedObjects if any InferenceServices found
 	if totalImpacted > 0 {
-		c.populateISVCAcceleratorImpactedObjects(dr, impacted)
+		results.PopulateImpactedObjects(dr, resources.InferenceService, impacted)
 	}
 
 	return dr, nil
 }
 
-func (c *AcceleratorMigrationCheck) findInferenceServicesWithAcceleratorProfiles(
-	ctx context.Context,
-	target check.Target,
-) ([]types.NamespacedName, int, error) {
-	// Use ListMetadata since we only need annotations
-	inferenceServices, err := target.Client.ListMetadata(ctx, resources.InferenceService)
-	if err != nil {
-		if client.IsResourceTypeNotFound(err) {
-			return nil, 0, nil
-		}
-
-		return nil, 0, fmt.Errorf("listing InferenceServices: %w", err)
+func (c *AcceleratorMigrationCheck) newISVCAcceleratorMigrationCondition(
+	totalImpacted int,
+	totalMissing int,
+) result.Condition {
+	if totalImpacted == 0 {
+		return check.NewCondition(
+			ConditionTypeISVCAcceleratorProfileCompatible,
+			metav1.ConditionTrue,
+			check.ReasonVersionCompatible,
+			"No InferenceServices found using AcceleratorProfiles - no migration needed",
+		)
 	}
 
-	// Resolve the applications namespace for AcceleratorProfile lookups.
-	// AcceleratorProfiles live in the applications namespace, but InferenceServices may not
-	// have the namespace annotation set, so we need a proper default.
-	appNS, err := client.GetApplicationsNamespace(ctx, target.Client)
-	if err != nil {
-		return nil, 0, fmt.Errorf("getting applications namespace: %w", err)
+	// If there are missing profiles, this is a blocking issue
+	if totalMissing > 0 {
+		return check.NewCondition(
+			ConditionTypeISVCAcceleratorProfileCompatible,
+			metav1.ConditionFalse,
+			check.ReasonResourceNotFound,
+			"Found %d InferenceService(s) referencing AcceleratorProfiles (%d missing) - ensure AcceleratorProfiles exist and migrate to HardwareProfiles",
+			totalImpacted,
+			totalMissing,
+			check.WithImpact(result.ImpactAdvisory),
+			check.WithRemediation(c.CheckRemediation),
+		)
 	}
 
-	// Build a cache of existing AcceleratorProfiles
-	profileCache, err := c.buildAcceleratorProfileCache(ctx, target)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	var impacted []types.NamespacedName
-	missingCount := 0
-
-	for _, isvc := range inferenceServices {
-		profileRef := types.NamespacedName{
-			Namespace: kube.GetAnnotation(isvc, annotationAcceleratorNamespace),
-			Name:      kube.GetAnnotation(isvc, annotationAcceleratorName),
-		}
-
-		if profileRef.Name == "" {
-			continue
-		}
-		if profileRef.Namespace == "" {
-			profileRef.Namespace = appNS
-		}
-
-		// Track this InferenceService as impacted
-		impacted = append(impacted, types.NamespacedName{
-			Namespace: isvc.GetNamespace(),
-			Name:      isvc.GetName(),
-		})
-
-		// Check if the referenced AcceleratorProfile exists
-		if !profileCache.Has(profileRef) {
-			missingCount++
-		}
-	}
-
-	return impacted, missingCount, nil
-}
-
-func (c *AcceleratorMigrationCheck) buildAcceleratorProfileCache(
-	ctx context.Context,
-	target check.Target,
-) (sets.Set[types.NamespacedName], error) {
-	// Use ListMetadata since we only need namespace/name
-	profiles, err := target.Client.ListMetadata(ctx, resources.AcceleratorProfile)
-	if err != nil {
-		if client.IsResourceTypeNotFound(err) {
-			// AcceleratorProfile CRD doesn't exist - all references are missing
-			return sets.New[types.NamespacedName](), nil
-		}
-
-		return nil, fmt.Errorf("listing AcceleratorProfiles: %w", err)
-	}
-
-	cache := sets.New[types.NamespacedName]()
-
-	for _, profile := range profiles {
-		cache.Insert(types.NamespacedName{
-			Namespace: profile.GetNamespace(),
-			Name:      profile.GetName(),
-		})
-	}
-
-	return cache, nil
+	// All referenced profiles exist - advisory only
+	return check.NewCondition(
+		ConditionTypeISVCAcceleratorProfileCompatible,
+		metav1.ConditionFalse,
+		check.ReasonConfigurationInvalid,
+		"Found %d InferenceService(s) using AcceleratorProfiles - migrate to HardwareProfiles before upgrading",
+		totalImpacted,
+		check.WithImpact(result.ImpactAdvisory),
+		check.WithRemediation(c.CheckRemediation),
+	)
 }
