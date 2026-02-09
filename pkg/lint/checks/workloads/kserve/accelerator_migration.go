@@ -99,6 +99,14 @@ func (c *AcceleratorMigrationCheck) findInferenceServicesWithAcceleratorProfiles
 		return nil, 0, fmt.Errorf("listing InferenceServices: %w", err)
 	}
 
+	// Resolve the applications namespace for AcceleratorProfile lookups.
+	// AcceleratorProfiles live in the applications namespace, but InferenceServices may not
+	// have the namespace annotation set, so we need a proper default.
+	appNS, err := client.GetApplicationsNamespace(ctx, target.Client)
+	if err != nil {
+		return nil, 0, fmt.Errorf("getting applications namespace: %w", err)
+	}
+
 	// Build a cache of existing AcceleratorProfiles
 	profileCache, err := c.buildAcceleratorProfileCache(ctx, target)
 	if err != nil {
@@ -118,7 +126,7 @@ func (c *AcceleratorMigrationCheck) findInferenceServicesWithAcceleratorProfiles
 			continue
 		}
 		if profileRef.Namespace == "" {
-			profileRef.Namespace = isvc.GetNamespace()
+			profileRef.Namespace = appNS
 		}
 
 		// Track this InferenceService as impacted

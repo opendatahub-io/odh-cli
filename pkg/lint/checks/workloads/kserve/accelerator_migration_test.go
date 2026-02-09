@@ -27,15 +27,33 @@ import (
 var acceleratorListKinds = map[schema.GroupVersionResource]string{
 	resources.InferenceService.GVR():   resources.InferenceService.ListKind(),
 	resources.AcceleratorProfile.GVR(): resources.AcceleratorProfile.ListKind(),
+	resources.DSCInitialization.GVR():  resources.DSCInitialization.ListKind(),
+}
+
+func newDSCI(applicationsNamespace string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DSCInitialization.APIVersion(),
+			"kind":       resources.DSCInitialization.Kind,
+			"metadata": map[string]any{
+				"name": "default-dsci",
+			},
+			"spec": map[string]any{
+				"applicationsNamespace": applicationsNamespace,
+			},
+		},
+	}
 }
 
 func TestAcceleratorMigrationCheck_NoInferenceServices(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	dsci := newDSCI("redhat-ods-applications")
+
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci)
 	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
 
 	c := client.NewForTesting(client.TestClientConfig{
@@ -70,6 +88,8 @@ func TestAcceleratorMigrationCheck_ISVCWithoutAcceleratorProfile(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	dsci := newDSCI("redhat-ods-applications")
+
 	// InferenceService without accelerator annotations
 	isvc := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -85,7 +105,7 @@ func TestAcceleratorMigrationCheck_ISVCWithoutAcceleratorProfile(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, isvc)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc)
 	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc)...)
 
 	c := client.NewForTesting(client.TestClientConfig{
@@ -119,6 +139,8 @@ func TestAcceleratorMigrationCheck_ISVCWithExistingAcceleratorProfile(t *testing
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	dsci := newDSCI("redhat-ods-applications")
+
 	// AcceleratorProfile that exists
 	profile := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -150,7 +172,7 @@ func TestAcceleratorMigrationCheck_ISVCWithExistingAcceleratorProfile(t *testing
 
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, isvc, profile)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc, profile)
 	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc, profile)...)
 
 	c := client.NewForTesting(client.TestClientConfig{
@@ -190,6 +212,8 @@ func TestAcceleratorMigrationCheck_ISVCWithMissingAcceleratorProfile(t *testing.
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	dsci := newDSCI("redhat-ods-applications")
+
 	// InferenceService referencing non-existent AcceleratorProfile
 	isvc := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -209,7 +233,7 @@ func TestAcceleratorMigrationCheck_ISVCWithMissingAcceleratorProfile(t *testing.
 
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, isvc)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc)
 	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc)...)
 
 	c := client.NewForTesting(client.TestClientConfig{
@@ -245,6 +269,8 @@ func TestAcceleratorMigrationCheck_ISVCWithMissingAcceleratorProfile(t *testing.
 func TestAcceleratorMigrationCheck_MixedInferenceServices(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
+
+	dsci := newDSCI("redhat-ods-applications")
 
 	// Existing AcceleratorProfile
 	profile := &unstructured.Unstructured{
@@ -310,6 +336,7 @@ func TestAcceleratorMigrationCheck_MixedInferenceServices(t *testing.T) {
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
 		scheme,
 		acceleratorListKinds,
+		dsci,
 		isvc1,
 		isvc2,
 		isvc3,
@@ -428,9 +455,11 @@ func TestAcceleratorMigrationCheck_AnnotationTargetVersion(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	dsci := newDSCI("redhat-ods-applications")
+
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci)
 	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
 
 	c := client.NewForTesting(client.TestClientConfig{
@@ -457,19 +486,21 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// AcceleratorProfile in same namespace as InferenceService
+	dsci := newDSCI("redhat-ods-applications")
+
+	// AcceleratorProfile in the applications namespace
 	profile := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.AcceleratorProfile.APIVersion(),
 			"kind":       resources.AcceleratorProfile.Kind,
 			"metadata": map[string]any{
 				"name":      "my-gpu",
-				"namespace": "user-ns",
+				"namespace": "redhat-ods-applications",
 			},
 		},
 	}
 
-	// InferenceService with accelerator name but no namespace annotation (should default to isvc's namespace)
+	// InferenceService with accelerator name but no namespace annotation (should default to applications namespace)
 	isvc := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.InferenceService.APIVersion(),
@@ -479,7 +510,7 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 				"namespace": "user-ns",
 				"annotations": map[string]any{
 					"opendatahub.io/accelerator-name": "my-gpu",
-					// No namespace annotation - should default to isvc's namespace
+					// No namespace annotation - should default to applications namespace
 				},
 			},
 			"spec": map[string]any{},
@@ -488,7 +519,7 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, isvc, profile)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, acceleratorListKinds, dsci, isvc, profile)
 	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(isvc, profile)...)
 
 	c := client.NewForTesting(client.TestClientConfig{
@@ -509,7 +540,7 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	// Profile exists in same namespace, so should be advisory (not blocking)
+	// Profile exists in applications namespace (resolved via DSCI), so should be advisory (not missing)
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(kserve.ConditionTypeISVCAcceleratorProfileCompatible),
 		"Status": Equal(metav1.ConditionFalse),

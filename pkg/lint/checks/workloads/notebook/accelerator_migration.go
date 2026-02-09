@@ -101,6 +101,14 @@ func (c *AcceleratorMigrationCheck) findNotebooksWithAcceleratorProfiles(
 		return nil, 0, fmt.Errorf("listing Notebooks: %w", err)
 	}
 
+	// Resolve the applications namespace for AcceleratorProfile lookups.
+	// AcceleratorProfiles live in the applications namespace, but notebooks may not
+	// have the namespace annotation set, so we need a proper default.
+	appNS, err := client.GetApplicationsNamespace(ctx, target.Client)
+	if err != nil {
+		return nil, 0, fmt.Errorf("getting applications namespace: %w", err)
+	}
+
 	// Build a cache of existing AcceleratorProfiles
 	profileCache, err := c.buildAcceleratorProfileCache(ctx, target)
 	if err != nil {
@@ -120,7 +128,7 @@ func (c *AcceleratorMigrationCheck) findNotebooksWithAcceleratorProfiles(
 			continue
 		}
 		if profileRef.Namespace == "" {
-			profileRef.Namespace = nb.GetNamespace()
+			profileRef.Namespace = appNS
 		}
 
 		// Track this notebook as impacted
