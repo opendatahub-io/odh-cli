@@ -16,41 +16,6 @@ import (
 //
 //	func NewRemovalCheck() *RemovalCheck {
 //	    return &RemovalCheck{
-//	        BaseCheck: base.New(
-//	            check.GroupComponent,
-//	            check.ComponentModelMesh,
-//	            check.CheckTypeRemoval,
-//	            "components.modelmesh.removal",
-//	            "Components :: ModelMesh :: Removal (3.x)",
-//	            "Validates that ModelMesh is disabled before upgrading...",
-//	        ),
-//	    }
-//	}
-//
-//	func (c *RemovalCheck) CanApply(currentVersion *semver.TargetVersion, targetVersion *semver.TargetVersion) bool {
-//	    if currentVersion == nil || targetVersion == nil {
-//	        return false
-//	    }
-//	    return currentVersion.Major == 2 && targetVersion.Major >= 3
-//	}
-//
-//	func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
-//	    dr := c.NewResult()
-//	    // ... validation logic
-//	    return dr, nil
-//	}
-//
-// BaseCheck holds common check metadata as public fields.
-// Checks can access these fields directly (e.g., c.Kind, c.Type).
-//
-// Example usage:
-//
-//	type RemovalCheck struct {
-//	    base.BaseCheck
-//	}
-//
-//	func NewRemovalCheck() *RemovalCheck {
-//	    return &RemovalCheck{
 //	        BaseCheck: base.BaseCheck{
 //	            CheckGroup:       check.GroupComponent,
 //	            Kind:             check.ComponentModelMesh,
