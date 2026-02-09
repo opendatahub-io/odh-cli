@@ -98,12 +98,11 @@ func TestKServeServerlessRemovalCheck_KServeNotConfigured(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	// When KServe is not configured, InState filter returns "not configured" result
+	// When KServe is not configured, InState filter passes (check doesn't apply)
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeConfigured),
-		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonResourceNotFound),
-		"Message": ContainSubstring("kserve component is not configured"),
+		"Type":   Equal(check.ConditionTypeConfigured),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
 	}))
 }
 
@@ -147,12 +146,11 @@ func TestKServeServerlessRemovalCheck_KServeNotManaged(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	// When KServe is Removed, InState filter returns "not configured" result
+	// When KServe is Removed, InState filter passes (check doesn't apply)
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeConfigured),
-		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonResourceNotFound),
-		"Message": ContainSubstring("kserve component is not configured"),
+		"Type":   Equal(check.ConditionTypeConfigured),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
 	}))
 }
 

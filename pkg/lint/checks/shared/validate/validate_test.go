@@ -94,7 +94,7 @@ func TestComponentBuilder(t *testing.T) {
 		g.Expect(dr.Status.Conditions[0].Reason).To(Equal(check.ReasonResourceNotFound))
 	})
 
-	t.Run("should return not configured when component state not in required states", func(t *testing.T) {
+	t.Run("should pass when component state not in required states", func(t *testing.T) {
 		dsc := createDSCWithComponent("codeflare", check.ManagementStateRemoved)
 		scheme := runtime.NewScheme()
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, dscListKinds, dsc)
@@ -119,7 +119,8 @@ func TestComponentBuilder(t *testing.T) {
 		g.Expect(dr).ToNot(BeNil())
 		g.Expect(dr.Status.Conditions).To(HaveLen(1))
 		g.Expect(dr.Status.Conditions[0].Type).To(Equal(check.ConditionTypeConfigured))
-		g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionFalse))
+		g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
+		g.Expect(dr.Status.Conditions[0].Reason).To(Equal(check.ReasonRequirementsMet))
 	})
 
 	t.Run("should call validation function when component state matches", func(t *testing.T) {

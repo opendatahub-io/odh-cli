@@ -53,6 +53,7 @@ func (c *HardwareProfileMigrationCheck) Validate(
 		ResourceLabel:           "HardwareProfile",
 		NoMigrationMessage:      "No HardwareProfiles found in opendatahub.io API group - no migration required",
 		MigrationPendingMessage: "Found %d HardwareProfile(s) in opendatahub.io that will be automatically migrated to infrastructure.opendatahub.io during upgrade",
+		Remediation:             c.CheckRemediation,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("validating HardwareProfile migration: %w", err)

@@ -125,8 +125,8 @@ func (e *Executor) executeCheck(ctx context.Context, target Target, check Check)
 
 		errorResult := result.New(
 			string(check.Group()),
-			check.ID(),
-			check.Name(),
+			check.CheckKind(),
+			check.CheckType(),
 			check.Description(),
 		)
 
@@ -161,8 +161,8 @@ func (e *Executor) executeCheck(ctx context.Context, target Target, check Check)
 	if err := checkResult.Validate(); err != nil {
 		invalidResult := result.New(
 			string(check.Group()),
-			check.ID(),
-			check.Name(),
+			check.CheckKind(),
+			check.CheckType(),
 			check.Description(),
 		)
 		invalidResult.Status.Conditions = []result.Condition{

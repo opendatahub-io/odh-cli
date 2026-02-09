@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
@@ -151,14 +152,19 @@ func (b *ComponentBuilder) Run(
 
 	// Check state precondition if states are specified
 	if len(b.requiredStates) > 0 && !slices.Contains(b.requiredStates, state) {
-		// Component not in required state - return "not configured" result
+		// Component not in required state - check doesn't apply, return passing result
 		dr := result.New(
 			string(b.check.Group()),
 			b.check.CheckKind(),
 			b.check.CheckType(),
 			b.check.Description(),
 		)
-		results.SetComponentNotConfigured(dr, b.componentName)
+		results.SetCondition(dr, check.NewCondition(
+			check.ConditionTypeConfigured,
+			metav1.ConditionTrue,
+			check.ReasonRequirementsMet,
+			"",
+		))
 
 		return dr, nil
 	}

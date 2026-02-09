@@ -32,14 +32,18 @@ const (
 )
 
 // Condition represents a diagnostic condition with severity level.
-// It embeds metav1.Condition and adds a Severity field to indicate
-// the impact level of the condition result.
+// It embeds metav1.Condition and adds Impact and Remediation fields to indicate
+// the impact level and remediation guidance of the condition result.
 type Condition struct {
 	metav1.Condition `json:",inline" yaml:",inline"`
 
 	// Impact indicates the upgrade impact level.
 	// Auto-derived from Status unless explicitly overridden via WithImpact option.
 	Impact Impact `json:"impact,omitempty" yaml:"impact,omitempty"`
+
+	// Remediation provides actionable guidance on how to resolve the condition.
+	// Set via WithRemediation option during condition creation.
+	Remediation string `json:"remediation,omitempty" yaml:"remediation,omitempty"`
 }
 
 // Validate ensures the condition has valid Status/Impact combination.
@@ -270,10 +274,14 @@ func (r *DiagnosticResult) GetImpact() *string {
 	return &resultStr
 }
 
-// GetRemediation returns remediation guidance.
-// Currently returns empty string as remediation is not part of the CR pattern.
-// Remediation can be inferred from condition reasons and messages.
+// GetRemediation returns remediation guidance from the first condition that has it set.
 func (r *DiagnosticResult) GetRemediation() string {
+	for _, cond := range r.Status.Conditions {
+		if cond.Remediation != "" {
+			return cond.Remediation
+		}
+	}
+
 	return ""
 }
 

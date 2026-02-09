@@ -7,7 +7,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 )
 
-func newAcceleratorMigrationCondition(totalImpacted int, totalMissing int) result.Condition {
+func newAcceleratorMigrationCondition(totalImpacted int, totalMissing int, remediation string) result.Condition {
 	if totalImpacted == 0 {
 		return check.NewCondition(
 			ConditionTypeAcceleratorProfileCompatible,
@@ -27,6 +27,7 @@ func newAcceleratorMigrationCondition(totalImpacted int, totalMissing int) resul
 			totalImpacted,
 			totalMissing,
 			check.WithImpact(result.ImpactBlocking),
+			check.WithRemediation(remediation),
 		)
 	}
 
@@ -38,5 +39,6 @@ func newAcceleratorMigrationCondition(totalImpacted int, totalMissing int) resul
 		"Found %d Notebook(s) using AcceleratorProfiles - migrate to HardwareProfiles before upgrading",
 		totalImpacted,
 		check.WithImpact(result.ImpactAdvisory),
+		check.WithRemediation(remediation),
 	)
 }

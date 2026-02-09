@@ -58,6 +58,7 @@ func (c *AcceleratorProfileMigrationCheck) Validate(
 		ResourceLabel:           "AcceleratorProfile",
 		NoMigrationMessage:      "No AcceleratorProfiles found - no migration required",
 		MigrationPendingMessage: "Found %d AcceleratorProfile(s) that will be automatically migrated to HardwareProfiles during upgrade",
+		Remediation:             c.CheckRemediation,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("validating AcceleratorProfile migration: %w", err)

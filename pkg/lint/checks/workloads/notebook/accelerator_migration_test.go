@@ -177,6 +177,8 @@ func TestAcceleratorMigrationCheck_NotebookWithExistingAcceleratorProfile(t *tes
 		"Message": And(ContainSubstring("Found 1 Notebook(s)"), ContainSubstring("HardwareProfiles")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
+	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
+	g.Expect(result.GetRemediation()).To(ContainSubstring("HardwareProfiles"))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
 	g.Expect(result.ImpactedObjects).To(HaveLen(1))
 	g.Expect(result.ImpactedObjects[0].Name).To(Equal("gpu-notebook"))
@@ -234,6 +236,7 @@ func TestAcceleratorMigrationCheck_NotebookWithMissingAcceleratorProfile(t *test
 		"Message": And(ContainSubstring("1 missing"), ContainSubstring("ensure AcceleratorProfiles exist")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
 	g.Expect(result.ImpactedObjects).To(HaveLen(1))
 }
@@ -341,6 +344,7 @@ func TestAcceleratorMigrationCheck_MixedNotebooks(t *testing.T) {
 		"Message": And(ContainSubstring("2 Notebook(s)"), ContainSubstring("1 missing")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))
 	g.Expect(result.ImpactedObjects).To(HaveLen(2))
 }

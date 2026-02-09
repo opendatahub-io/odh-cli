@@ -125,7 +125,7 @@ func TestAcceleratorProfileMigrationCheck_Validate_NoProfiles(t *testing.T) {
 	g.Expect(dr.Status.Conditions).To(HaveLen(1))
 	g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(check.ConditionTypeMigrationRequired),
-		"Status": Equal(metav1.ConditionFalse),
+		"Status": Equal(metav1.ConditionTrue),
 		"Reason": Equal(check.ReasonNoMigrationRequired),
 	}))
 	g.Expect(dr.ImpactedObjects).To(BeEmpty())

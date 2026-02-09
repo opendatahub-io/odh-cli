@@ -30,6 +30,9 @@ type Config struct {
 	// MigrationPendingMessage is the printf format for the message when resources are found.
 	// Must contain a single %d placeholder for the count.
 	MigrationPendingMessage string
+
+	// Remediation provides actionable guidance on how to resolve migration findings.
+	Remediation string
 }
 
 // ValidateResources discovers resources and populates a DiagnosticResult with migration conditions.
@@ -57,7 +60,7 @@ func ValidateResources(
 	if totalCount == 0 {
 		results.SetCondition(dr, check.NewCondition(
 			check.ConditionTypeMigrationRequired,
-			metav1.ConditionFalse,
+			metav1.ConditionTrue,
 			check.ReasonNoMigrationRequired,
 			cfg.NoMigrationMessage,
 		))
@@ -67,13 +70,21 @@ func ValidateResources(
 
 	// Resources found - advisory notice about auto-migration.
 	// Use Status=False (not yet migrated) with advisory impact since this is informational.
+	conditionOpts := []any{
+		totalCount,
+		check.WithImpact(result.ImpactAdvisory),
+	}
+
+	if cfg.Remediation != "" {
+		conditionOpts = append(conditionOpts, check.WithRemediation(cfg.Remediation))
+	}
+
 	results.SetCondition(dr, check.NewCondition(
 		check.ConditionTypeMigrationRequired,
 		metav1.ConditionFalse,
 		check.ReasonMigrationPending,
 		cfg.MigrationPendingMessage,
-		totalCount,
-		check.WithImpact(result.ImpactAdvisory),
+		conditionOpts...,
 	))
 
 	// Populate ImpactedObjects.

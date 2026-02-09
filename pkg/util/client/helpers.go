@@ -7,6 +7,7 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -131,6 +132,12 @@ func (c *defaultClient) ListResources(ctx context.Context, gvr schema.GroupVersi
 				return []*unstructured.Unstructured{}, nil
 			}
 
+			// The dynamic client bypasses the REST mapper, so a non-existent resource type
+			// returns a 404 instead of the NoResourceMatchError that callers expect.
+			if apierrors.IsNotFound(err) {
+				return nil, &apimeta.NoResourceMatchError{PartialResource: gvr}
+			}
+
 			return nil, fmt.Errorf("listing resources: %w", err)
 		}
 
@@ -188,6 +195,12 @@ func (c *defaultClient) ListMetadata(ctx context.Context, resourceType resources
 			// Permission errors are non-fatal - return empty list
 			if IsPermissionError(err) {
 				return []*metav1.PartialObjectMetadata{}, nil
+			}
+
+			// The metadata client bypasses the REST mapper, so a non-existent resource type
+			// returns a 404 instead of the NoResourceMatchError that callers expect.
+			if apierrors.IsNotFound(err) {
+				return nil, &apimeta.NoResourceMatchError{PartialResource: gvr}
 			}
 
 			return nil, fmt.Errorf("listing metadata for resources: %w", err)

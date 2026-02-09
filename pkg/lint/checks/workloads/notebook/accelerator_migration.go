@@ -78,7 +78,7 @@ func (c *AcceleratorMigrationCheck) Validate(
 	// Add condition based on findings
 	dr.Status.Conditions = append(
 		dr.Status.Conditions,
-		newAcceleratorMigrationCondition(totalImpacted, missingCount),
+		newAcceleratorMigrationCondition(totalImpacted, missingCount, c.CheckRemediation),
 	)
 
 	// Populate ImpactedObjects if any notebooks found

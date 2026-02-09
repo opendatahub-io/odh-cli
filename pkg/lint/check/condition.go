@@ -31,6 +31,24 @@ func WithImpact(impact result.Impact) ConditionOption {
 	}
 }
 
+// WithRemediation sets actionable guidance on how to resolve the condition.
+//
+// Example:
+//
+//	check.NewCondition(
+//	    check.ConditionTypeCompatible,
+//	    metav1.ConditionFalse,
+//	    check.ReasonConfigurationInvalid,
+//	    "Found %d Notebook(s) using AcceleratorProfiles",
+//	    count,
+//	    check.WithRemediation("Migrate AcceleratorProfiles to HardwareProfiles before upgrading"),
+//	)
+func WithRemediation(remediation string) ConditionOption {
+	return func(c *result.Condition) {
+		c.Remediation = remediation
+	}
+}
+
 // deriveImpact derives the default impact from condition status.
 func deriveImpact(status metav1.ConditionStatus) result.Impact {
 	switch status {

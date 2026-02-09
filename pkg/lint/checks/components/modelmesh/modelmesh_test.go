@@ -98,11 +98,11 @@ func TestModelmeshRemovalCheck_NotConfigured(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	// When component is not configured, InState(Managed) filter returns "not configured"
+	// When component is not configured, InState(Managed) filter passes (check doesn't apply)
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(check.ConditionTypeConfigured),
-		"Status": Equal(metav1.ConditionFalse),
-		"Reason": Equal(check.ReasonResourceNotFound),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
 	}))
 }
 
@@ -198,11 +198,11 @@ func TestModelmeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	// Unmanaged is not in InState(Managed), so the builder returns "not configured"
+	// Unmanaged is not in InState(Managed), so the builder passes (check doesn't apply)
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(check.ConditionTypeConfigured),
-		"Status": Equal(metav1.ConditionFalse),
-		"Reason": Equal(check.ReasonResourceNotFound),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
 	}))
 }
 
@@ -246,11 +246,11 @@ func TestModelmeshRemovalCheck_RemovedReady(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	// Removed is not in InState(Managed), so the builder returns "not configured"
+	// Removed is not in InState(Managed), so the builder passes (check doesn't apply)
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(check.ConditionTypeConfigured),
-		"Status": Equal(metav1.ConditionFalse),
-		"Reason": Equal(check.ReasonResourceNotFound),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
 	}))
 }
 
