@@ -260,8 +260,8 @@ func TestTrainingOperatorDeprecationCheck_CanApply_Version32(t *testing.T) {
 	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
-	canApply := trainingoperatorCheck.CanApply(t.Context(), target)
-
+	canApply, err := trainingoperatorCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 
@@ -274,8 +274,8 @@ func TestTrainingOperatorDeprecationCheck_CanApply_Version33(t *testing.T) {
 	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
-	canApply := trainingoperatorCheck.CanApply(t.Context(), target)
-
+	canApply, err := trainingoperatorCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
@@ -288,8 +288,8 @@ func TestTrainingOperatorDeprecationCheck_CanApply_Version34(t *testing.T) {
 	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
-	canApply := trainingoperatorCheck.CanApply(t.Context(), target)
-
+	canApply, err := trainingoperatorCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 

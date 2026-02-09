@@ -47,7 +47,9 @@ func TestAcceleratorProfileMigrationCheck_CanApply(t *testing.T) {
 			TargetVersion:  &targetVer,
 		}
 
-		g.Expect(chk.CanApply(ctx, target)).To(BeTrue())
+		canApply, err := chk.CanApply(ctx, target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeTrue())
 	})
 
 	t.Run("should not apply when upgrading from 3.x to 3.x", func(_ *testing.T) {
@@ -59,7 +61,9 @@ func TestAcceleratorProfileMigrationCheck_CanApply(t *testing.T) {
 			TargetVersion:  &targetVer,
 		}
 
-		g.Expect(chk.CanApply(ctx, target)).To(BeFalse())
+		canApply, err := chk.CanApply(ctx, target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeFalse())
 	})
 
 	t.Run("should not apply for 2.x versions", func(_ *testing.T) {
@@ -71,7 +75,9 @@ func TestAcceleratorProfileMigrationCheck_CanApply(t *testing.T) {
 			TargetVersion:  &targetVer,
 		}
 
-		g.Expect(chk.CanApply(ctx, target)).To(BeFalse())
+		canApply, err := chk.CanApply(ctx, target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeFalse())
 	})
 
 	t.Run("should not apply when target version is nil", func(_ *testing.T) {
@@ -82,7 +88,9 @@ func TestAcceleratorProfileMigrationCheck_CanApply(t *testing.T) {
 			TargetVersion:  nil,
 		}
 
-		g.Expect(chk.CanApply(ctx, target)).To(BeFalse())
+		canApply, err := chk.CanApply(ctx, target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeFalse())
 	})
 }
 

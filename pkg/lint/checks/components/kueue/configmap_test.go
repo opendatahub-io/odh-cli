@@ -403,7 +403,9 @@ func TestConfigMapManagedCheck_CanApply(t *testing.T) {
 				CurrentVersion: tc.currentVersion,
 				TargetVersion:  tc.targetVersion,
 			}
-			g.Expect(configMapCheck.CanApply(t.Context(), target)).To(Equal(tc.expected))
+			canApply, err := configMapCheck.CanApply(t.Context(), target)
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(canApply).To(Equal(tc.expected))
 		})
 	}
 }

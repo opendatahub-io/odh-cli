@@ -111,7 +111,7 @@ type Check interface {
 	// Default behavior: returns true if applicable to target.TargetVersion.
 	// Upgrade checks can check both CurrentVersion and TargetVersion.
 	// Component-conditional checks can query DataScienceCluster via target.Client.
-	CanApply(ctx context.Context, target Target) bool
+	CanApply(ctx context.Context, target Target) (bool, error)
 
 	// Validate executes the check against the provided target
 	// Returns DiagnosticResult following Kubernetes CR pattern with conditions

@@ -170,8 +170,8 @@ func TestImpactedWorkloadsCheck_CanApply_LintMode(t *testing.T) {
 	}
 
 	impactedCheck := notebook.NewImpactedWorkloadsCheck()
-	canApply := impactedCheck.CanApply(t.Context(), target)
-
+	canApply, err := impactedCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 
@@ -186,8 +186,8 @@ func TestImpactedWorkloadsCheck_CanApply_Upgrade2xTo3x(t *testing.T) {
 	}
 
 	impactedCheck := notebook.NewImpactedWorkloadsCheck()
-	canApply := impactedCheck.CanApply(t.Context(), target)
-
+	canApply, err := impactedCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
@@ -202,8 +202,8 @@ func TestImpactedWorkloadsCheck_CanApply_Upgrade3xTo3x(t *testing.T) {
 	}
 
 	impactedCheck := notebook.NewImpactedWorkloadsCheck()
-	canApply := impactedCheck.CanApply(t.Context(), target)
-
+	canApply, err := impactedCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 

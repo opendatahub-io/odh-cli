@@ -572,7 +572,9 @@ func TestInferenceServiceConfigCheck_CanApply(t *testing.T) {
 		CurrentVersion: &currentVer2x,
 		TargetVersion:  &targetVer3x,
 	}
-	g.Expect(inferenceConfigCheck.CanApply(ctx, target2xTo3x)).To(BeTrue())
+	canApply, err := inferenceConfigCheck.CanApply(ctx, target2xTo3x)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeTrue())
 
 	// Test 3.x to 3.x upgrade - should not apply
 	currentVer3x := semver.MustParse("3.0.0")
@@ -581,12 +583,16 @@ func TestInferenceServiceConfigCheck_CanApply(t *testing.T) {
 		CurrentVersion: &currentVer3x,
 		TargetVersion:  &targetVer31,
 	}
-	g.Expect(inferenceConfigCheck.CanApply(ctx, target3xTo3x)).To(BeFalse())
+	canApply, err = inferenceConfigCheck.CanApply(ctx, target3xTo3x)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 
 	// Test nil versions - should not apply
 	targetNil := check.Target{
 		CurrentVersion: nil,
 		TargetVersion:  nil,
 	}
-	g.Expect(inferenceConfigCheck.CanApply(ctx, targetNil)).To(BeFalse())
+	canApply, err = inferenceConfigCheck.CanApply(ctx, targetNil)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 }

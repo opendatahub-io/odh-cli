@@ -284,18 +284,26 @@ func TestInstructLabRemovalCheck_CanApply(t *testing.T) {
 
 	// Should not apply in lint mode (same version)
 	v217 := semver.MustParse("2.17.0")
-	g.Expect(ilCheck.CanApply(ctx, check.Target{CurrentVersion: &v217, TargetVersion: &v217})).To(BeFalse())
+	canApply, err := ilCheck.CanApply(ctx, check.Target{CurrentVersion: &v217, TargetVersion: &v217})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 
 	// Should apply for 2.x -> 3.x upgrade
 	v300 := semver.MustParse("3.0.0")
-	g.Expect(ilCheck.CanApply(ctx, check.Target{CurrentVersion: &v217, TargetVersion: &v300})).To(BeTrue())
+	canApply, err = ilCheck.CanApply(ctx, check.Target{CurrentVersion: &v217, TargetVersion: &v300})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeTrue())
 
 	// Should not apply for 3.x -> 3.x upgrade
 	v310 := semver.MustParse("3.1.0")
-	g.Expect(ilCheck.CanApply(ctx, check.Target{CurrentVersion: &v300, TargetVersion: &v310})).To(BeFalse())
+	canApply, err = ilCheck.CanApply(ctx, check.Target{CurrentVersion: &v300, TargetVersion: &v310})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 
 	// Should not apply with nil versions
-	g.Expect(ilCheck.CanApply(ctx, check.Target{})).To(BeFalse())
+	canApply, err = ilCheck.CanApply(ctx, check.Target{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 }
 
 func TestInstructLabRemovalCheck_Metadata(t *testing.T) {

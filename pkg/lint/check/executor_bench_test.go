@@ -169,8 +169,8 @@ func (c *benchmarkCheck) CheckType() string {
 	return "benchmark"
 }
 
-func (c *benchmarkCheck) CanApply(_ context.Context, _ check.Target) bool {
-	return true // Always applicable
+func (c *benchmarkCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil // Always applicable
 }
 
 func (c *benchmarkCheck) Validate(_ context.Context, _ check.Target) (*result.DiagnosticResult, error) {

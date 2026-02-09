@@ -42,8 +42,8 @@ type testCheck struct {
 	base.BaseCheck
 }
 
-func (c *testCheck) CanApply(_ context.Context, _ check.Target) bool {
-	return true
+func (c *testCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil
 }
 
 func (c *testCheck) Validate(_ context.Context, _ check.Target) (*result.DiagnosticResult, error) {

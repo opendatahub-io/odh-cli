@@ -40,8 +40,8 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 
 // CanApply returns whether this check should run for the given target.
 // Only applies when upgrading FROM 2.x TO 3.x since Notebook workloads may be impacted.
-func (c *ImpactedWorkloadsCheck) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
+func (c *ImpactedWorkloadsCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
 // Validate executes the check against the provided target.

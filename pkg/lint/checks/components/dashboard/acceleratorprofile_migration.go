@@ -37,8 +37,8 @@ func NewAcceleratorProfileMigrationCheck() *AcceleratorProfileMigrationCheck {
 
 // CanApply returns whether this check should run for the given target.
 // Only applies when upgrading from 2.x to 3.x.
-func (c *AcceleratorProfileMigrationCheck) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
+func (c *AcceleratorProfileMigrationCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
 // Validate executes the check against the provided target.

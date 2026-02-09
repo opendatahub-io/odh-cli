@@ -29,8 +29,8 @@ func NewCheck() *Check {
 	}
 }
 
-func (c *Check) CanApply(_ context.Context, _ check.Target) bool {
-	return true
+func (c *Check) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil
 }
 
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {

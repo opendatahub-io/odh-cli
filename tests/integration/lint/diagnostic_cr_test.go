@@ -165,8 +165,8 @@ func (c *testDiagnosticCheck) CheckType() string {
 	return "e2e-test"
 }
 
-func (c *testDiagnosticCheck) CanApply(_ context.Context, _ check.Target) bool {
-	return true // Always apply for testing
+func (c *testDiagnosticCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil // Always apply for testing
 }
 
 func (c *testDiagnosticCheck) Validate(_ context.Context, _ check.Target) (*result.DiagnosticResult, error) {

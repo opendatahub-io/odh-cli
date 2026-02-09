@@ -70,8 +70,14 @@ func (e *Executor) executeChecks(ctx context.Context, target Target, checks []Ch
 
 		// Filter by CanApply before executing
 		// Checks can use target.CurrentVersion, target.TargetVersion, or target.Client for filtering
-		if !check.CanApply(ctx, target) {
-			// Skip checks that don't apply to this target context
+		canApply, err := check.CanApply(ctx, target)
+		if err != nil {
+			results = append(results, e.buildCanApplyError(check, err))
+
+			continue
+		}
+
+		if !canApply {
 			continue
 		}
 
@@ -81,6 +87,32 @@ func (e *Executor) executeChecks(ctx context.Context, target Target, checks []Ch
 	}
 
 	return results
+}
+
+// buildCanApplyError creates a CheckExecution for a CanApply error.
+func (e *Executor) buildCanApplyError(check Check, err error) CheckExecution {
+	errorResult := result.New(
+		string(check.Group()),
+		check.CheckKind(),
+		check.CheckType(),
+		check.Description(),
+	)
+
+	errorResult.Status.Conditions = []result.Condition{
+		NewCondition(
+			ConditionTypeValidated,
+			metav1.ConditionUnknown,
+			ReasonCheckExecutionFailed,
+			"Check applicability failed: %v",
+			err,
+		),
+	}
+
+	return CheckExecution{
+		Check:  check,
+		Result: errorResult,
+		Error:  fmt.Errorf("CanApply failed for check %s: %w", check.ID(), err),
+	}
 }
 
 // executeCheck runs a single check and captures the result or error.

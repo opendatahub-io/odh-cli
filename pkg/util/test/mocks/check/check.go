@@ -59,10 +59,10 @@ func (m *MockCheck) CheckType() string {
 	return args.String(0)
 }
 
-func (m *MockCheck) CanApply(ctx context.Context, target check.Target) bool {
+func (m *MockCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
 	args := m.Called(ctx, target)
 
-	return args.Bool(0)
+	return args.Bool(0), args.Error(1)
 }
 
 func (m *MockCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {

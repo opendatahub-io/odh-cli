@@ -240,7 +240,9 @@ func TestOpenShiftCheck_CanApply_2xTo3x(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	g.Expect(openshiftCheck.CanApply(t.Context(), target)).To(BeTrue())
+	canApply, err := openshiftCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestOpenShiftCheck_CanApply_2xTo2x(t *testing.T) {
@@ -255,7 +257,9 @@ func TestOpenShiftCheck_CanApply_2xTo2x(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	g.Expect(openshiftCheck.CanApply(t.Context(), target)).To(BeFalse())
+	canApply, err := openshiftCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 }
 
 func TestOpenShiftCheck_CanApply_3xTo3x(t *testing.T) {
@@ -270,7 +274,9 @@ func TestOpenShiftCheck_CanApply_3xTo3x(t *testing.T) {
 		TargetVersion:  &targetVer,
 	}
 
-	g.Expect(openshiftCheck.CanApply(t.Context(), target)).To(BeFalse())
+	canApply, err := openshiftCheck.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 }
 
 func TestOpenShiftCheck_Metadata(t *testing.T) {

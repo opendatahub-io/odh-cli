@@ -35,8 +35,8 @@ func NewCheck() *Check {
 	}
 }
 
-func (c *Check) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
+func (c *Check) CanApply(_ context.Context, target check.Target) (bool, error) {
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {

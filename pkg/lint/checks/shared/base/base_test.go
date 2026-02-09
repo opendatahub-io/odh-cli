@@ -112,8 +112,8 @@ type MockCheck struct {
 	base.BaseCheck
 }
 
-func (c *MockCheck) CanApply(_ context.Context, _ check.Target) bool {
-	return true
+func (c *MockCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil
 }
 
 func (c *MockCheck) Validate(
@@ -149,7 +149,9 @@ func TestBaseCheckIntegration(t *testing.T) {
 			CurrentVersion: &v2,
 			TargetVersion:  &v3,
 		}
-		g.Expect(mockCheck.CanApply(t.Context(), target)).To(BeTrue())
+		canApply, err := mockCheck.CanApply(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeTrue())
 
 		dr, err := mockCheck.Validate(t.Context(), check.Target{})
 		g.Expect(err).ToNot(HaveOccurred())

@@ -32,9 +32,9 @@ func NewDeprecationCheck() *DeprecationCheck {
 	}
 }
 
-func (c *DeprecationCheck) CanApply(_ context.Context, target check.Target) bool {
+func (c *DeprecationCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
 	//nolint:mnd // Version numbers 3.3
-	return version.IsVersionAtLeast(target.TargetVersion, 3, 3)
+	return version.IsVersionAtLeast(target.TargetVersion, 3, 3), nil
 }
 
 func (c *DeprecationCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {

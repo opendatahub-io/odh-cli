@@ -406,7 +406,9 @@ func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
 		}
 
 		chk := guardrails.NewImpactedWorkloadsCheck()
-		g.Expect(chk.CanApply(t.Context(), target)).To(BeFalse())
+		canApply, err := chk.CanApply(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeFalse())
 	})
 
 	t.Run("2x to 2x", func(t *testing.T) {
@@ -420,7 +422,9 @@ func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
 		}
 
 		chk := guardrails.NewImpactedWorkloadsCheck()
-		g.Expect(chk.CanApply(t.Context(), target)).To(BeFalse())
+		canApply, err := chk.CanApply(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeFalse())
 	})
 
 	t.Run("2x to 3x", func(t *testing.T) {
@@ -434,7 +438,9 @@ func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
 		}
 
 		chk := guardrails.NewImpactedWorkloadsCheck()
-		g.Expect(chk.CanApply(t.Context(), target)).To(BeTrue())
+		canApply, err := chk.CanApply(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeTrue())
 	})
 
 	t.Run("3x to 3x", func(t *testing.T) {
@@ -448,7 +454,9 @@ func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
 		}
 
 		chk := guardrails.NewImpactedWorkloadsCheck()
-		g.Expect(chk.CanApply(t.Context(), target)).To(BeFalse())
+		canApply, err := chk.CanApply(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(canApply).To(BeFalse())
 	})
 }
 
