@@ -3,18 +3,14 @@ package kserve_test
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kserve"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,18 +26,10 @@ func TestKServeServerlessRemovalCheck_NoDSC(t *testing.T) {
 	ctx := t.Context()
 
 	// Create empty cluster (no DataScienceCluster)
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
@@ -62,35 +50,11 @@ func TestKServeServerlessRemovalCheck_KServeNotConfigured(t *testing.T) {
 
 	// Create DataScienceCluster without kserve component
 	// "Not configured" is now treated as "Removed" - both mean component is not active
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"dashboard": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"dashboard": "Managed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
@@ -110,35 +74,11 @@ func TestKServeServerlessRemovalCheck_KServeNotManaged(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DataScienceCluster with kserve Removed (not managed)
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Removed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Removed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
@@ -176,18 +116,11 @@ func TestKServeServerlessRemovalCheck_ServerlessNotConfigured(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsc},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
@@ -228,18 +161,11 @@ func TestKServeServerlessRemovalCheck_ServerlessManagedBlocking(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsc},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
@@ -283,18 +209,11 @@ func TestKServeServerlessRemovalCheck_ServerlessUnmanagedBlocking(t *testing.T) 
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsc},
+		TargetVersion: "3.1.0",
 	})
-
-	ver := semver.MustParse("3.1.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)
@@ -335,18 +254,11 @@ func TestKServeServerlessRemovalCheck_ServerlessRemovedReady(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsc},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	kserveCheck := kserve.NewServerlessRemovalCheck()
 	result, err := kserveCheck.Validate(ctx, target)

@@ -7,15 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/datasciencepipelines"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -26,25 +24,6 @@ var instructLabListKinds = map[schema.GroupVersionResource]string{
 	resources.DataScienceCluster.GVR():                      resources.DataScienceCluster.ListKind(),
 	resources.DataSciencePipelinesApplicationV1.GVR():       resources.DataSciencePipelinesApplicationV1.ListKind(),
 	resources.DataSciencePipelinesApplicationV1Alpha1.GVR(): resources.DataSciencePipelinesApplicationV1Alpha1.ListKind(),
-}
-
-func newDSC(componentState string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"datasciencepipelines": map[string]any{
-						"managementState": componentState,
-					},
-				},
-			},
-		},
-	}
 }
 
 func newDSPAv1(name string, namespace string, withInstructLab bool) *unstructured.Unstructured {
@@ -76,18 +55,11 @@ func TestInstructLabRemovalCheck_NoDSC(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, instructLabListKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     instructLabListKinds,
+		Objects:       []*unstructured.Unstructured{},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 	dr, err := ilCheck.Validate(ctx, target)
@@ -106,20 +78,12 @@ func TestInstructLabRemovalCheck_ComponentNotManaged(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := newDSC("Removed")
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, instructLabListKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	dsc := testutil.NewDSC(map[string]string{"datasciencepipelines": "Removed"})
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     instructLabListKinds,
+		Objects:       []*unstructured.Unstructured{dsc},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 	dr, err := ilCheck.Validate(ctx, target)
@@ -138,20 +102,12 @@ func TestInstructLabRemovalCheck_NoDSPAs(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := newDSC("Managed")
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, instructLabListKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	dsc := testutil.NewDSC(map[string]string{"datasciencepipelines": "Managed"})
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     instructLabListKinds,
+		Objects:       []*unstructured.Unstructured{dsc},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 	dr, err := ilCheck.Validate(ctx, target)
@@ -171,21 +127,13 @@ func TestInstructLabRemovalCheck_DSPAWithInstructLab(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := newDSC("Managed")
+	dsc := testutil.NewDSC(map[string]string{"datasciencepipelines": "Managed"})
 	dspa := newDSPAv1("my-dspa", "test-ns", true)
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, instructLabListKinds, dsc, dspa)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     instructLabListKinds,
+		Objects:       []*unstructured.Unstructured{dsc, dspa},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 	dr, err := ilCheck.Validate(ctx, target)
@@ -209,21 +157,13 @@ func TestInstructLabRemovalCheck_DSPAWithoutInstructLab(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := newDSC("Managed")
+	dsc := testutil.NewDSC(map[string]string{"datasciencepipelines": "Managed"})
 	dspa := newDSPAv1("clean-dspa", "test-ns", false)
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, instructLabListKinds, dsc, dspa)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     instructLabListKinds,
+		Objects:       []*unstructured.Unstructured{dsc, dspa},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 	dr, err := ilCheck.Validate(ctx, target)
@@ -243,23 +183,15 @@ func TestInstructLabRemovalCheck_MultipleDSPAsMixed(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := newDSC("Managed")
+	dsc := testutil.NewDSC(map[string]string{"datasciencepipelines": "Managed"})
 	dspa1 := newDSPAv1("dspa-with-il", "ns1", true)
 	dspa2 := newDSPAv1("dspa-clean", "ns2", false)
 	dspa3 := newDSPAv1("dspa-with-il-2", "ns3", true)
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, instructLabListKinds, dsc, dspa1, dspa2, dspa3)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     instructLabListKinds,
+		Objects:       []*unstructured.Unstructured{dsc, dspa1, dspa2, dspa3},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 	dr, err := ilCheck.Validate(ctx, target)

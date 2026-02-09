@@ -7,15 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kserve"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -33,37 +31,13 @@ func TestInferenceServiceConfigCheck_NoDSCI(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed but no DSCInitialization
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
@@ -83,51 +57,15 @@ func TestInferenceServiceConfigCheck_ConfigMapNotFound(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
 	// Create DSCInitialization without the ConfigMap
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": "opendatahub",
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	dsci := testutil.NewDSCI("opendatahub")
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
@@ -147,37 +85,9 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedFalse(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
 	// Create DSCInitialization and ConfigMap with managed=false annotation
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": "opendatahub",
-			},
-		},
-	}
-
+	dsci := testutil.NewDSCI("opendatahub")
 	configMap := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.ConfigMap.APIVersion(),
@@ -194,21 +104,12 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedFalse(t *testing.T) {
 			},
 		},
 	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc, dsci, configMap)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
@@ -230,37 +131,9 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedTrue(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
 	// Create DSCInitialization and ConfigMap with managed=true annotation
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": "opendatahub",
-			},
-		},
-	}
-
+	dsci := testutil.NewDSCI("opendatahub")
 	configMap := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.ConfigMap.APIVersion(),
@@ -277,21 +150,12 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedTrue(t *testing.T) {
 			},
 		},
 	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc, dsci, configMap)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
@@ -311,37 +175,9 @@ func TestInferenceServiceConfigCheck_ConfigMapNoAnnotation(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
 	// Create DSCInitialization and ConfigMap without the managed annotation
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": "opendatahub",
-			},
-		},
-	}
-
+	dsci := testutil.NewDSCI("opendatahub")
 	configMap := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.ConfigMap.APIVersion(),
@@ -355,21 +191,12 @@ func TestInferenceServiceConfigCheck_ConfigMapNoAnnotation(t *testing.T) {
 			},
 		},
 	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc, dsci, configMap)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
@@ -389,37 +216,9 @@ func TestInferenceServiceConfigCheck_ConfigMapEmptyAnnotations(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
 	// Create DSCInitialization and ConfigMap with empty annotations
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": "opendatahub",
-			},
-		},
-	}
-
+	dsci := testutil.NewDSCI("opendatahub")
 	configMap := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": resources.ConfigMap.APIVersion(),
@@ -434,21 +233,12 @@ func TestInferenceServiceConfigCheck_ConfigMapEmptyAnnotations(t *testing.T) {
 			},
 		},
 	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc, dsci, configMap)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
@@ -468,23 +258,7 @@ func TestInferenceServiceConfigCheck_DSCINoNamespace(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kserve managed
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kserve": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
 	// Create DSCInitialization without applicationsNamespace - treated as NotFound since namespace is required
 	dsci := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -498,7 +272,6 @@ func TestInferenceServiceConfigCheck_DSCINoNamespace(t *testing.T) {
 			},
 		},
 	}
-
 	// ConfigMap exists but won't be found since namespace lookup fails
 	configMap := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -516,21 +289,12 @@ func TestInferenceServiceConfigCheck_DSCINoNamespace(t *testing.T) {
 			},
 		},
 	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, inferenceServiceConfigListKinds, dsc, dsci, configMap)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 	checkResult, err := inferenceConfigCheck.Validate(ctx, target)

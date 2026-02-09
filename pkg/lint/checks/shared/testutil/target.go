@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+	olmclientset "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,6 +23,7 @@ import (
 type TargetConfig struct {
 	ListKinds      map[schema.GroupVersionResource]string
 	Objects        []*unstructured.Unstructured
+	OLM            olmclientset.Interface
 	CurrentVersion string
 	TargetVersion  string
 }
@@ -50,11 +52,17 @@ func NewTarget(t *testing.T, cfg TargetConfig) check.Target {
 		kube.ToPartialObjectMetadata(cfg.Objects...)...,
 	)
 
+	testCfg := client.TestClientConfig{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	}
+
+	if cfg.OLM != nil {
+		testCfg.OLM = cfg.OLM
+	}
+
 	target := check.Target{
-		Client: client.NewForTesting(client.TestClientConfig{
-			Dynamic:  dynamicClient,
-			Metadata: metadataClient,
-		}),
+		Client: client.NewForTesting(testCfg),
 	}
 
 	if cfg.CurrentVersion != "" {
@@ -81,6 +89,31 @@ func NewDSCI(applicationsNamespace string) *unstructured.Unstructured {
 			},
 			"spec": map[string]any{
 				"applicationsNamespace": applicationsNamespace,
+			},
+		},
+	}
+}
+
+// NewDSC creates an unstructured DataScienceCluster object for tests.
+// componentStates maps component names to their management state values
+// (e.g., "codeflare" -> "Managed").
+func NewDSC(componentStates map[string]string) *unstructured.Unstructured {
+	components := make(map[string]any, len(componentStates))
+	for name, state := range componentStates {
+		components[name] = map[string]any{
+			"managementState": state,
+		}
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DataScienceCluster.APIVersion(),
+			"kind":       resources.DataScienceCluster.Kind,
+			"metadata": map[string]any{
+				"name": "default-dsc",
+			},
+			"spec": map[string]any{
+				"components": components,
 			},
 		},
 	}

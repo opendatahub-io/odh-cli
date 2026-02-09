@@ -3,18 +3,14 @@ package servicemesh_test
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/services/servicemesh"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,18 +26,10 @@ func TestServiceMeshRemovalCheck_NoDSCI(t *testing.T) {
 	ctx := t.Context()
 
 	// Create empty cluster (no DSCInitialization)
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
@@ -61,31 +49,11 @@ func TestServiceMeshRemovalCheck_NotConfigured(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSCInitialization without serviceMesh
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": "opendatahub",
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSCI("opendatahub")},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
@@ -121,18 +89,11 @@ func TestServiceMeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsci},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
@@ -168,18 +129,11 @@ func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsci},
+		TargetVersion: "3.1.0",
 	})
-
-	ver := semver.MustParse("3.1.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)
@@ -215,18 +169,11 @@ func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{dsci},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	servicemeshCheck := servicemesh.NewRemovalCheck()
 	result, err := servicemeshCheck.Validate(ctx, target)

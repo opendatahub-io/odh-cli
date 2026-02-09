@@ -3,17 +3,14 @@ package servicemeshoperator_test
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -23,20 +20,10 @@ func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-	olmClient := operatorfake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
-		OLM:     olmClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM:           operatorfake.NewSimpleClientset(), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
 	result, err := serviceMeshOperator2Check.Validate(ctx, target)
@@ -68,20 +55,10 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 		},
 	}
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-	olmClient := operatorfake.NewSimpleClientset(sub) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
-		OLM:     olmClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM:           operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
 	result, err := serviceMeshOperator2Check.Validate(ctx, target)

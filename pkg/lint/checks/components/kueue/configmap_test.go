@@ -8,15 +8,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kueue"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -29,40 +27,6 @@ var configMapListKinds = map[schema.GroupVersionResource]string{
 	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
 	resources.DSCInitialization.GVR():  resources.DSCInitialization.ListKind(),
 	resources.ConfigMap.GVR():          resources.ConfigMap.ListKind(),
-}
-
-func newDSCWithKueueManaged() *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"kueue": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-}
-
-func newDSCIWithNamespace(namespace string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"spec": map[string]any{
-				"applicationsNamespace": namespace,
-			},
-		},
-	}
 }
 
 func newConfigMap(namespace string, name string, annotations map[string]string) *corev1.ConfigMap {
@@ -95,22 +59,13 @@ func TestConfigMapManagedCheck_NoDSCI(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kueue managed but no DSCInitialization
-	dsc := newDSCWithKueueManaged()
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, configMapListKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	dsc := testutil.NewDSC(map[string]string{"kueue": "Managed"})
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      configMapListKinds,
+		Objects:        []*unstructured.Unstructured{dsc},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)
@@ -130,8 +85,7 @@ func TestConfigMapManagedCheck_DSCINoNamespace(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kueue managed
-	dsc := newDSCWithKueueManaged()
-
+	dsc := testutil.NewDSC(map[string]string{"kueue": "Managed"})
 	// Create DSCI without applicationsNamespace - treated as NotFound since namespace is required
 	dsci := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -147,21 +101,12 @@ func TestConfigMapManagedCheck_DSCINoNamespace(t *testing.T) {
 			},
 		},
 	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, configMapListKinds, dsc, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      configMapListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)
@@ -183,24 +128,15 @@ func TestConfigMapManagedCheck_ConfigMapNotFound(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kueue managed
-	dsc := newDSCWithKueueManaged()
+	dsc := testutil.NewDSC(map[string]string{"kueue": "Managed"})
 	// Create DSCI with namespace but no ConfigMap
-	dsci := newDSCIWithNamespace(testApplicationsNamespace)
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, configMapListKinds, dsc, dsci)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	dsci := testutil.NewDSCI(testApplicationsNamespace)
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      configMapListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)
@@ -220,27 +156,16 @@ func TestConfigMapManagedCheck_ConfigMapManaged(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kueue managed
-	dsc := newDSCWithKueueManaged()
+	dsc := testutil.NewDSC(map[string]string{"kueue": "Managed"})
 	// Create DSCI and ConfigMap without managed=false annotation
-	dsci := newDSCIWithNamespace(testApplicationsNamespace)
+	dsci := testutil.NewDSCI(testApplicationsNamespace)
 	configMap := newConfigMapUnstructured(testApplicationsNamespace, "kueue-manager-config", nil)
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme, configMapListKinds, dsc, dsci, configMap,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      configMapListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)
@@ -261,29 +186,18 @@ func TestConfigMapManagedCheck_ConfigMapManagedTrue(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kueue managed
-	dsc := newDSCWithKueueManaged()
+	dsc := testutil.NewDSC(map[string]string{"kueue": "Managed"})
 	// Create DSCI and ConfigMap with managed=true annotation (should pass)
-	dsci := newDSCIWithNamespace(testApplicationsNamespace)
+	dsci := testutil.NewDSCI(testApplicationsNamespace)
 	configMap := newConfigMapUnstructured(testApplicationsNamespace, "kueue-manager-config", map[string]string{
 		"opendatahub.io/managed": "true",
 	})
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme, configMapListKinds, dsc, dsci, configMap,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      configMapListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)
@@ -303,29 +217,18 @@ func TestConfigMapManagedCheck_ConfigMapManagedFalse(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DSC with kueue managed
-	dsc := newDSCWithKueueManaged()
+	dsc := testutil.NewDSC(map[string]string{"kueue": "Managed"})
 	// Create DSCI and ConfigMap with managed=false annotation (advisory warning)
-	dsci := newDSCIWithNamespace(testApplicationsNamespace)
+	dsci := testutil.NewDSCI(testApplicationsNamespace)
 	configMap := newConfigMapUnstructured(testApplicationsNamespace, "kueue-manager-config", map[string]string{
 		"opendatahub.io/managed": "false",
 	})
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme, configMapListKinds, dsc, dsci, configMap,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      configMapListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	configMapCheck := kueue.NewConfigMapManagedCheck()
 	dr, err := configMapCheck.Validate(ctx, target)

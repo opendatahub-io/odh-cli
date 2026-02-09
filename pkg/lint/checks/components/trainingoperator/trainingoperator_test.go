@@ -3,19 +3,15 @@ package trainingoperator_test
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/trainingoperator"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,18 +26,10 @@ func TestTrainingOperatorDeprecationCheck_NoDSC(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
@@ -62,35 +50,11 @@ func TestTrainingOperatorDeprecationCheck_NotConfigured(t *testing.T) {
 
 	// Create DataScienceCluster without trainingoperator component
 	// "Not configured" is now treated as "Removed" - both mean component is not active
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"dashboard": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"dashboard": "Managed"})},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
@@ -109,35 +73,11 @@ func TestTrainingOperatorDeprecationCheck_ManagedDeprecated(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"trainingoperator": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"trainingoperator": "Managed"})},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
@@ -161,35 +101,11 @@ func TestTrainingOperatorDeprecationCheck_UnmanagedDeprecated(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"trainingoperator": map[string]any{
-						"managementState": "Unmanaged",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"trainingoperator": "Unmanaged"})},
+		TargetVersion: "3.4.0",
 	})
-
-	ver := semver.MustParse("3.4.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
@@ -208,35 +124,11 @@ func TestTrainingOperatorDeprecationCheck_RemovedReady(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"trainingoperator": map[string]any{
-						"managementState": "Removed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"trainingoperator": "Removed"})},
+		TargetVersion: "3.3.0",
 	})
-
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	result, err := trainingoperatorCheck.Validate(ctx, target)
@@ -254,10 +146,10 @@ func TestTrainingOperatorDeprecationCheck_RemovedReady(t *testing.T) {
 func TestTrainingOperatorDeprecationCheck_CanApply_Version32(t *testing.T) {
 	g := NewWithT(t)
 
-	ver := semver.MustParse("3.2.0")
-	target := check.Target{
-		TargetVersion: &ver,
-	}
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.2.0",
+	})
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	canApply, err := trainingoperatorCheck.CanApply(t.Context(), target)
@@ -268,10 +160,10 @@ func TestTrainingOperatorDeprecationCheck_CanApply_Version32(t *testing.T) {
 func TestTrainingOperatorDeprecationCheck_CanApply_Version33(t *testing.T) {
 	g := NewWithT(t)
 
-	ver := semver.MustParse("3.3.0")
-	target := check.Target{
-		TargetVersion: &ver,
-	}
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.3.0",
+	})
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	canApply, err := trainingoperatorCheck.CanApply(t.Context(), target)
@@ -282,10 +174,10 @@ func TestTrainingOperatorDeprecationCheck_CanApply_Version33(t *testing.T) {
 func TestTrainingOperatorDeprecationCheck_CanApply_Version34(t *testing.T) {
 	g := NewWithT(t)
 
-	ver := semver.MustParse("3.4.0")
-	target := check.Target{
-		TargetVersion: &ver,
-	}
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.4.0",
+	})
 
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 	canApply, err := trainingoperatorCheck.CanApply(t.Context(), target)

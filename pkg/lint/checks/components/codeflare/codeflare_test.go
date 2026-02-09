@@ -3,18 +3,14 @@ package codeflare_test
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/codeflare"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,18 +26,10 @@ func TestCodeFlareRemovalCheck_NoDSC(t *testing.T) {
 	ctx := t.Context()
 
 	// Create empty cluster (no DataScienceCluster)
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
@@ -62,35 +50,11 @@ func TestCodeFlareRemovalCheck_NotConfigured(t *testing.T) {
 
 	// Create DataScienceCluster without codeflare component
 	// "Not configured" is now treated as "Removed" - both mean component is not active
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"dashboard": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"dashboard": "Managed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
@@ -110,35 +74,11 @@ func TestCodeFlareRemovalCheck_ManagedBlocking(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DataScienceCluster with codeflare Managed (blocking upgrade)
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"codeflare": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"codeflare": "Managed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
@@ -163,35 +103,11 @@ func TestCodeFlareRemovalCheck_UnmanagedReady(t *testing.T) {
 
 	// Create DataScienceCluster with codeflare Unmanaged
 	// CodeFlare only supports Managed state, so Unmanaged is treated as disabled (ready for upgrade)
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"codeflare": map[string]any{
-						"managementState": "Unmanaged",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"codeflare": "Unmanaged"})},
+		TargetVersion: "3.1.0",
 	})
-
-	ver := semver.MustParse("3.1.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)
@@ -211,35 +127,11 @@ func TestCodeFlareRemovalCheck_RemovedReady(t *testing.T) {
 	ctx := t.Context()
 
 	// Create DataScienceCluster with codeflare Removed (ready for upgrade)
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"codeflare": map[string]any{
-						"managementState": "Removed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"codeflare": "Removed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	codeflareCheck := codeflare.NewRemovalCheck()
 	result, err := codeflareCheck.Validate(ctx, target)

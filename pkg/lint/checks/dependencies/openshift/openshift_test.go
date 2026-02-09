@@ -7,14 +7,12 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/openshift"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -36,27 +34,14 @@ func TestOpenShiftCheck_VersionMeetsRequirement(t *testing.T) {
 	ctx := t.Context()
 
 	cv := createClusterVersion("4.19.9")
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		map[schema.GroupVersionResource]string{
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: map[schema.GroupVersionResource]string{
 			resources.ClusterVersion.GVR(): "ClusterVersionList",
 		},
-		cv,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+		Objects:        []*unstructured.Unstructured{cv},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
@@ -76,27 +61,14 @@ func TestOpenShiftCheck_VersionAboveRequirement(t *testing.T) {
 	ctx := t.Context()
 
 	cv := createClusterVersion("4.20.5")
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		map[schema.GroupVersionResource]string{
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: map[schema.GroupVersionResource]string{
 			resources.ClusterVersion.GVR(): "ClusterVersionList",
 		},
-		cv,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+		Objects:        []*unstructured.Unstructured{cv},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
@@ -115,27 +87,14 @@ func TestOpenShiftCheck_VersionBelowRequirement(t *testing.T) {
 	ctx := t.Context()
 
 	cv := createClusterVersion("4.18.5")
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		map[schema.GroupVersionResource]string{
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: map[schema.GroupVersionResource]string{
 			resources.ClusterVersion.GVR(): "ClusterVersionList",
 		},
-		cv,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+		Objects:        []*unstructured.Unstructured{cv},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
@@ -158,27 +117,14 @@ func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
 	ctx := t.Context()
 
 	cv := createClusterVersion("4.19.8")
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		scheme,
-		map[schema.GroupVersionResource]string{
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: map[schema.GroupVersionResource]string{
 			resources.ClusterVersion.GVR(): "ClusterVersionList",
 		},
-		cv,
-	)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+		Objects:        []*unstructured.Unstructured{cv},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)
@@ -200,20 +146,11 @@ func TestOpenShiftCheck_VersionNotDetectable(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, nil)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		Objects:        nil,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
-
-	currentVer := semver.MustParse("2.17.0")
-	targetVer := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:         c,
-		CurrentVersion: &currentVer,
-		TargetVersion:  &targetVer,
-	}
 
 	openshiftCheck := openshift.NewCheck()
 	result, err := openshiftCheck.Validate(ctx, target)

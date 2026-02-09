@@ -3,19 +3,15 @@ package datasciencepipelines_test
 import (
 	"testing"
 
-	"github.com/blang/semver/v4"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/datasciencepipelines"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -30,18 +26,10 @@ func TestRenamingCheck_NoDSC(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	renamingCheck := datasciencepipelines.NewRenamingCheck()
 	dr, err := renamingCheck.Validate(ctx, target)
@@ -60,35 +48,11 @@ func TestRenamingCheck_ManagedRenamed(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"datasciencepipelines": map[string]any{
-						"managementState": "Managed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"datasciencepipelines": "Managed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	renamingCheck := datasciencepipelines.NewRenamingCheck()
 	dr, err := renamingCheck.Validate(ctx, target)
@@ -112,35 +76,11 @@ func TestRenamingCheck_UnmanagedNotApplicable(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"datasciencepipelines": map[string]any{
-						"managementState": "Unmanaged",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"datasciencepipelines": "Unmanaged"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	renamingCheck := datasciencepipelines.NewRenamingCheck()
 	dr, err := renamingCheck.Validate(ctx, target)
@@ -159,35 +99,11 @@ func TestRenamingCheck_RemovedNotApplicable(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	dsc := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DataScienceCluster.APIVersion(),
-			"kind":       resources.DataScienceCluster.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsc",
-			},
-			"spec": map[string]any{
-				"components": map[string]any{
-					"datasciencepipelines": map[string]any{
-						"managementState": "Removed",
-					},
-				},
-			},
-		},
-	}
-
-	scheme := runtime.NewScheme()
-	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
-
-	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"datasciencepipelines": "Removed"})},
+		TargetVersion: "3.0.0",
 	})
-
-	ver := semver.MustParse("3.0.0")
-	target := check.Target{
-		Client:        c,
-		TargetVersion: &ver,
-	}
 
 	renamingCheck := datasciencepipelines.NewRenamingCheck()
 	dr, err := renamingCheck.Validate(ctx, target)
@@ -208,20 +124,29 @@ func TestRenamingCheck_CanApply(t *testing.T) {
 	renamingCheck := datasciencepipelines.NewRenamingCheck()
 
 	// Should not apply in lint mode (same version)
-	v217 := semver.MustParse("2.17.0")
-	canApply, err := renamingCheck.CanApply(ctx, check.Target{CurrentVersion: &v217, TargetVersion: &v217})
+	canApply, err := renamingCheck.CanApply(ctx, testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "2.17.0",
+	}))
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 
 	// Should apply for 2.x -> 3.x upgrade
-	v300 := semver.MustParse("3.0.0")
-	canApply, err = renamingCheck.CanApply(ctx, check.Target{CurrentVersion: &v217, TargetVersion: &v300})
+	canApply, err = renamingCheck.CanApply(ctx, testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	}))
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 
 	// Should not apply for 3.x -> 3.x upgrade
-	v310 := semver.MustParse("3.1.0")
-	canApply, err = renamingCheck.CanApply(ctx, check.Target{CurrentVersion: &v300, TargetVersion: &v310})
+	canApply, err = renamingCheck.CanApply(ctx, testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		CurrentVersion: "3.0.0",
+		TargetVersion:  "3.1.0",
+	}))
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 
