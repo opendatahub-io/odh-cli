@@ -12,12 +12,7 @@ import (
 )
 
 const (
-	kind = "guardrails"
-
 	ConditionTypeOtelConfigCompatible = "OtelConfigCompatible"
-
-	// minTargetMajorVersion is the minimum major version for this check to apply.
-	minTargetMajorVersion = 3
 )
 
 // OtelMigrationCheck detects GuardrailsOrchestrator CRs using deprecated otelExporter configuration fields.
@@ -39,9 +34,9 @@ func NewOtelMigrationCheck() *OtelMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading to 3.x or later.
+// Only applies when upgrading from 2.x to 3.x.
 func (c *OtelMigrationCheck) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsVersionAtLeast(target.TargetVersion, minTargetMajorVersion, 0)
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
 }
 
 // Validate executes the check against the provided target.

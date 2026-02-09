@@ -23,9 +23,6 @@ const (
 	// Annotations used by InferenceServices to reference AcceleratorProfiles.
 	annotationAcceleratorName      = "opendatahub.io/accelerator-name"
 	annotationAcceleratorNamespace = "opendatahub.io/accelerator-profile-namespace"
-
-	// minAcceleratorMigrationMajorVersion is the minimum major version for this check to apply.
-	minAcceleratorMigrationMajorVersion = 3
 )
 
 // AcceleratorMigrationCheck detects InferenceService CRs referencing AcceleratorProfiles
@@ -49,9 +46,9 @@ func NewAcceleratorMigrationCheck() *AcceleratorMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading to 3.x or later.
+// Only applies when upgrading from 2.x to 3.x.
 func (c *AcceleratorMigrationCheck) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsVersionAtLeast(target.TargetVersion, minAcceleratorMigrationMajorVersion, 0)
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
 }
 
 // Validate executes the check against the provided target.

@@ -16,18 +16,16 @@ import (
 // hasDeprecatedOtelFields returns true if the object contains a non-empty otelExporter section.
 // An empty otelExporter ({}) is not considered deprecated since there is no configuration to migrate.
 func hasDeprecatedOtelFields(obj *unstructured.Unstructured) (bool, error) {
-	val, err := jq.Query[any](obj, ".spec.otelExporter")
-	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			return false, nil
-		}
+	val, err := jq.Query[map[string]any](obj, ".spec.otelExporter")
 
+	switch {
+	case errors.Is(err, jq.ErrNotFound):
+		return false, nil
+	case err != nil:
 		return false, err
+	default:
+		return len(val) > 0, nil
 	}
-
-	m, ok := val.(map[string]any)
-
-	return ok && len(m) > 0, nil
 }
 
 func newOtelMigrationCondition(

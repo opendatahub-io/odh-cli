@@ -1,4 +1,4 @@
-package dashboard
+package dashboard //nolint:dupl // Structurally similar to acceleratorprofile_migration.go but validates different resource types.
 
 import (
 	"context"
@@ -36,9 +36,9 @@ func NewHardwareProfileMigrationCheck() *HardwareProfileMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading to 3.x or later.
+// Only applies when upgrading from 2.x to 3.x.
 func (c *HardwareProfileMigrationCheck) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsVersionAtLeast(target.TargetVersion, minMigrationMajorVersion, 0)
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
 }
 
 // Validate executes the check against the provided target.

@@ -1,4 +1,4 @@
-package dashboard
+package dashboard //nolint:dupl // Structurally similar to hardwareprofile_migration.go but validates different resource types.
 
 import (
 	"context"
@@ -12,12 +12,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-const (
-	acceleratorProfileCheckType = "acceleratorprofile-migration"
-
-	// minMigrationMajorVersion is the minimum major version for this check to apply.
-	minMigrationMajorVersion = 3
-)
+const acceleratorProfileCheckType = "acceleratorprofile-migration"
 
 // AcceleratorProfileMigrationCheck detects AcceleratorProfiles that will be auto-migrated to HardwareProfiles
 // during upgrade to RHOAI 3.x.
@@ -41,9 +36,9 @@ func NewAcceleratorProfileMigrationCheck() *AcceleratorProfileMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading to 3.x or later.
+// Only applies when upgrading from 2.x to 3.x.
 func (c *AcceleratorProfileMigrationCheck) CanApply(_ context.Context, target check.Target) bool {
-	return version.IsVersionAtLeast(target.TargetVersion, minMigrationMajorVersion, 0)
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion)
 }
 
 // Validate executes the check against the provided target.

@@ -53,7 +53,7 @@ func TestHardwareProfileMigrationCheck_CanApply(t *testing.T) {
 		g.Expect(chk.CanApply(ctx, target)).To(BeTrue())
 	})
 
-	t.Run("should apply when upgrading to 3.3", func(_ *testing.T) {
+	t.Run("should not apply when upgrading from 3.x to 3.x", func(_ *testing.T) {
 		targetVer := semver.MustParse("3.3.0")
 		currentVer := semver.MustParse("3.0.0")
 
@@ -62,7 +62,7 @@ func TestHardwareProfileMigrationCheck_CanApply(t *testing.T) {
 			TargetVersion:  &targetVer,
 		}
 
-		g.Expect(chk.CanApply(ctx, target)).To(BeTrue())
+		g.Expect(chk.CanApply(ctx, target)).To(BeFalse())
 	})
 
 	t.Run("should not apply for 2.x versions", func(_ *testing.T) {

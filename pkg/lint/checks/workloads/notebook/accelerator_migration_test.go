@@ -390,8 +390,8 @@ func TestAcceleratorMigrationCheck_CanApply_LintMode3x(t *testing.T) {
 	acceleratorCheck := notebook.NewAcceleratorMigrationCheck()
 	canApply := acceleratorCheck.CanApply(t.Context(), target)
 
-	// Lint mode at 3.x should apply
-	g.Expect(canApply).To(BeTrue())
+	// Lint mode at 3.x should not apply — this check is only for 2.x→3.x upgrades.
+	g.Expect(canApply).To(BeFalse())
 }
 
 func TestAcceleratorMigrationCheck_CanApply_UpgradeTo3x(t *testing.T) {
