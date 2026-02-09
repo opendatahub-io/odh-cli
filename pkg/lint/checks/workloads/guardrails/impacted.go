@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
@@ -18,9 +16,16 @@ import (
 )
 
 const (
-	ConditionTypeOrchestratorCRConfigured   = "OrchestratorCRConfigured"
-	ConditionTypeOrchestratorConfigMapValid = "OrchestratorConfigMapValid"
-	ConditionTypeGatewayConfigMapValid      = "GatewayConfigMapValid"
+	ConditionTypeConfigurationValid = "ConfigurationValid"
+)
+
+const (
+	annotationOrchestratorConfig = "guardrails.opendatahub.io/orchestrator-config"
+	annotationReplicas           = "guardrails.opendatahub.io/replicas"
+	annotationGatewayConfig      = "guardrails.opendatahub.io/gateway-config"
+	annotationBuiltinDetectors   = "guardrails.opendatahub.io/builtin-detectors"
+	annotationOrchestratorCM     = "guardrails.opendatahub.io/orchestrator-configmap"
+	annotationGatewayCM          = "guardrails.opendatahub.io/gateway-configmap"
 )
 
 // ImpactedWorkloadsCheck detects GuardrailsOrchestrator CRs with configuration
@@ -59,7 +64,7 @@ func (c *ImpactedWorkloadsCheck) Validate(
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
 	}
 
-	// List all GuardrailsOrchestrator CRs across all namespaces
+	// List all GuardrailsOrchestrator CRs across all namespaces.
 	orchestrators, err := client.List[*unstructured.Unstructured](
 		ctx, target.Client, resources.GuardrailsOrchestrator, nil,
 	)
@@ -69,70 +74,22 @@ func (c *ImpactedWorkloadsCheck) Validate(
 
 	total := len(orchestrators)
 
-	// When no CRs exist, return success conditions for all three checks
-	if total == 0 {
-		dr.Status.Conditions = append(dr.Status.Conditions,
-			c.newCRConfigCondition(0, 0, ""),
-			c.newOrchestratorCMCondition(0, 0, ""),
-			c.newGatewayCMCondition(0, 0, ""),
-		)
-
-		dr.Annotations[check.AnnotationImpactedWorkloadCount] = "0"
-
-		return dr, nil
-	}
-
-	var (
-		crIssueCount        int
-		orchCMIssueCount    int
-		gatewayCMIssueCount int
-	)
-
-	// Collect unique issues across all CRs for descriptive condition messages.
-	allCRIssues := sets.New[string]()
-	allOrchCMIssues := sets.New[string]()
-	allGatewayCMIssues := sets.New[string]()
+	var impactedCRs int
 
 	for _, orch := range orchestrators {
-		impacted := false
+		cr := c.validateCR(ctx, target.Client, orch)
 
-		// Validate CR spec fields
-		cfg, crIssues := validateCRSpec(orch)
-		if len(crIssues) > 0 {
-			crIssueCount++
-			impacted = true
-			allCRIssues.Insert(crIssues...)
+		if len(cr.annotations) > 0 {
+			impactedCRs++
+			c.appendImpactedObject(dr, orch, cr.annotations)
 		}
 
-		// Validate orchestrator ConfigMap
-		if cfg.orchestratorConfigName != "" {
-			orchIssues := validateOrchestratorConfigMap(ctx, target.Client, orch.GetNamespace(), cfg.orchestratorConfigName)
-			if len(orchIssues) > 0 {
-				orchCMIssueCount++
-				impacted = true
-				allOrchCMIssues.Insert(orchIssues...)
-			}
-		}
-
-		// Validate gateway ConfigMap
-		if cfg.gatewayConfigName != "" {
-			gatewayIssues := validateGatewayConfigMap(ctx, target.Client, orch.GetNamespace(), cfg.gatewayConfigName)
-			if len(gatewayIssues) > 0 {
-				gatewayCMIssueCount++
-				impacted = true
-				allGatewayCMIssues.Insert(gatewayIssues...)
-			}
-		}
-
-		if impacted {
-			c.appendImpactedObject(dr, orch)
-		}
+		// Add misconfigured ConfigMaps as impacted objects.
+		c.appendImpactedConfigMaps(dr, orch, cr)
 	}
 
 	dr.Status.Conditions = append(dr.Status.Conditions,
-		c.newCRConfigCondition(total, crIssueCount, strings.Join(sets.List(allCRIssues), "; ")),
-		c.newOrchestratorCMCondition(total, orchCMIssueCount, strings.Join(sets.List(allOrchCMIssues), "; ")),
-		c.newGatewayCMCondition(total, gatewayCMIssueCount, strings.Join(sets.List(allGatewayCMIssues), "; ")),
+		c.newConfigurationCondition(total, impactedCRs),
 	)
 
 	dr.Annotations[check.AnnotationImpactedWorkloadCount] = strconv.Itoa(len(dr.ImpactedObjects))

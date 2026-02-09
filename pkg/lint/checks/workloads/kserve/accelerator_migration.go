@@ -74,12 +74,12 @@ func (c *AcceleratorMigrationCheck) Validate(
 	// Add condition based on findings
 	dr.Status.Conditions = append(
 		dr.Status.Conditions,
-		newISVCAcceleratorMigrationCondition(totalImpacted, missingCount, c.CheckRemediation),
+		c.newISVCAcceleratorMigrationCondition(totalImpacted, missingCount),
 	)
 
 	// Populate ImpactedObjects if any InferenceServices found
 	if totalImpacted > 0 {
-		populateISVCAcceleratorImpactedObjects(dr, impacted)
+		c.populateISVCAcceleratorImpactedObjects(dr, impacted)
 	}
 
 	return dr, nil

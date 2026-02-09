@@ -56,5 +56,5 @@ func (c *ImpactedWorkloadsCheck) Validate(
 		Filter(func(cluster *metav1.PartialObjectMetadata) (bool, error) {
 			return slices.Contains(cluster.GetFinalizers(), finalizerCodeFlareOAuth), nil
 		}).
-		Complete(ctx, newCodeFlareRayClusterCondition)
+		Complete(ctx, c.newCodeFlareRayClusterCondition)
 }

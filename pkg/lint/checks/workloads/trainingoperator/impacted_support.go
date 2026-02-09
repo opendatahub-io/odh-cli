@@ -12,7 +12,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
-func newPyTorchJobCondition(
+func (c *ImpactedWorkloadsCheck) newPyTorchJobCondition(
 	activeCount int,
 	completedCount int,
 ) result.Condition {

@@ -13,7 +13,7 @@ import (
 // newWorkloadCompatibilityCondition creates a compatibility condition based on workload count.
 // When count > 0, returns a failure condition indicating impacted workloads.
 // When count == 0, returns a success condition indicating readiness for upgrade.
-func newWorkloadCompatibilityCondition(
+func (c *ImpactedWorkloadsCheck) newWorkloadCompatibilityCondition(
 	conditionType string,
 	count int,
 	workloadDescription string,
@@ -39,11 +39,11 @@ func newWorkloadCompatibilityCondition(
 	)
 }
 
-func newCodeFlareRayClusterCondition(
+func (c *ImpactedWorkloadsCheck) newCodeFlareRayClusterCondition(
 	_ context.Context,
 	req *validate.WorkloadRequest[*metav1.PartialObjectMetadata],
 ) ([]result.Condition, error) {
-	return []result.Condition{newWorkloadCompatibilityCondition(
+	return []result.Condition{c.newWorkloadCompatibilityCondition(
 		ConditionTypeCodeFlareRayClusterCompatible,
 		len(req.Items),
 		"CodeFlare-managed RayCluster(s)",

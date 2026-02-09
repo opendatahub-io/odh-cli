@@ -46,5 +46,5 @@ func (c *OtelMigrationCheck) Validate(
 ) (*result.DiagnosticResult, error) {
 	return validate.Workloads(c, target, resources.GuardrailsOrchestrator).
 		Filter(hasDeprecatedOtelFields).
-		Complete(ctx, newOtelMigrationCondition)
+		Complete(ctx, c.newOtelMigrationCondition)
 }

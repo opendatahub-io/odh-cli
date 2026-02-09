@@ -23,7 +23,7 @@ func isImpactedISVC(obj *metav1.PartialObjectMetadata) (bool, error) {
 // newWorkloadCompatibilityCondition creates a compatibility condition based on workload count.
 // When count > 0, returns a failure condition indicating impacted workloads.
 // When count == 0, returns a success condition indicating readiness for upgrade.
-func newWorkloadCompatibilityCondition(
+func (c *ImpactedWorkloadsCheck) newWorkloadCompatibilityCondition(
 	conditionType string,
 	count int,
 	workloadDescription string,
@@ -51,11 +51,11 @@ func newWorkloadCompatibilityCondition(
 
 // appendServerlessISVCCondition filters Serverless InferenceServices and appends
 // the condition and impacted objects to the result.
-func appendServerlessISVCCondition(
+func (c *ImpactedWorkloadsCheck) appendServerlessISVCCondition(
 	dr *result.DiagnosticResult,
 	allISVCs []*metav1.PartialObjectMetadata,
 ) {
-	appendISVCCondition(dr, allISVCs,
+	c.appendISVCCondition(dr, allISVCs,
 		ConditionTypeServerlessISVCCompatible,
 		deploymentModeServerless,
 		"Serverless InferenceService(s)",
@@ -64,11 +64,11 @@ func appendServerlessISVCCondition(
 
 // appendModelMeshISVCCondition filters ModelMesh InferenceServices and appends
 // the condition and impacted objects to the result.
-func appendModelMeshISVCCondition(
+func (c *ImpactedWorkloadsCheck) appendModelMeshISVCCondition(
 	dr *result.DiagnosticResult,
 	allISVCs []*metav1.PartialObjectMetadata,
 ) {
-	appendISVCCondition(dr, allISVCs,
+	c.appendISVCCondition(dr, allISVCs,
 		ConditionTypeModelMeshISVCCompatible,
 		deploymentModeModelMesh,
 		"ModelMesh InferenceService(s)",
@@ -77,7 +77,7 @@ func appendModelMeshISVCCondition(
 
 // appendISVCCondition filters ISVCs by deployment mode and appends the condition
 // and impacted objects to the result.
-func appendISVCCondition(
+func (c *ImpactedWorkloadsCheck) appendISVCCondition(
 	dr *result.DiagnosticResult,
 	allISVCs []*metav1.PartialObjectMetadata,
 	conditionType string,
@@ -93,7 +93,7 @@ func appendISVCCondition(
 	}
 
 	dr.Status.Conditions = append(dr.Status.Conditions,
-		newWorkloadCompatibilityCondition(conditionType, len(filtered), workloadDescription),
+		c.newWorkloadCompatibilityCondition(conditionType, len(filtered), workloadDescription),
 	)
 
 	for _, r := range filtered {
@@ -112,12 +112,12 @@ func appendISVCCondition(
 
 // appendModelMeshSRCondition appends the condition and impacted objects for
 // multi-model ServingRuntimes to the result.
-func appendModelMeshSRCondition(
+func (c *ImpactedWorkloadsCheck) appendModelMeshSRCondition(
 	dr *result.DiagnosticResult,
 	impactedSRs []*unstructured.Unstructured,
 ) {
 	dr.Status.Conditions = append(dr.Status.Conditions,
-		newWorkloadCompatibilityCondition(
+		c.newWorkloadCompatibilityCondition(
 			ConditionTypeModelMeshSRCompatible,
 			len(impactedSRs),
 			"ModelMesh ServingRuntime(s)",
@@ -157,12 +157,12 @@ func isUsingRemovedRuntime(obj *unstructured.Unstructured) (bool, error) {
 
 // appendRemovedRuntimeISVCCondition appends the condition and impacted objects for
 // InferenceServices using removed ServingRuntimes to the result.
-func appendRemovedRuntimeISVCCondition(
+func (c *ImpactedWorkloadsCheck) appendRemovedRuntimeISVCCondition(
 	dr *result.DiagnosticResult,
 	items []*unstructured.Unstructured,
 ) error {
 	dr.Status.Conditions = append(dr.Status.Conditions,
-		newWorkloadCompatibilityCondition(
+		c.newWorkloadCompatibilityCondition(
 			ConditionTypeRemovedSRCompatible,
 			len(items),
 			"InferenceService(s) using removed ServingRuntime(s)",

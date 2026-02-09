@@ -116,22 +116,13 @@ func TestImpactedWorkloadsCheck_NoResources(t *testing.T) {
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(3))
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorCRConfigured),
+		"Type":   Equal(guardrails.ConditionTypeConfigurationValid),
 		"Status": Equal(metav1.ConditionTrue),
 		"Reason": Equal(check.ReasonVersionCompatible),
 	}))
-	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
-		"Reason": Equal(check.ReasonVersionCompatible),
-	}))
-	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeGatewayConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
-		"Reason": Equal(check.ReasonVersionCompatible),
-	}))
+	g.Expect(result.Status.Conditions[0].Condition.Message).To(ContainSubstring("No GuardrailsOrchestrators found"))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
 	g.Expect(result.ImpactedObjects).To(BeEmpty())
 }
@@ -162,24 +153,13 @@ func TestImpactedWorkloadsCheck_ValidCR(t *testing.T) {
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(3))
-
-	// All three conditions should pass
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorCRConfigured),
+		"Type":   Equal(guardrails.ConditionTypeConfigurationValid),
 		"Status": Equal(metav1.ConditionTrue),
 		"Reason": Equal(check.ReasonConfigurationValid),
 	}))
-	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
-		"Reason": Equal(check.ReasonConfigurationValid),
-	}))
-	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeGatewayConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
-		"Reason": Equal(check.ReasonConfigurationValid),
-	}))
+	g.Expect(result.Status.Conditions[0].Condition.Message).To(ContainSubstring("configured correctly"))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
 	g.Expect(result.ImpactedObjects).To(BeEmpty())
 }
@@ -188,7 +168,7 @@ func TestImpactedWorkloadsCheck_InvalidCRSpec(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// CR with missing/invalid spec fields
+	// CR with missing/invalid spec fields, no ConfigMap refs.
 	orch := newTestOrchestrator("bad-orch", "test-ns", map[string]any{
 		"replicas":                int64(0),
 		"enableGuardrailsGateway": false,
@@ -201,32 +181,39 @@ func TestImpactedWorkloadsCheck_InvalidCRSpec(t *testing.T) {
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(3))
-
-	// CR config condition should fail with advisory impact and list specific issues
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorCRConfigured),
+		"Type":   Equal(guardrails.ConditionTypeConfigurationValid),
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonConfigurationInvalid),
-		"Message": And(
-			ContainSubstring("1 of 1"),
-			ContainSubstring("CR spec issues"),
-			ContainSubstring("orchestratorConfig is not set"),
-			ContainSubstring("enableGuardrailsGateway is false"),
-		),
 	}))
+	g.Expect(result.Status.Conditions[0].Condition.Message).To(ContainSubstring("misconfigured"))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 
+	// Only the GuardrailsOrchestrator CR should be impacted (no ConfigMap refs).
 	g.Expect(result.ImpactedObjects).To(HaveLen(1))
-	g.Expect(result.ImpactedObjects[0].Name).To(Equal("bad-orch"))
-	g.Expect(result.ImpactedObjects[0].Namespace).To(Equal("test-ns"))
+	g.Expect(result.ImpactedObjects[0]).To(MatchFields(IgnoreExtras, Fields{
+		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+			"Name":      Equal("bad-orch"),
+			"Namespace": Equal("test-ns"),
+		}),
+	}))
+
+	// Impacted object annotations describe the specific issues.
+	g.Expect(result.ImpactedObjects[0].Annotations).To(And(
+		HaveKeyWithValue("guardrails.opendatahub.io/orchestrator-config", "not set"),
+		HaveKeyWithValue("guardrails.opendatahub.io/replicas", "less than 1"),
+		HaveKeyWithValue("guardrails.opendatahub.io/gateway-config",
+			"enableGuardrailsGateway not enabled; guardrailsGatewayConfig not set"),
+		HaveKeyWithValue("guardrails.opendatahub.io/builtin-detectors", "not enabled"),
+	))
 }
 
 func TestImpactedWorkloadsCheck_MissingOrchestratorConfigMap(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// CR references a ConfigMap that does not exist
+	// CR references a ConfigMap that does not exist.
 	orch := newTestOrchestrator("test-orch", "test-ns", map[string]any{
 		"orchestratorConfig":      "missing-config",
 		"replicas":                int64(1),
@@ -245,30 +232,44 @@ func TestImpactedWorkloadsCheck_MissingOrchestratorConfigMap(t *testing.T) {
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(3))
-
-	// CR config passes
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorCRConfigured),
-		"Status": Equal(metav1.ConditionTrue),
+		"Type":   Equal(guardrails.ConditionTypeConfigurationValid),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonConfigurationInvalid),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 
-	// Orchestrator ConfigMap fails with specific issue detail
-	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(guardrails.ConditionTypeOrchestratorConfigMapValid),
-		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonConfigurationInvalid),
-		"Message": And(ContainSubstring("orchestrator ConfigMap issues"), ContainSubstring("missing-config")),
+	// GuardrailsOrchestrator CR + missing orchestrator ConfigMap.
+	g.Expect(result.ImpactedObjects).To(HaveLen(2))
+
+	// First: the GuardrailsOrchestrator CR.
+	g.Expect(result.ImpactedObjects[0]).To(MatchFields(IgnoreExtras, Fields{
+		"TypeMeta": MatchFields(IgnoreExtras, Fields{
+			"Kind": Equal("GuardrailsOrchestrator"),
+		}),
+		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+			"Name":      Equal("test-orch"),
+			"Namespace": Equal("test-ns"),
+		}),
 	}))
-	g.Expect(result.Status.Conditions[1].Impact).To(Equal(resultpkg.ImpactAdvisory))
+	g.Expect(result.ImpactedObjects[0].Annotations).To(
+		HaveKeyWithValue("guardrails.opendatahub.io/orchestrator-configmap", "orchestrator ConfigMap not found"),
+	)
 
-	// Gateway ConfigMap passes
-	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeGatewayConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
+	// Second: the missing ConfigMap reference.
+	g.Expect(result.ImpactedObjects[1]).To(MatchFields(IgnoreExtras, Fields{
+		"TypeMeta": MatchFields(IgnoreExtras, Fields{
+			"Kind": Equal("ConfigMap"),
+		}),
+		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+			"Name":      Equal("missing-config"),
+			"Namespace": Equal("test-ns"),
+		}),
 	}))
-
-	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+	g.Expect(result.ImpactedObjects[1].Annotations).To(
+		HaveKeyWithValue("guardrails.opendatahub.io/issues", "orchestrator ConfigMap not found"),
+	)
 }
 
 func TestImpactedWorkloadsCheck_InvalidOrchestratorConfigMap(t *testing.T) {
@@ -283,7 +284,7 @@ func TestImpactedWorkloadsCheck_InvalidOrchestratorConfigMap(t *testing.T) {
 		"guardrailsGatewayConfig": "gateway-config",
 	})
 
-	// ConfigMap exists but missing required YAML fields
+	// ConfigMap exists but missing required YAML fields.
 	orchCM := newTestConfigMap("orch-config", "test-ns", map[string]any{
 		"config.yaml": missingAllFieldsConfigYAML,
 	})
@@ -298,35 +299,37 @@ func TestImpactedWorkloadsCheck_InvalidOrchestratorConfigMap(t *testing.T) {
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(3))
-
-	// CR config passes
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorCRConfigured),
-		"Status": Equal(metav1.ConditionTrue),
-	}))
-
-	// Orchestrator ConfigMap fails with specific field issues
-	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorConfigMapValid),
+		"Type":   Equal(guardrails.ConditionTypeConfigurationValid),
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonConfigurationInvalid),
-		"Message": And(
-			ContainSubstring("orchestrator ConfigMap issues"),
-			ContainSubstring("hostname"),
-			ContainSubstring("port"),
-			ContainSubstring("detectors"),
-		),
 	}))
-	g.Expect(result.Status.Conditions[1].Impact).To(Equal(resultpkg.ImpactAdvisory))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 
-	// Gateway ConfigMap passes
-	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeGatewayConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
+	// GuardrailsOrchestrator CR + invalid orchestrator ConfigMap.
+	g.Expect(result.ImpactedObjects).To(HaveLen(2))
+
+	// First: the GuardrailsOrchestrator CR with ConfigMap issue annotation.
+	g.Expect(result.ImpactedObjects[0].Annotations).To(HaveKeyWithValue(
+		"guardrails.opendatahub.io/orchestrator-configmap",
+		"chat_generation.service misconfiguration; detectors misconfiguration",
+	))
+
+	// Second: the ConfigMap with issues annotation.
+	g.Expect(result.ImpactedObjects[1]).To(MatchFields(IgnoreExtras, Fields{
+		"TypeMeta": MatchFields(IgnoreExtras, Fields{
+			"Kind": Equal("ConfigMap"),
+		}),
+		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+			"Name":      Equal("orch-config"),
+			"Namespace": Equal("test-ns"),
+		}),
 	}))
-
-	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+	g.Expect(result.ImpactedObjects[1].Annotations).To(
+		HaveKeyWithValue("guardrails.opendatahub.io/issues",
+			"chat_generation.service misconfiguration; detectors misconfiguration"),
+	)
 }
 
 func TestImpactedWorkloadsCheck_MissingGatewayConfigMap(t *testing.T) {
@@ -351,28 +354,35 @@ func TestImpactedWorkloadsCheck_MissingGatewayConfigMap(t *testing.T) {
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(3))
-
-	// CR config and orchestrator CM pass
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorCRConfigured),
-		"Status": Equal(metav1.ConditionTrue),
+		"Type":   Equal(guardrails.ConditionTypeConfigurationValid),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonConfigurationInvalid),
 	}))
-	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(guardrails.ConditionTypeOrchestratorConfigMapValid),
-		"Status": Equal(metav1.ConditionTrue),
-	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 
-	// Gateway ConfigMap fails with specific issue detail
-	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(guardrails.ConditionTypeGatewayConfigMapValid),
-		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonConfigurationInvalid),
-		"Message": And(ContainSubstring("gateway ConfigMap issues"), ContainSubstring("missing-gateway")),
-	}))
-	g.Expect(result.Status.Conditions[2].Impact).To(Equal(resultpkg.ImpactAdvisory))
+	// GuardrailsOrchestrator CR + missing gateway ConfigMap.
+	g.Expect(result.ImpactedObjects).To(HaveLen(2))
 
-	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+	// First: the GuardrailsOrchestrator CR.
+	g.Expect(result.ImpactedObjects[0].Annotations).To(
+		HaveKeyWithValue("guardrails.opendatahub.io/gateway-configmap", "gateway ConfigMap not found"),
+	)
+
+	// Second: the missing gateway ConfigMap.
+	g.Expect(result.ImpactedObjects[1]).To(MatchFields(IgnoreExtras, Fields{
+		"TypeMeta": MatchFields(IgnoreExtras, Fields{
+			"Kind": Equal("ConfigMap"),
+		}),
+		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+			"Name":      Equal("missing-gateway"),
+			"Namespace": Equal("test-ns"),
+		}),
+	}))
+	g.Expect(result.ImpactedObjects[1].Annotations).To(
+		HaveKeyWithValue("guardrails.opendatahub.io/issues", "gateway ConfigMap not found"),
+	)
 }
 
 func TestImpactedWorkloadsCheck_Metadata(t *testing.T) {

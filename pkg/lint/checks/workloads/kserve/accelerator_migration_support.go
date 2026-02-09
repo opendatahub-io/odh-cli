@@ -9,7 +9,10 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 )
 
-func newISVCAcceleratorMigrationCondition(totalImpacted int, totalMissing int, remediation string) result.Condition {
+func (c *AcceleratorMigrationCheck) newISVCAcceleratorMigrationCondition(
+	totalImpacted int,
+	totalMissing int,
+) result.Condition {
 	if totalImpacted == 0 {
 		return check.NewCondition(
 			ConditionTypeISVCAcceleratorProfileCompatible,
@@ -29,7 +32,7 @@ func newISVCAcceleratorMigrationCondition(totalImpacted int, totalMissing int, r
 			totalImpacted,
 			totalMissing,
 			check.WithImpact(result.ImpactAdvisory),
-			check.WithRemediation(remediation),
+			check.WithRemediation(c.CheckRemediation),
 		)
 	}
 
@@ -41,11 +44,11 @@ func newISVCAcceleratorMigrationCondition(totalImpacted int, totalMissing int, r
 		"Found %d InferenceService(s) using AcceleratorProfiles - migrate to HardwareProfiles before upgrading",
 		totalImpacted,
 		check.WithImpact(result.ImpactAdvisory),
-		check.WithRemediation(remediation),
+		check.WithRemediation(c.CheckRemediation),
 	)
 }
 
-func populateISVCAcceleratorImpactedObjects(
+func (c *AcceleratorMigrationCheck) populateISVCAcceleratorImpactedObjects(
 	dr *result.DiagnosticResult,
 	inferenceServices []types.NamespacedName,
 ) {

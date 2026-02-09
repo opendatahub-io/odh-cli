@@ -68,7 +68,7 @@ func (c *ImpactedWorkloadsCheck) Validate(
 				}
 			}
 
-			results.SetCondition(req.Result, newPyTorchJobCondition(len(active), len(completed)))
+			results.SetCondition(req.Result, c.newPyTorchJobCondition(len(active), len(completed)))
 
 			return nil
 		})

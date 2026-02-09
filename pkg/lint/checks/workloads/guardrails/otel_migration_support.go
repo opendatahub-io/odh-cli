@@ -28,7 +28,7 @@ func hasDeprecatedOtelFields(obj *unstructured.Unstructured) (bool, error) {
 	}
 }
 
-func newOtelMigrationCondition(
+func (c *OtelMigrationCheck) newOtelMigrationCondition(
 	_ context.Context,
 	req *validate.WorkloadRequest[*unstructured.Unstructured],
 ) ([]result.Condition, error) {

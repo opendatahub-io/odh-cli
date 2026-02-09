@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 
@@ -17,95 +18,144 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
+const (
+	annotationIssues = "guardrails.opendatahub.io/issues"
+)
+
 // crConfig holds the ConfigMap names extracted from a GuardrailsOrchestrator spec.
 type crConfig struct {
 	orchestratorConfigName string
 	gatewayConfigName      string
 }
 
-// validateCRSpec validates the spec fields of a GuardrailsOrchestrator CR.
-// Returns the extracted config and a list of issues found.
-func validateCRSpec(obj *unstructured.Unstructured) (crConfig, []string) {
-	var cfg crConfig
-
-	var issues []string
-
-	cfg.orchestratorConfigName, issues = requireStringField(obj, ".spec.orchestratorConfig", "orchestratorConfig", issues)
-	issues = requireMinReplicas(obj, issues)
-	issues = requireBoolTrue(obj, ".spec.enableGuardrailsGateway", "enableGuardrailsGateway", issues)
-	issues = requireBoolTrue(obj, ".spec.enableBuiltInDetectors", "enableBuiltInDetectors", issues)
-	cfg.gatewayConfigName, issues = requireStringField(obj, ".spec.guardrailsGatewayConfig", "guardrailsGatewayConfig", issues)
-
-	return cfg, issues
+// crResult holds the aggregated validation result for a single CR,
+// including ConfigMap names and issue annotations.
+type crResult struct {
+	orchCMName    string
+	gatewayCMName string
+	annotations   map[string]string
 }
 
-// requireStringField validates a non-empty string field and returns its value.
-func requireStringField(
+// validateCR validates a single GuardrailsOrchestrator CR and returns the
+// aggregated result including spec checks, ConfigMap checks, and annotations.
+func (c *ImpactedWorkloadsCheck) validateCR(
+	ctx context.Context,
+	reader client.Reader,
+	obj *unstructured.Unstructured,
+) crResult {
+	var cr crResult
+
+	cr.annotations = map[string]string{}
+	sr := c.validateCRSpec(obj)
+
+	cr.orchCMName = sr.config.orchestratorConfigName
+	cr.gatewayCMName = sr.config.gatewayConfigName
+
+	if sr.orchConfigFail {
+		cr.annotations[annotationOrchestratorConfig] = "not set"
+	}
+
+	if sr.replicasFail {
+		cr.annotations[annotationReplicas] = "less than 1"
+	}
+
+	// Combined gateway: two sub-fields merged into one annotation with detailed description.
+	if sr.gatewayFail || sr.gatewayConfigFail {
+		var details []string
+		if sr.gatewayFail {
+			details = append(details, "enableGuardrailsGateway not enabled")
+		}
+
+		if sr.gatewayConfigFail {
+			details = append(details, "guardrailsGatewayConfig not set")
+		}
+
+		cr.annotations[annotationGatewayConfig] = strings.Join(details, "; ")
+	}
+
+	if sr.detectorsFail {
+		cr.annotations[annotationBuiltinDetectors] = "not enabled"
+	}
+
+	if sr.config.orchestratorConfigName != "" {
+		orchIssues := c.validateOrchestratorConfigMap(ctx, reader, obj.GetNamespace(), sr.config.orchestratorConfigName)
+		if len(orchIssues) > 0 {
+			cr.annotations[annotationOrchestratorCM] = strings.Join(orchIssues, "; ")
+		}
+	}
+
+	if sr.config.gatewayConfigName != "" {
+		gatewayIssues := c.validateGatewayConfigMap(ctx, reader, obj.GetNamespace(), sr.config.gatewayConfigName)
+		if len(gatewayIssues) > 0 {
+			cr.annotations[annotationGatewayCM] = strings.Join(gatewayIssues, "; ")
+		}
+	}
+
+	// Clear annotations map if no issues found to avoid empty-map impacted objects.
+	if len(cr.annotations) == 0 {
+		cr.annotations = nil
+	}
+
+	return cr
+}
+
+// specResult holds per-field validation results from CR spec validation.
+type specResult struct {
+	config            crConfig
+	orchConfigFail    bool
+	replicasFail      bool
+	gatewayFail       bool
+	detectorsFail     bool
+	gatewayConfigFail bool
+}
+
+// validateCRSpec validates the spec fields of a GuardrailsOrchestrator CR
+// and returns per-field validation results.
+func (c *ImpactedWorkloadsCheck) validateCRSpec(obj *unstructured.Unstructured) specResult {
+	var r specResult
+
+	r.config.orchestratorConfigName, r.orchConfigFail = c.checkStringFieldMissing(obj, ".spec.orchestratorConfig")
+	r.replicasFail = c.checkReplicasInvalid(obj)
+	r.gatewayFail = c.checkBoolNotTrue(obj, ".spec.enableGuardrailsGateway")
+	r.detectorsFail = c.checkBoolNotTrue(obj, ".spec.enableBuiltInDetectors")
+	r.config.gatewayConfigName, r.gatewayConfigFail = c.checkStringFieldMissing(obj, ".spec.guardrailsGatewayConfig")
+
+	return r
+}
+
+// checkStringFieldMissing returns the field value and whether it's missing or empty.
+func (c *ImpactedWorkloadsCheck) checkStringFieldMissing(
 	obj *unstructured.Unstructured,
 	query string,
-	fieldName string,
-	issues []string,
-) (string, []string) {
+) (string, bool) {
 	val, err := jq.Query[string](obj, query)
-	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			return "", append(issues, fieldName+" is not set")
-		}
-
-		return "", append(issues, "failed to query "+fieldName+": "+err.Error())
+	if err != nil || val == "" {
+		return "", true
 	}
 
-	if val == "" {
-		return "", append(issues, fieldName+" is empty")
-	}
-
-	return val, issues
+	return val, false
 }
 
-// requireBoolTrue validates that a boolean field is set to true.
-func requireBoolTrue(
+// checkBoolNotTrue returns true if the field is missing or not set to true.
+func (c *ImpactedWorkloadsCheck) checkBoolNotTrue(
 	obj *unstructured.Unstructured,
 	query string,
-	fieldName string,
-	issues []string,
-) []string {
+) bool {
 	val, err := jq.Query[bool](obj, query)
-	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			return append(issues, fieldName+" is not set")
-		}
 
-		return append(issues, "failed to query "+fieldName+": "+err.Error())
-	}
-
-	if !val {
-		return append(issues, fieldName+" is false, expected true")
-	}
-
-	return issues
+	return err != nil || !val
 }
 
-// requireMinReplicas validates that .spec.replicas >= 1.
-func requireMinReplicas(obj *unstructured.Unstructured, issues []string) []string {
+// checkReplicasInvalid returns true if replicas is missing or less than 1.
+func (c *ImpactedWorkloadsCheck) checkReplicasInvalid(obj *unstructured.Unstructured) bool {
 	replicas, err := jq.Query[float64](obj, ".spec.replicas")
-	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			return append(issues, "replicas is not set")
-		}
 
-		return append(issues, fmt.Sprintf("failed to query replicas: %v", err))
-	}
-
-	if replicas < 1 {
-		return append(issues, fmt.Sprintf("replicas is %d, expected >= 1", int(replicas)))
-	}
-
-	return issues
+	return err != nil || replicas < 1
 }
 
 // validateOrchestratorConfigMap validates the orchestrator ConfigMap's config.yaml content.
 // Returns a list of issues found.
-func validateOrchestratorConfigMap(
+func (c *ImpactedWorkloadsCheck) validateOrchestratorConfigMap(
 	ctx context.Context,
 	reader client.Reader,
 	namespace string,
@@ -113,74 +163,64 @@ func validateOrchestratorConfigMap(
 ) []string {
 	cm, err := reader.GetResource(ctx, resources.ConfigMap, name, client.InNamespace(namespace))
 	if err != nil {
-		return []string{fmt.Sprintf("failed to get orchestrator ConfigMap %q: %v", name, err)}
+		return []string{"orchestrator ConfigMap not found"}
 	}
 
 	if cm == nil {
-		return []string{fmt.Sprintf("orchestrator ConfigMap %q not found", name)}
+		return []string{"orchestrator ConfigMap not found"}
 	}
 
-	// Extract config.yaml from the ConfigMap data
+	// Extract config.yaml from the ConfigMap data.
 	configYAML, err := jq.Query[string](cm, ".data[\"config.yaml\"]")
 	if err != nil {
 		if errors.Is(err, jq.ErrNotFound) {
-			return []string{fmt.Sprintf("orchestrator ConfigMap %q missing config.yaml key", name)}
+			return []string{"orchestrator ConfigMap missing config.yaml"}
 		}
 
-		return []string{fmt.Sprintf("failed to query config.yaml from ConfigMap %q: %v", name, err)}
+		return []string{fmt.Sprintf("failed to query config.yaml from orchestrator ConfigMap: %v", err)}
 	}
 
 	if configYAML == "" {
-		return []string{fmt.Sprintf("orchestrator ConfigMap %q has empty config.yaml", name)}
+		return []string{"orchestrator ConfigMap has empty config.yaml"}
 	}
 
-	// Parse the YAML content
+	// Parse the YAML content.
 	var configData map[string]any
 	if err := yaml.Unmarshal([]byte(configYAML), &configData); err != nil {
-		return []string{fmt.Sprintf("orchestrator ConfigMap %q has invalid config.yaml YAML: %v", name, err)}
+		return []string{"orchestrator ConfigMap has invalid config.yaml"}
 	}
 
-	return validateOrchestratorConfigData(name, configData)
+	return c.validateOrchestratorConfigData(configData)
 }
 
 // validateOrchestratorConfigData checks the parsed config.yaml content for required fields.
-func validateOrchestratorConfigData(name string, configData map[string]any) []string {
+// Returns category-level issues rather than individual field names.
+func (c *ImpactedWorkloadsCheck) validateOrchestratorConfigData(configData map[string]any) []string {
 	var issues []string
 
-	// Check chat_generation.service.hostname
+	// Check chat_generation.service category (hostname + port).
+	chatGenIssue := false
+
 	hostname, err := jq.Query[string](configData, ".chat_generation.service.hostname")
-	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			issues = append(issues, fmt.Sprintf("ConfigMap %q config.yaml missing chat_generation.service.hostname", name))
-		} else {
-			issues = append(issues, fmt.Sprintf("ConfigMap %q failed to query hostname: %v", name, err))
-		}
-	} else if hostname == "" {
-		issues = append(issues, fmt.Sprintf("ConfigMap %q config.yaml has empty chat_generation.service.hostname", name))
+	if err != nil || hostname == "" {
+		chatGenIssue = true
 	}
 
-	// Check chat_generation.service.port
 	port, err := jq.Query[any](configData, ".chat_generation.service.port")
-	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			issues = append(issues, fmt.Sprintf("ConfigMap %q config.yaml missing chat_generation.service.port", name))
-		} else {
-			issues = append(issues, fmt.Sprintf("ConfigMap %q failed to query port: %v", name, err))
-		}
-	} else if fmt.Sprintf("%v", port) == "" {
-		issues = append(issues, fmt.Sprintf("ConfigMap %q config.yaml has empty chat_generation.service.port", name))
+	if err != nil || fmt.Sprintf("%v", port) == "" {
+		chatGenIssue = true
 	}
 
-	// Check detectors list is non-empty
+	if chatGenIssue {
+		issues = append(issues, "chat_generation.service misconfiguration")
+	}
+
+	// Check detectors category.
 	detectors, err := jq.Query[any](configData, ".detectors")
 	if err != nil {
-		if errors.Is(err, jq.ErrNotFound) {
-			issues = append(issues, fmt.Sprintf("ConfigMap %q config.yaml missing detectors", name))
-		} else {
-			issues = append(issues, fmt.Sprintf("ConfigMap %q failed to query detectors: %v", name, err))
-		}
+		issues = append(issues, "detectors misconfiguration")
 	} else if detectorsList, ok := detectors.([]any); ok && len(detectorsList) == 0 {
-		issues = append(issues, fmt.Sprintf("ConfigMap %q config.yaml has empty detectors list", name))
+		issues = append(issues, "detectors misconfiguration")
 	}
 
 	return issues
@@ -188,7 +228,7 @@ func validateOrchestratorConfigData(name string, configData map[string]any) []st
 
 // validateGatewayConfigMap validates the gateway ConfigMap exists.
 // Returns a list of issues found.
-func validateGatewayConfigMap(
+func (c *ImpactedWorkloadsCheck) validateGatewayConfigMap(
 	ctx context.Context,
 	reader client.Reader,
 	namespace string,
@@ -196,116 +236,106 @@ func validateGatewayConfigMap(
 ) []string {
 	cm, err := reader.GetResource(ctx, resources.ConfigMap, name, client.InNamespace(namespace))
 	if err != nil {
-		return []string{fmt.Sprintf("failed to get gateway ConfigMap %q: %v", name, err)}
+		return []string{"gateway ConfigMap not found"}
 	}
 
 	if cm == nil {
-		return []string{fmt.Sprintf("gateway ConfigMap %q not found", name)}
+		return []string{"gateway ConfigMap not found"}
 	}
 
 	return nil
 }
 
-// newCRConfigCondition creates a condition for CR spec validation results.
-func (c *ImpactedWorkloadsCheck) newCRConfigCondition(total int, issueCount int, issues string) result.Condition {
+// newConfigurationCondition creates a single consolidated condition for all
+// GuardrailsOrchestrator configuration validation.
+func (c *ImpactedWorkloadsCheck) newConfigurationCondition(
+	total int,
+	impacted int,
+) result.Condition {
 	if total == 0 {
 		return check.NewCondition(
-			ConditionTypeOrchestratorCRConfigured,
+			ConditionTypeConfigurationValid,
 			metav1.ConditionTrue,
 			check.ReasonVersionCompatible,
-			"No GuardrailsOrchestrators found - no CR configuration issues",
+			"No GuardrailsOrchestrators found",
 		)
 	}
 
-	if issueCount == 0 {
+	if impacted == 0 {
 		return check.NewCondition(
-			ConditionTypeOrchestratorCRConfigured,
+			ConditionTypeConfigurationValid,
 			metav1.ConditionTrue,
 			check.ReasonConfigurationValid,
-			"All %d GuardrailsOrchestrator CR(s) have valid spec configuration",
+			"All %d GuardrailsOrchestrator(s) configured correctly",
 			total,
 		)
 	}
 
 	return check.NewCondition(
-		ConditionTypeOrchestratorCRConfigured,
+		ConditionTypeConfigurationValid,
 		metav1.ConditionFalse,
 		check.ReasonConfigurationInvalid,
-		"%d of %d GuardrailsOrchestrator(s) have CR spec issues: %s",
-		issueCount, total, issues,
+		"Found %d misconfigured GuardrailsOrchestrator(s)",
+		impacted,
 		check.WithImpact(result.ImpactAdvisory),
 	)
 }
 
-// newOrchestratorCMCondition creates a condition for orchestrator ConfigMap validation results.
-func (c *ImpactedWorkloadsCheck) newOrchestratorCMCondition(total int, issueCount int, issues string) result.Condition {
-	if total == 0 {
-		return check.NewCondition(
-			ConditionTypeOrchestratorConfigMapValid,
-			metav1.ConditionTrue,
-			check.ReasonVersionCompatible,
-			"No GuardrailsOrchestrators found - no orchestrator ConfigMap issues",
-		)
-	}
-
-	if issueCount == 0 {
-		return check.NewCondition(
-			ConditionTypeOrchestratorConfigMapValid,
-			metav1.ConditionTrue,
-			check.ReasonConfigurationValid,
-			"All %d GuardrailsOrchestrator(s) have valid orchestrator ConfigMap configuration",
-			total,
-		)
-	}
-
-	return check.NewCondition(
-		ConditionTypeOrchestratorConfigMapValid,
-		metav1.ConditionFalse,
-		check.ReasonConfigurationInvalid,
-		"%d of %d GuardrailsOrchestrator(s) have orchestrator ConfigMap issues: %s",
-		issueCount, total, issues,
-		check.WithImpact(result.ImpactAdvisory),
-	)
-}
-
-// newGatewayCMCondition creates a condition for gateway ConfigMap validation results.
-func (c *ImpactedWorkloadsCheck) newGatewayCMCondition(total int, issueCount int, issues string) result.Condition {
-	if total == 0 {
-		return check.NewCondition(
-			ConditionTypeGatewayConfigMapValid,
-			metav1.ConditionTrue,
-			check.ReasonVersionCompatible,
-			"No GuardrailsOrchestrators found - no gateway ConfigMap issues",
-		)
-	}
-
-	if issueCount == 0 {
-		return check.NewCondition(
-			ConditionTypeGatewayConfigMapValid,
-			metav1.ConditionTrue,
-			check.ReasonConfigurationValid,
-			"All %d GuardrailsOrchestrator(s) have valid gateway ConfigMap",
-			total,
-		)
-	}
-
-	return check.NewCondition(
-		ConditionTypeGatewayConfigMapValid,
-		metav1.ConditionFalse,
-		check.ReasonConfigurationInvalid,
-		"%d of %d GuardrailsOrchestrator(s) have gateway ConfigMap issues: %s",
-		issueCount, total, issues,
-		check.WithImpact(result.ImpactAdvisory),
-	)
-}
-
-// appendImpactedObject adds a GuardrailsOrchestrator to the impacted objects list.
-func (c *ImpactedWorkloadsCheck) appendImpactedObject(dr *result.DiagnosticResult, obj *unstructured.Unstructured) {
+// appendImpactedObject adds a GuardrailsOrchestrator to the impacted objects list
+// with annotations describing the specific issues found on this CR.
+func (c *ImpactedWorkloadsCheck) appendImpactedObject(
+	dr *result.DiagnosticResult,
+	obj *unstructured.Unstructured,
+	annotations map[string]string,
+) {
 	dr.ImpactedObjects = append(dr.ImpactedObjects, metav1.PartialObjectMetadata{
 		TypeMeta: resources.GuardrailsOrchestrator.TypeMeta(),
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: obj.GetNamespace(),
-			Name:      obj.GetName(),
+			Namespace:   obj.GetNamespace(),
+			Name:        obj.GetName(),
+			Annotations: annotations,
 		},
 	})
+}
+
+// appendImpactedConfigMaps adds ConfigMap references to the impacted objects list
+// when they have issues detected during validation.
+func (c *ImpactedWorkloadsCheck) appendImpactedConfigMaps(
+	dr *result.DiagnosticResult,
+	obj *unstructured.Unstructured,
+	cr crResult,
+) {
+	if cr.annotations == nil {
+		return
+	}
+
+	ns := obj.GetNamespace()
+
+	// Orchestrator ConfigMap with issues.
+	if issues, ok := cr.annotations[annotationOrchestratorCM]; ok && cr.orchCMName != "" {
+		dr.ImpactedObjects = append(dr.ImpactedObjects, metav1.PartialObjectMetadata{
+			TypeMeta: resources.ConfigMap.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: ns,
+				Name:      cr.orchCMName,
+				Annotations: map[string]string{
+					annotationIssues: issues,
+				},
+			},
+		})
+	}
+
+	// Gateway ConfigMap with issues.
+	if issues, ok := cr.annotations[annotationGatewayCM]; ok && cr.gatewayCMName != "" {
+		dr.ImpactedObjects = append(dr.ImpactedObjects, metav1.PartialObjectMetadata{
+			TypeMeta: resources.ConfigMap.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: ns,
+				Name:      cr.gatewayCMName,
+				Annotations: map[string]string{
+					annotationIssues: issues,
+				},
+			},
+		})
+	}
 }

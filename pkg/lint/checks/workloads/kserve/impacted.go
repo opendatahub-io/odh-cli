@@ -95,11 +95,11 @@ func (c *ImpactedWorkloadsCheck) Validate(
 	}
 
 	// Each function appends its condition and impacted objects to the result
-	appendServerlessISVCCondition(dr, allISVCs)
-	appendModelMeshISVCCondition(dr, allISVCs)
-	appendModelMeshSRCondition(dr, impactedSRs)
+	c.appendServerlessISVCCondition(dr, allISVCs)
+	c.appendModelMeshISVCCondition(dr, allISVCs)
+	c.appendModelMeshSRCondition(dr, impactedSRs)
 
-	if err := appendRemovedRuntimeISVCCondition(dr, removedRuntimeISVCs); err != nil {
+	if err := c.appendRemovedRuntimeISVCCondition(dr, removedRuntimeISVCs); err != nil {
 		return nil, err
 	}
 
