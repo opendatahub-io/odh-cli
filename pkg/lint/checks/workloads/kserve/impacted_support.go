@@ -34,7 +34,7 @@ func (c *ImpactedWorkloadsCheck) newWorkloadCompatibilityCondition(
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
 			check.WithMessage("Found %d %s - will be impacted in RHOAI 3.x", count, workloadDescription),
-			check.WithImpact(result.ImpactAdvisory),
+			check.WithImpact(result.ImpactBlocking),
 			check.WithRemediation(c.CheckRemediation),
 		)
 	}

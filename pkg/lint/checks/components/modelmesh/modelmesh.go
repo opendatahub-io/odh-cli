@@ -52,5 +52,6 @@ func (c *RemovalCheck) CanApply(ctx context.Context, target check.Target) (bool,
 func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	return validate.Component(c, target).
 		Run(ctx, validate.Removal("ModelMesh is enabled (state: %s) but will be removed in RHOAI 3.x",
+			check.WithImpact(result.ImpactBlocking),
 			check.WithRemediation(c.CheckRemediation)))
 }

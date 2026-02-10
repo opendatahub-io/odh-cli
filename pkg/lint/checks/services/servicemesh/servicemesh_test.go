@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/services/servicemesh"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
@@ -106,6 +107,7 @@ func TestServiceMeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
@@ -146,6 +148,7 @@ func TestServiceMeshRemovalCheck_UnmanagedBlocking(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("state: Unmanaged"),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {

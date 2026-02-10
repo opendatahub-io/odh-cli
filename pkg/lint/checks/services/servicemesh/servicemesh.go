@@ -63,6 +63,7 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 				metav1.ConditionFalse,
 				check.WithReason(check.ReasonVersionIncompatible),
 				check.WithMessage("ServiceMesh is enabled (state: %s) but will be removed in RHOAI 3.x", managementState),
+				check.WithImpact(result.ImpactBlocking),
 				check.WithRemediation(c.CheckRemediation),
 			))
 		default:

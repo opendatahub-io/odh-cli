@@ -59,6 +59,7 @@ func (c *Check) Validate(
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonInsufficientData),
 			check.WithMessage("Unable to detect OpenShift version: %s. RHOAI 3.x requires OpenShift %s or later", err.Error(), minVersion.String()),
+			check.WithImpact(result.ImpactBlocking),
 		))
 	case ver.GTE(minVersion):
 		dr.SetCondition(check.NewCondition(
@@ -74,6 +75,7 @@ func (c *Check) Validate(
 			check.WithReason(check.ReasonVersionIncompatible),
 			check.WithMessage("OpenShift %s does not meet RHOAI 3.x minimum version requirement (%s+). Upgrade OpenShift to %s or later before upgrading RHOAI",
 				ver.String(), minVersion.String(), minVersion.String()),
+			check.WithImpact(result.ImpactBlocking),
 		))
 	}
 

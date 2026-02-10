@@ -74,6 +74,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonVersionIncompatible),
 					check.WithMessage("KServe serverless mode is enabled (state: %s) but will be removed in RHOAI 3.x", state),
+					check.WithImpact(result.ImpactBlocking),
 					check.WithRemediation(c.CheckRemediation),
 				))
 			default:

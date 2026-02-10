@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/kserve"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
@@ -111,6 +112,7 @@ func TestImpactedWorkloadsCheck_ModelMeshInferenceService(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 ModelMesh InferenceService(s)"),
 	}))
+	g.Expect(result.Status.Conditions[1].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal("ModelMeshServingRuntimesCompatible"),
 		"Status":  Equal(metav1.ConditionTrue),
@@ -162,6 +164,7 @@ func TestImpactedWorkloadsCheck_ServerlessInferenceService(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 Serverless InferenceService(s)"),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal("ModelMeshInferenceServicesCompatible"),
 		"Status":  Equal(metav1.ConditionTrue),
@@ -231,6 +234,7 @@ func TestImpactedWorkloadsCheck_ModelMeshServingRuntime(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 ModelMesh ServingRuntime(s)"),
 	}))
+	g.Expect(result.Status.Conditions[2].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[3].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal("RemovedServingRuntimesCompatible"),
 		"Status":  Equal(metav1.ConditionTrue),
@@ -466,18 +470,21 @@ func TestImpactedWorkloadsCheck_MixedWorkloads(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 Serverless InferenceService(s)"),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal("ModelMeshInferenceServicesCompatible"),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 ModelMesh InferenceService(s)"),
 	}))
+	g.Expect(result.Status.Conditions[1].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[2].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal("ModelMeshServingRuntimesCompatible"),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 ModelMesh ServingRuntime(s)"),
 	}))
+	g.Expect(result.Status.Conditions[2].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[3].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal("RemovedServingRuntimesCompatible"),
 		"Status":  Equal(metav1.ConditionTrue),
@@ -527,6 +534,7 @@ func TestImpactedWorkloadsCheck_RemovedRuntime_OVMS(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 InferenceService(s) using removed ServingRuntime(s)"),
 	}))
+	g.Expect(result.Status.Conditions[3].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.ImpactedObjects).To(ContainElement(MatchFields(IgnoreExtras, Fields{
 		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
 			"Name":      Equal("ovms-model"),
@@ -579,6 +587,7 @@ func TestImpactedWorkloadsCheck_RemovedRuntime_CaikitTGIS(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 1 InferenceService(s) using removed ServingRuntime(s)"),
 	}))
+	g.Expect(result.Status.Conditions[3].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.ImpactedObjects).To(ContainElement(MatchFields(IgnoreExtras, Fields{
 		"ObjectMeta": MatchFields(IgnoreExtras, Fields{
 			"Name":      Equal("caikit-model"),
@@ -753,6 +762,7 @@ func TestImpactedWorkloadsCheck_MixedRemovedAndNonRemovedRuntimes(t *testing.T) 
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 2 InferenceService(s) using removed ServingRuntime(s)"),
 	}))
+	g.Expect(result.Status.Conditions[3].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))
 }
 

@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/openshift"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
@@ -110,6 +111,7 @@ func TestOpenShiftCheck_VersionBelowRequirement(t *testing.T) {
 			ContainSubstring("4.19"),
 		),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
@@ -140,6 +142,7 @@ func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
 			ContainSubstring("4.19.9"),
 		),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestOpenShiftCheck_VersionNotDetectable(t *testing.T) {
@@ -163,6 +166,7 @@ func TestOpenShiftCheck_VersionNotDetectable(t *testing.T) {
 		"Reason":  Equal(check.ReasonInsufficientData),
 		"Message": ContainSubstring("Unable to detect OpenShift version"),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestOpenShiftCheck_CanApply_2xTo3x(t *testing.T) {

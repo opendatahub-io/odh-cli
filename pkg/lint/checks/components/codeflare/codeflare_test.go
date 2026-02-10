@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/codeflare"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
@@ -78,6 +79,7 @@ func TestCodeFlareRemovalCheck_ManagedBlocking(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Annotations).To(And(
 		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
 		HaveKeyWithValue("check.opendatahub.io/target-version", "3.0.0"),
