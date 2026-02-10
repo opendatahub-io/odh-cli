@@ -14,8 +14,8 @@ import (
 
 const hardwareProfileCheckType = "hardwareprofile-migration"
 
-// HardwareProfileMigrationCheck detects HardwareProfiles in the opendatahub.io API group that will be
-// auto-migrated to infrastructure.opendatahub.io during upgrade to RHOAI 3.x.
+// HardwareProfileMigrationCheck detects legacy HardwareProfiles (opendatahub.io) that will be
+// auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade to RHOAI 3.x.
 type HardwareProfileMigrationCheck struct {
 	base.BaseCheck
 }
@@ -29,8 +29,8 @@ func NewHardwareProfileMigrationCheck() *HardwareProfileMigrationCheck {
 			Type:             hardwareProfileCheckType,
 			CheckID:          "components.dashboard.hardwareprofile-migration",
 			CheckName:        "Components :: Dashboard :: HardwareProfile Migration (3.x)",
-			CheckDescription: "Lists HardwareProfiles that will be auto-migrated from opendatahub.io to infrastructure.opendatahub.io during upgrade",
-			CheckRemediation: "HardwareProfiles will be automatically migrated during upgrade - no manual action required",
+			CheckDescription: "Lists legacy HardwareProfiles (opendatahub.io) that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
+			CheckRemediation: "Legacy HardwareProfiles will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade - no manual action required",
 		},
 	}
 }
@@ -51,8 +51,8 @@ func (c *HardwareProfileMigrationCheck) Validate(
 	err := migration.ValidateResources(ctx, target, dr, migration.Config{
 		ResourceType:            resources.HardwareProfile,
 		ResourceLabel:           "HardwareProfile",
-		NoMigrationMessage:      "No HardwareProfiles found in opendatahub.io API group - no migration required",
-		MigrationPendingMessage: "Found %d HardwareProfile(s) in opendatahub.io that will be automatically migrated to infrastructure.opendatahub.io during upgrade",
+		NoMigrationMessage:      "No legacy HardwareProfiles found in opendatahub.io API group - no migration required",
+		MigrationPendingMessage: "Found %d legacy HardwareProfile(s) (opendatahub.io) that will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
 		Remediation:             c.CheckRemediation,
 	})
 	if err != nil {

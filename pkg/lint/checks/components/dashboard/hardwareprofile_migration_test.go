@@ -152,7 +152,7 @@ func TestHardwareProfileMigrationCheck_Validate_WithProfiles(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeMigrationRequired),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonMigrationPending),
-		"Message": ContainSubstring("2 HardwareProfile"),
+		"Message": ContainSubstring("2 legacy HardwareProfile"),
 	}))
 	g.Expect(dr.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
 	g.Expect(dr.Annotations[check.AnnotationImpactedWorkloadCount]).To(Equal("2"))

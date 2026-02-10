@@ -14,8 +14,8 @@ import (
 
 const acceleratorProfileCheckType = "acceleratorprofile-migration"
 
-// AcceleratorProfileMigrationCheck detects AcceleratorProfiles that will be auto-migrated to HardwareProfiles
-// during upgrade to RHOAI 3.x.
+// AcceleratorProfileMigrationCheck detects legacy AcceleratorProfiles that will be auto-migrated to
+// HardwareProfiles (infrastructure.opendatahub.io) during upgrade to RHOAI 3.x.
 type AcceleratorProfileMigrationCheck struct {
 	base.BaseCheck
 }
@@ -29,8 +29,8 @@ func NewAcceleratorProfileMigrationCheck() *AcceleratorProfileMigrationCheck {
 			Type:             acceleratorProfileCheckType,
 			CheckID:          "components.dashboard.acceleratorprofile-migration",
 			CheckName:        "Components :: Dashboard :: AcceleratorProfile Migration (3.x)",
-			CheckDescription: "Lists AcceleratorProfiles that will be auto-migrated to HardwareProfiles during upgrade",
-			CheckRemediation: "AcceleratorProfiles will be automatically migrated to HardwareProfiles during upgrade - no manual action required",
+			CheckDescription: "Lists legacy AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
+			CheckRemediation: "Legacy AcceleratorProfiles will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade - no manual action required",
 		},
 	}
 }
@@ -51,8 +51,8 @@ func (c *AcceleratorProfileMigrationCheck) Validate(
 	err := migration.ValidateResources(ctx, target, dr, migration.Config{
 		ResourceType:            resources.AcceleratorProfile,
 		ResourceLabel:           "AcceleratorProfile",
-		NoMigrationMessage:      "No AcceleratorProfiles found - no migration required",
-		MigrationPendingMessage: "Found %d AcceleratorProfile(s) that will be automatically migrated to HardwareProfiles during upgrade",
+		NoMigrationMessage:      "No legacy AcceleratorProfiles found - no migration required",
+		MigrationPendingMessage: "Found %d legacy AcceleratorProfile(s) that will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
 		Remediation:             c.CheckRemediation,
 	})
 	if err != nil {
