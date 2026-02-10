@@ -43,10 +43,6 @@ func NewOperatorInstalledCheck() *OperatorInstalledCheck {
 }
 
 func (c *OperatorInstalledCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	if target.Client == nil {
-		return false, nil
-	}
-
 	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
 	if err != nil {
 		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
