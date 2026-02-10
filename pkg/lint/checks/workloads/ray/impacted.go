@@ -2,6 +2,7 @@ package ray
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -9,8 +10,10 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/validate"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
+	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
@@ -43,9 +46,18 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading FROM 2.x TO 3.x since CodeFlare is impacted by the transition.
-func (c *ImpactedWorkloadsCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
-	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
+// Only applies when upgrading FROM 2.x TO 3.x and Ray is Managed.
+func (c *ImpactedWorkloadsCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
+	if !version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion) {
+		return false, nil
+	}
+
+	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
+	if err != nil {
+		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
+	}
+
+	return components.HasManagementState(dsc, kind, check.ManagementStateManaged), nil
 }
 
 // Validate executes the check against the provided target.
