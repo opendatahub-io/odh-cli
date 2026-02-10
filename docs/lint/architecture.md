@@ -94,14 +94,13 @@ func NewCommand(
     registry.MustRegister(datasciencepipelines.NewRenamingCheck())
     registry.MustRegister(kserve.NewServerlessRemovalCheck())
     registry.MustRegister(kserve.NewInferenceServiceConfigCheck())
-    registry.MustRegister(kueue.NewManagedRemovalCheck())
-    registry.MustRegister(kueue.NewConfigMapManagedCheck())
+    registry.MustRegister(kueue.NewManagementStateCheck())
+    registry.MustRegister(kueue.NewOperatorInstalledCheck())
     registry.MustRegister(modelmesh.NewRemovalCheck())
     registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-    // Dependencies (4)
+    // Dependencies (3)
     registry.MustRegister(certmanager.NewCheck())
-    registry.MustRegister(kueueoperator.NewCheck())
     registry.MustRegister(openshift.NewCheck())
     registry.MustRegister(servicemeshoperator.NewCheck())
 

@@ -22,7 +22,6 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/modelmesh"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/trainingoperator"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/certmanager"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/kueueoperator"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/openshift"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/services/servicemesh"
@@ -80,14 +79,13 @@ func NewCommand(
 	registry.MustRegister(datasciencepipelines.NewRenamingCheck())
 	registry.MustRegister(kserve.NewServerlessRemovalCheck())
 	registry.MustRegister(kserve.NewInferenceServiceConfigCheck())
-	registry.MustRegister(kueue.NewManagedRemovalCheck())
-	registry.MustRegister(kueue.NewConfigMapManagedCheck())
+	registry.MustRegister(kueue.NewManagementStateCheck())
+	registry.MustRegister(kueue.NewOperatorInstalledCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-	// Dependencies (4)
+	// Dependencies (3)
 	registry.MustRegister(certmanager.NewCheck())
-	registry.MustRegister(kueueoperator.NewCheck())
 	registry.MustRegister(openshift.NewCheck())
 	registry.MustRegister(servicemeshoperator.NewCheck())
 
