@@ -17,7 +17,7 @@ import (
 const (
 	kind                       = "kueue"
 	checkTypeManagementState   = "management-state"
-	managementStateRemediation = "Migrate to the standalone Kueue operator (RHBOK) and set managementState to 'Removed' in DataScienceCluster before upgrading"
+	managementStateRemediation = "Migrate to the RHBoK operator following https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/2.25/html/managing_openshift_ai/managing-workloads-with-kueue#migrating-to-the-rhbok-operator_kueue before upgrading"
 )
 
 // ManagementStateCheck validates that Kueue managed option is not used before upgrading to 3.x.
