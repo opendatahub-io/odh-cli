@@ -275,4 +275,21 @@ var (
 		Kind:     "LlamaStackDistribution",
 		Resource: "llamastackdistributions",
 	}
+
+	// ImageStream is the OpenShift ImageStream resource.
+	ImageStream = ResourceType{
+		Group:    "image.openshift.io",
+		Version:  "v1",
+		Kind:     "ImageStream",
+		Resource: "imagestreams",
+	}
+
+	// ImageStreamTag is the OpenShift ImageStreamTag resource.
+	// Note: ImageStreamTag names are in the format "imagestream:tag".
+	ImageStreamTag = ResourceType{
+		Group:    "image.openshift.io",
+		Version:  "v1",
+		Kind:     "ImageStreamTag",
+		Resource: "imagestreamtags",
+	}
 )
