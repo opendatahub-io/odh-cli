@@ -103,13 +103,13 @@ If you have Go installed, you can run the CLI directly from GitHub without cloni
 
 ```bash
 # Show help
-go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest --help
+go run github.com/lburgazzoli/odh-cli/cmd@latest --help
 
 # Show version
-go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest version
+go run github.com/lburgazzoli/odh-cli/cmd@latest version
 
 # Run lint command
-go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest lint --target-version 3.3.0
+go run github.com/lburgazzoli/odh-cli/cmd@latest lint --target-version 3.3.0
 ```
 
 > **Note:** Replace `@latest` with `@v1.2.3` to run a specific version, or `@main` for the latest development version.
@@ -117,7 +117,7 @@ go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest lint --target-version 3
 **Token Authentication:**
 
 ```bash
-go run github.com/lburgazzoli/odh-cli/cmd/main.go@latest \
+go run github.com/lburgazzoli/odh-cli/cmd@latest \
   lint \
   --target-version 3.3.0 \
   --token=sha256~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
