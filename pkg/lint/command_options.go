@@ -10,6 +10,7 @@ import (
 
 	"github.com/fatih/color"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
@@ -297,8 +298,17 @@ func getImpactString(
 	return noneStr
 }
 
+const maxImpactedObjectsDisplay = 50
+
+// TableOutputOptions configures the behavior of OutputTable.
+type TableOutputOptions struct {
+	// ShowImpactedObjects enables listing impacted objects after the summary.
+	ShowImpactedObjects bool
+}
+
 // OutputTable is a shared function for outputting check results in table format.
-func OutputTable(out io.Writer, results []check.CheckExecution) error {
+// When opts.ShowImpactedObjects is true, impacted objects are listed after the summary.
+func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutputOptions) error {
 	totalChecks := 0
 	totalPassed := 0
 	totalWarnings := 0
@@ -363,7 +373,75 @@ func OutputTable(out io.Writer, results []check.CheckExecution) error {
 	_, _ = fmt.Fprintln(out, "Summary:")
 	_, _ = fmt.Fprintf(out, "  Total: %d | Passed: %d | Warnings: %d | Failed: %d\n", totalChecks, totalPassed, totalWarnings, totalFailed)
 
+	if opts.ShowImpactedObjects {
+		outputImpactedObjects(out, results)
+	}
+
 	return nil
+}
+
+// impactedGroup holds aggregated impacted objects for a group/kind pair.
+type impactedGroup struct {
+	key     string
+	objects []metav1.PartialObjectMetadata
+}
+
+// outputImpactedObjects prints impacted objects grouped by group/kind after the summary.
+// Each group is independently capped at maxImpactedObjectsDisplay to keep output readable.
+func outputImpactedObjects(out io.Writer, results []check.CheckExecution) {
+	// Aggregate objects by group/kind, preserving insertion order
+	var groups []impactedGroup
+
+	seen := make(map[string]int) // key -> index in groups slice
+
+	for _, exec := range results {
+		if len(exec.Result.ImpactedObjects) == 0 {
+			continue
+		}
+
+		key := exec.Result.Group + " / " + exec.Result.Kind
+
+		if idx, ok := seen[key]; ok {
+			groups[idx].objects = append(groups[idx].objects, exec.Result.ImpactedObjects...)
+		} else {
+			seen[key] = len(groups)
+			groups = append(groups, impactedGroup{
+				key:     key,
+				objects: append([]metav1.PartialObjectMetadata{}, exec.Result.ImpactedObjects...),
+			})
+		}
+	}
+
+	if len(groups) == 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "Impacted Objects:")
+
+	for i, g := range groups {
+		if i > 0 {
+			_, _ = fmt.Fprintln(out)
+		}
+
+		_, _ = fmt.Fprintf(out, "  %s:\n", g.key)
+
+		for i, obj := range g.objects {
+			if i >= maxImpactedObjectsDisplay {
+				remaining := len(g.objects) - i
+				_, _ = fmt.Fprintf(out, "    ... and %d more. Use --output json for the full list.\n", remaining)
+
+				break
+			}
+
+			name := obj.Name
+			if obj.Namespace != "" {
+				name = obj.Namespace + "/" + name
+			}
+
+			_, _ = fmt.Fprintf(out, "    - %s (%s)\n", name, obj.Kind)
+		}
+	}
 }
 
 // OutputJSON outputs diagnostic results in List format.

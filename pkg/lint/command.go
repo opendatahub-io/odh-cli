@@ -440,7 +440,7 @@ func (c *Command) outputTable(results []check.CheckExecution) error {
 	c.IO.Fprintln("Check Results:")
 	c.IO.Fprintln("==============")
 
-	if err := OutputTable(c.IO.Out(), results); err != nil {
+	if err := OutputTable(c.IO.Out(), results, TableOutputOptions{ShowImpactedObjects: c.Verbose}); err != nil {
 		return fmt.Errorf("outputting table: %w", err)
 	}
 
@@ -476,13 +476,11 @@ func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByGrou
 }
 
 // outputUpgradeTable outputs upgrade results in table format with header.
-func (c *Command) outputUpgradeTable(currentVer string, results []check.CheckExecution) error {
+func (c *Command) outputUpgradeTable(_ string, results []check.CheckExecution) error {
 	c.IO.Fprintln()
-	c.IO.Errorf("UPGRADE READINESS: %s → %s", currentVer, c.TargetVersion)
-	c.IO.Errorf("=============================================================")
 
 	// Reuse the lint table output logic
-	if err := OutputTable(c.IO.Out(), results); err != nil {
+	if err := OutputTable(c.IO.Out(), results, TableOutputOptions{ShowImpactedObjects: c.Verbose}); err != nil {
 		return fmt.Errorf("outputting table: %w", err)
 	}
 
