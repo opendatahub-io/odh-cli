@@ -11,7 +11,6 @@ import (
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/validate"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
@@ -30,12 +29,12 @@ const (
 
 // ConfigCheck validates LlamaStackDistribution resources for 3.3 upgrade compatibility.
 type ConfigCheck struct {
-	base.BaseCheck
+	check.BaseCheck
 }
 
 func NewConfigCheck() *ConfigCheck {
 	return &ConfigCheck{
-		BaseCheck: base.BaseCheck{
+		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupWorkload,
 			Kind:             kind,
 			Type:             "config",
