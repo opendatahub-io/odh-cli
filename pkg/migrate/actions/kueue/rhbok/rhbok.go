@@ -16,7 +16,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/confirmation"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
-	"github.com/lburgazzoli/odh-cli/pkg/util/operators"
+	"github.com/lburgazzoli/odh-cli/pkg/util/kube/olm"
 )
 
 const (
@@ -226,7 +226,7 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 		}
 	}
 
-	err := operators.EnsureOperatorInstalled(ctx, target.Client, operators.InstallConfig{
+	err := olm.EnsureOperatorInstalled(ctx, target.Client, olm.InstallConfig{
 		Name:            subscriptionName,
 		Namespace:       operatorNamespace,
 		Package:         subscriptionPackage,

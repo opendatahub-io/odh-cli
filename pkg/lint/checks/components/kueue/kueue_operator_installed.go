@@ -10,9 +10,9 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/base"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/components"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/operators"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/validate"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	"github.com/lburgazzoli/odh-cli/pkg/util/kube/olm"
 )
 
 const (
@@ -57,22 +57,22 @@ func (c *OperatorInstalledCheck) CanApply(ctx context.Context, target check.Targ
 func (c *OperatorInstalledCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	return validate.Component(c, target).
 		Run(ctx, func(ctx context.Context, req *validate.ComponentRequest) error {
-			found, err := operators.FindOperator(ctx, req.Client, func(sub *operators.SubscriptionInfo) bool {
+			info, err := olm.FindOperator(ctx, req.Client, func(sub *olm.SubscriptionInfo) bool {
 				return sub.Name == subscriptionName
 			})
 			if err != nil {
 				return fmt.Errorf("checking kueue-operator presence: %w", err)
 			}
 
-			if found.Found && found.Version != "" {
-				req.Result.Annotations[annotationInstalledVersion] = found.Version
+			if info.GetVersion() != "" {
+				req.Result.Annotations[annotationInstalledVersion] = info.GetVersion()
 			}
 
 			switch req.ManagementState {
 			case check.ManagementStateManaged:
-				c.validateManaged(req, found)
+				c.validateManaged(req, info)
 			case check.ManagementStateUnmanaged:
-				c.validateUnmanaged(req, found)
+				c.validateUnmanaged(req, info)
 			}
 
 			return nil
@@ -82,15 +82,15 @@ func (c *OperatorInstalledCheck) Validate(ctx context.Context, target check.Targ
 // validateManaged checks that the kueue-operator is NOT installed when Kueue is Managed.
 func (c *OperatorInstalledCheck) validateManaged(
 	req *validate.ComponentRequest,
-	found *operators.FindResult,
+	info *olm.SubscriptionInfo,
 ) {
 	switch {
-	case found.Found:
+	case info.Found():
 		req.Result.SetCondition(check.NewCondition(
 			check.ConditionTypeCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
-			check.WithMessage("kueue-operator (%s) is installed but Kueue managementState is Managed — the two cannot coexist", found.Version),
+			check.WithMessage("kueue-operator (%s) is installed but Kueue managementState is Managed — the two cannot coexist", info.GetVersion()),
 		))
 	default:
 		req.Result.SetCondition(check.NewCondition(
@@ -105,10 +105,10 @@ func (c *OperatorInstalledCheck) validateManaged(
 // validateUnmanaged checks that the kueue-operator IS installed when Kueue is Unmanaged.
 func (c *OperatorInstalledCheck) validateUnmanaged(
 	req *validate.ComponentRequest,
-	found *operators.FindResult,
+	info *olm.SubscriptionInfo,
 ) {
 	switch {
-	case !found.Found:
+	case !info.Found():
 		req.Result.SetCondition(check.NewCondition(
 			check.ConditionTypeCompatible,
 			metav1.ConditionFalse,
@@ -120,7 +120,7 @@ func (c *OperatorInstalledCheck) validateUnmanaged(
 			check.ConditionTypeCompatible,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonVersionCompatible),
-			check.WithMessage("kueue-operator installed: %s", found.Version),
+			check.WithMessage("kueue-operator installed: %s", info.GetVersion()),
 		))
 	}
 }

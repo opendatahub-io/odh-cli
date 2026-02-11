@@ -1,4 +1,4 @@
-package operators
+package olm
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 )
 
@@ -17,26 +16,31 @@ type SubscriptionInfo struct {
 	Version string
 }
 
-// ConditionBuilder is a function that creates a condition based on operator presence and version.
-type ConditionBuilder func(found bool, version string) result.Condition
+// Found returns true (always true for a non-nil receiver; nil-safe: returns false for nil).
+func (s *SubscriptionInfo) Found() bool {
+	return s != nil
+}
+
+// GetVersion returns the installed CSV version, or empty string if the receiver is nil.
+func (s *SubscriptionInfo) GetVersion() string {
+	if s == nil {
+		return ""
+	}
+
+	return s.Version
+}
 
 // SubscriptionMatcher is a predicate function that determines if a subscription matches the desired operator.
 type SubscriptionMatcher func(sub *SubscriptionInfo) bool
 
-// FindResult contains the result of searching for an operator subscription.
-type FindResult struct {
-	Found   bool
-	Version string
-}
-
 // FindOperator searches OLM subscriptions for an operator matching the given predicate.
-// Returns a FindResult indicating whether the operator was found and its version.
+// Returns the matching SubscriptionInfo if found, or nil if no match.
 // Returns an error only for infrastructure failures (listing subscriptions).
 func FindOperator(
 	ctx context.Context,
 	k8sClient client.Reader,
 	matcher SubscriptionMatcher,
-) (*FindResult, error) {
+) (*SubscriptionInfo, error) {
 	subscriptions, err := k8sClient.OLM().Subscriptions("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("listing subscriptions: %w", err)
@@ -57,12 +61,9 @@ func FindOperator(
 		}
 
 		if matcher(info) {
-			return &FindResult{
-				Found:   true,
-				Version: info.Version,
-			}, nil
+			return info, nil
 		}
 	}
 
-	return &FindResult{Found: false}, nil
+	return nil, nil
 }

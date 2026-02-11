@@ -9,8 +9,11 @@ import (
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/operators"
+	"github.com/lburgazzoli/odh-cli/pkg/util/kube/olm"
 )
+
+// ConditionBuilder is a function that creates a condition based on operator presence and version.
+type ConditionBuilder func(found bool, version string) result.Condition
 
 const annotationInstalledVersion = "operator.opendatahub.io/installed-version"
 
@@ -21,7 +24,7 @@ type OperatorBuilder struct {
 	target           check.Target
 	names            []string
 	channels         []string
-	conditionBuilder operators.ConditionBuilder
+	conditionBuilder ConditionBuilder
 }
 
 // Operator creates a builder for OLM operator presence validation.
@@ -85,7 +88,7 @@ func (b *OperatorBuilder) WithChannels(channels ...string) *OperatorBuilder {
 // WithConditionBuilder overrides the default condition builder.
 // Use this when the default Available condition semantics are not appropriate
 // (e.g. inverted logic where NOT finding the operator is the success case).
-func (b *OperatorBuilder) WithConditionBuilder(builder operators.ConditionBuilder) *OperatorBuilder {
+func (b *OperatorBuilder) WithConditionBuilder(builder ConditionBuilder) *OperatorBuilder {
 	b.conditionBuilder = builder
 
 	return b
@@ -124,32 +127,32 @@ func (b *OperatorBuilder) Run(ctx context.Context) (*result.DiagnosticResult, er
 	matcher := b.buildMatcher()
 
 	// Find the operator via OLM subscriptions.
-	found, err := operators.FindOperator(ctx, b.target.Client, matcher)
+	info, err := olm.FindOperator(ctx, b.target.Client, matcher)
 	if err != nil {
 		return nil, fmt.Errorf("checking %s operator presence: %w", b.check.CheckKind(), err)
 	}
 
 	// Build condition from find result.
-	condition := b.conditionBuilder(found.Found, found.Version)
+	condition := b.conditionBuilder(info.Found(), info.GetVersion())
 	dr.Status.Conditions = []result.Condition{condition}
 
 	// Store version in annotations if found.
-	if found.Version != "" {
-		dr.Annotations[annotationInstalledVersion] = found.Version
+	if info.GetVersion() != "" {
+		dr.Annotations[annotationInstalledVersion] = info.GetVersion()
 	}
 
 	return dr, nil
 }
 
 // buildMatcher constructs a SubscriptionMatcher from the configured names and channels.
-func (b *OperatorBuilder) buildMatcher() operators.SubscriptionMatcher {
+func (b *OperatorBuilder) buildMatcher() olm.SubscriptionMatcher {
 	names := b.names
 	if len(names) == 0 {
 		// Default: match by check kind.
 		names = []string{b.check.CheckKind()}
 	}
 
-	return func(sub *operators.SubscriptionInfo) bool {
+	return func(sub *olm.SubscriptionInfo) bool {
 		if !slices.Contains(names, sub.Name) {
 			return false
 		}

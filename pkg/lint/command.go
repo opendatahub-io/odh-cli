@@ -377,16 +377,13 @@ func (c *Command) determineExitCode(resultsByGroup map[check.CheckGroup][]check.
 		for _, exec := range results {
 			impact := exec.Result.GetImpact()
 			if impact != nil {
-				//nolint:revive // exhaustive linter requires explicit None case
 				switch *impact {
 				case string(resultpkg.ImpactBlocking):
 					hasBlocking = true
 				case string(resultpkg.ImpactAdvisory):
 					hasAdvisory = true
-				case string(resultpkg.ImpactNone):
-					// No impact doesn't affect exit code
 				default:
-					// Unknown impacts don't affect exit code
+					// ImpactNone and unknown impacts don't affect exit code
 				}
 			}
 		}
