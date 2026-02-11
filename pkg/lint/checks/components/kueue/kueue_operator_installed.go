@@ -91,6 +91,7 @@ func (c *OperatorInstalledCheck) validateManaged(
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
 			check.WithMessage("kueue-operator (%s) is installed but Kueue managementState is Managed — the two cannot coexist", info.GetVersion()),
+			check.WithImpact(result.ImpactBlocking),
 		))
 	default:
 		req.Result.SetCondition(check.NewCondition(
@@ -114,6 +115,7 @@ func (c *OperatorInstalledCheck) validateUnmanaged(
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
 			check.WithMessage("kueue-operator is not installed but Kueue managementState is Unmanaged — the standalone operator is required"),
+			check.WithImpact(result.ImpactBlocking),
 		))
 	default:
 		req.Result.SetCondition(check.NewCondition(

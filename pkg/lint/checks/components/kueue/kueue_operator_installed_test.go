@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kueue"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/shared/testutil"
 
@@ -78,6 +79,7 @@ func TestOperatorInstalledCheck_UnmanagedNotInstalled(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": And(ContainSubstring("not installed"), ContainSubstring("Unmanaged")),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 // Managed + operator NOT installed = pass.
@@ -128,6 +130,7 @@ func TestOperatorInstalledCheck_ManagedInstalled(t *testing.T) {
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": And(ContainSubstring("kueue-operator"), ContainSubstring("cannot coexist")),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "kueue-operator.v0.6.0"))
 }
 

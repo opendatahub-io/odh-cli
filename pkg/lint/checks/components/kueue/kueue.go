@@ -70,6 +70,7 @@ func (c *ManagementStateCheck) Validate(ctx context.Context, target check.Target
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonVersionIncompatible),
 					check.WithMessage("Kueue is managed by OpenShift AI (state: %s) but Managed option will be removed in RHOAI 3.x", req.ManagementState),
+					check.WithImpact(result.ImpactBlocking),
 					check.WithRemediation(c.CheckRemediation),
 				))
 			case check.ManagementStateUnmanaged:
