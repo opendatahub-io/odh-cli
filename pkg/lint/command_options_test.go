@@ -222,10 +222,13 @@ func TestOutputTable_VerboseImpactedObjects(t *testing.T) {
 	output := buf.String()
 	g.Expect(output).To(ContainSubstring("Impacted Objects:"))
 	g.Expect(output).To(ContainSubstring("workloads / kserve:"))
-	g.Expect(output).To(ContainSubstring("ns1/isvc-1 (InferenceService)"))
-	g.Expect(output).To(ContainSubstring("ns2/isvc-2 (InferenceService)"))
+	// Objects are grouped by namespace with Kind shown
+	g.Expect(output).To(ContainSubstring("ns1:"))
+	g.Expect(output).To(ContainSubstring("- isvc-1 (InferenceService)"))
+	g.Expect(output).To(ContainSubstring("ns2:"))
+	g.Expect(output).To(ContainSubstring("- isvc-2 (InferenceService)"))
 	g.Expect(output).To(ContainSubstring("workloads / notebook:"))
-	g.Expect(output).To(ContainSubstring("ns1/notebook-1 (Notebook)"))
+	g.Expect(output).To(ContainSubstring("- notebook-1 (Notebook)"))
 }
 
 func TestOutputTable_VerboseNoImpactedObjects(t *testing.T) {
@@ -284,10 +287,10 @@ func TestOutputTable_NonVerboseHidesImpactedObjects(t *testing.T) {
 	g.Expect(output).ToNot(ContainSubstring("Impacted Objects:"))
 }
 
-func TestOutputTable_VerboseTruncatesAt50(t *testing.T) {
+func TestOutputTable_VerboseShowsAllObjects(t *testing.T) {
 	g := NewWithT(t)
 
-	// Build 60 impacted objects
+	// Build 60 impacted objects to verify no truncation.
 	objects := make([]metav1.PartialObjectMetadata, 60)
 	for i := range objects {
 		objects[i] = metav1.PartialObjectMetadata{
@@ -316,13 +319,13 @@ func TestOutputTable_VerboseTruncatesAt50(t *testing.T) {
 
 	output := buf.String()
 	g.Expect(output).To(ContainSubstring("Impacted Objects:"))
-	// Should show the 50th object (index 49)
-	g.Expect(output).To(ContainSubstring("ns/isvc-49 (InferenceService)"))
-	// Should NOT show the 51st object (index 50)
-	g.Expect(output).ToNot(ContainSubstring("ns/isvc-50"))
-	// Should show truncation message with remaining count
-	g.Expect(output).To(ContainSubstring("... and 10 more"))
-	g.Expect(output).To(ContainSubstring("--output json"))
+	// All objects should be shown (no truncation).
+	g.Expect(output).To(ContainSubstring("- isvc-0"))
+	g.Expect(output).To(ContainSubstring("- isvc-49"))
+	g.Expect(output).To(ContainSubstring("- isvc-59"))
+	// No truncation message.
+	g.Expect(output).ToNot(ContainSubstring("... and"))
+	g.Expect(output).ToNot(ContainSubstring("--output json"))
 }
 
 func TestOutputTable_VerboseClusterScopedObject(t *testing.T) {
@@ -352,7 +355,115 @@ func TestOutputTable_VerboseClusterScopedObject(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 
 	output := buf.String()
-	// Cluster-scoped objects have no namespace prefix
-	g.Expect(output).To(ContainSubstring("my-cluster-resource (ClusterResource)"))
+	// Cluster-scoped objects listed directly without namespace header, with Kind shown.
+	g.Expect(output).To(ContainSubstring("- my-cluster-resource (ClusterResource)"))
 	g.Expect(output).ToNot(ContainSubstring("/my-cluster-resource"))
+}
+
+func TestOutputTable_VerboseNamespaceRequester(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		{
+			Result: &result.DiagnosticResult{
+				Group: "workloads",
+				Kind:  "notebook",
+				Name:  "impacted-workloads",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{passCondition()},
+				},
+				ImpactedObjects: []metav1.PartialObjectMetadata{
+					{
+						TypeMeta:   metav1.TypeMeta{Kind: "Notebook", APIVersion: "kubeflow.org/v1"},
+						ObjectMeta: metav1.ObjectMeta{Namespace: "project-a", Name: "nb-1"},
+					},
+					{
+						TypeMeta:   metav1.TypeMeta{Kind: "Notebook", APIVersion: "kubeflow.org/v1"},
+						ObjectMeta: metav1.ObjectMeta{Namespace: "project-b", Name: "nb-2"},
+					},
+					{
+						TypeMeta:   metav1.TypeMeta{Kind: "Notebook", APIVersion: "kubeflow.org/v1"},
+						ObjectMeta: metav1.ObjectMeta{Namespace: "project-a", Name: "nb-3"},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	opts := lint.TableOutputOptions{
+		ShowImpactedObjects: true,
+		NamespaceRequesters: map[string]string{
+			"project-a": "alice@example.com",
+			"project-b": "bob@example.com",
+		},
+	}
+
+	err := lint.OutputTable(&buf, results, opts)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	output := buf.String()
+	g.Expect(output).To(ContainSubstring("Impacted Objects:"))
+	g.Expect(output).To(ContainSubstring("workloads / notebook:"))
+	// Namespace headers should include requester annotation.
+	g.Expect(output).To(ContainSubstring("project-a (requester: alice@example.com):"))
+	g.Expect(output).To(ContainSubstring("project-b (requester: bob@example.com):"))
+	// Objects listed with Kind within namespace groups.
+	g.Expect(output).To(ContainSubstring("- nb-1 (Notebook)"))
+	g.Expect(output).To(ContainSubstring("- nb-2 (Notebook)"))
+	g.Expect(output).To(ContainSubstring("- nb-3 (Notebook)"))
+}
+
+func TestOutputTable_VerboseNamespaceGroupingSorted(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		{
+			Result: &result.DiagnosticResult{
+				Group: "workloads",
+				Kind:  "notebook",
+				Name:  "check",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{passCondition()},
+				},
+				ImpactedObjects: []metav1.PartialObjectMetadata{
+					{
+						TypeMeta:   metav1.TypeMeta{Kind: "Notebook"},
+						ObjectMeta: metav1.ObjectMeta{Namespace: "z-ns", Name: "nb-z"},
+					},
+					{
+						TypeMeta:   metav1.TypeMeta{Kind: "Notebook"},
+						ObjectMeta: metav1.ObjectMeta{Namespace: "a-ns", Name: "nb-a"},
+					},
+					{
+						TypeMeta:   metav1.TypeMeta{Kind: "Notebook"},
+						ObjectMeta: metav1.ObjectMeta{Namespace: "m-ns", Name: "nb-m"},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := lint.OutputTable(&buf, results, lint.TableOutputOptions{ShowImpactedObjects: true})
+	g.Expect(err).ToNot(HaveOccurred())
+
+	output := buf.String()
+	// Namespaces should be sorted alphabetically.
+	aIdx := len(output) - len(output[indexOf(output, "a-ns:"):])
+	mIdx := len(output) - len(output[indexOf(output, "m-ns:"):])
+	zIdx := len(output) - len(output[indexOf(output, "z-ns:"):])
+	g.Expect(aIdx).To(BeNumerically("<", mIdx))
+	g.Expect(mIdx).To(BeNumerically("<", zIdx))
+}
+
+// indexOf returns the index of the first occurrence of substr in s, or -1.
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+
+	return -1
 }

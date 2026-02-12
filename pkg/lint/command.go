@@ -26,12 +26,15 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/services/servicemesh"
 	codeflareworkloads "github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/codeflare"
+	datasciencepipelinesworkloads "github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/guardrails"
 	kserveworkloads "github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/kserve"
 	llamastackworkloads "github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/llamastack"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/notebook"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/ray"
 	trainingoperatorworkloads "github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/trainingoperator"
+	"github.com/lburgazzoli/odh-cli/pkg/resources"
+	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 	"github.com/lburgazzoli/odh-cli/pkg/util/kube/discovery"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
@@ -73,11 +76,10 @@ func NewCommand(
 	registry := check.NewRegistry()
 
 	// Explicitly register all checks (no global state, full test isolation)
-	// Components (11)
+	// Components (10)
 	registry.MustRegister(codeflare.NewRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
 	registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
-	registry.MustRegister(datasciencepipelines.NewInstructLabRemovalCheck())
 	registry.MustRegister(datasciencepipelines.NewRenamingCheck())
 	registry.MustRegister(kserve.NewServerlessRemovalCheck())
 	registry.MustRegister(kserve.NewInferenceServiceConfigCheck())
@@ -94,8 +96,9 @@ func NewCommand(
 	// Services (1)
 	registry.MustRegister(servicemesh.NewRemovalCheck())
 
-	// Workloads (9)
+	// Workloads (11)
 	registry.MustRegister(codeflareworkloads.NewImpactedWorkloadsCheck())
+	registry.MustRegister(datasciencepipelinesworkloads.NewInstructLabRemovalCheck())
 	registry.MustRegister(guardrails.NewImpactedWorkloadsCheck())
 	registry.MustRegister(guardrails.NewOtelMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
@@ -291,7 +294,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Versio
 	resultsByGroup[check.GroupWorkload] = workloadResults
 
 	// Format and output results based on output format
-	if err := c.formatAndOutputResults(resultsByGroup); err != nil {
+	if err := c.formatAndOutputResults(ctx, resultsByGroup); err != nil {
 		return err
 	}
 
@@ -346,7 +349,7 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 	}
 
 	// Format and output results
-	if err := c.formatAndOutputUpgradeResults(currentVersion.String(), resultsByGroup); err != nil {
+	if err := c.formatAndOutputUpgradeResults(ctx, currentVersion.String(), resultsByGroup); err != nil {
 		return err
 	}
 
@@ -403,7 +406,10 @@ func (c *Command) determineExitCode(resultsByGroup map[check.CheckGroup][]check.
 }
 
 // formatAndOutputResults formats and outputs check results based on the output format.
-func (c *Command) formatAndOutputResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) error {
+func (c *Command) formatAndOutputResults(
+	ctx context.Context,
+	resultsByGroup map[check.CheckGroup][]check.CheckExecution,
+) error {
 	clusterVer := &c.currentClusterVersion
 	var targetVer *string
 	if c.TargetVersion != "" {
@@ -415,7 +421,7 @@ func (c *Command) formatAndOutputResults(resultsByGroup map[check.CheckGroup][]c
 
 	switch c.OutputFormat {
 	case OutputFormatTable:
-		return c.outputTable(flatResults)
+		return c.outputTable(ctx, flatResults)
 	case OutputFormatJSON:
 		if err := OutputJSON(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
 			return fmt.Errorf("outputting JSON: %w", err)
@@ -434,12 +440,18 @@ func (c *Command) formatAndOutputResults(resultsByGroup map[check.CheckGroup][]c
 }
 
 // outputTable outputs results in table format.
-func (c *Command) outputTable(results []check.CheckExecution) error {
+func (c *Command) outputTable(ctx context.Context, results []check.CheckExecution) error {
 	c.IO.Fprintln()
 	c.IO.Fprintln("Check Results:")
 	c.IO.Fprintln("==============")
 
-	if err := OutputTable(c.IO.Out(), results, TableOutputOptions{ShowImpactedObjects: c.Verbose}); err != nil {
+	opts := TableOutputOptions{ShowImpactedObjects: c.Verbose}
+
+	if c.Verbose {
+		opts.NamespaceRequesters = collectNamespaceRequesters(ctx, c.Client, results)
+	}
+
+	if err := OutputTable(c.IO.Out(), results, opts); err != nil {
 		return fmt.Errorf("outputting table: %w", err)
 	}
 
@@ -447,7 +459,11 @@ func (c *Command) outputTable(results []check.CheckExecution) error {
 }
 
 // formatAndOutputUpgradeResults formats upgrade assessment results.
-func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByGroup map[check.CheckGroup][]check.CheckExecution) error {
+func (c *Command) formatAndOutputUpgradeResults(
+	ctx context.Context,
+	currentVer string,
+	resultsByGroup map[check.CheckGroup][]check.CheckExecution,
+) error {
 	clusterVer := &c.currentClusterVersion
 	targetVer := &c.TargetVersion
 
@@ -456,7 +472,7 @@ func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByGrou
 
 	switch c.OutputFormat {
 	case OutputFormatTable:
-		return c.outputUpgradeTable(currentVer, flatResults)
+		return c.outputUpgradeTable(ctx, currentVer, flatResults)
 	case OutputFormatJSON:
 		if err := OutputJSON(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
 			return fmt.Errorf("outputting JSON: %w", err)
@@ -475,13 +491,57 @@ func (c *Command) formatAndOutputUpgradeResults(currentVer string, resultsByGrou
 }
 
 // outputUpgradeTable outputs upgrade results in table format with header.
-func (c *Command) outputUpgradeTable(_ string, results []check.CheckExecution) error {
+func (c *Command) outputUpgradeTable(ctx context.Context, _ string, results []check.CheckExecution) error {
 	c.IO.Fprintln()
 
+	opts := TableOutputOptions{ShowImpactedObjects: c.Verbose}
+
+	if c.Verbose {
+		opts.NamespaceRequesters = collectNamespaceRequesters(ctx, c.Client, results)
+	}
+
 	// Reuse the lint table output logic
-	if err := OutputTable(c.IO.Out(), results, TableOutputOptions{ShowImpactedObjects: c.Verbose}); err != nil {
+	if err := OutputTable(c.IO.Out(), results, opts); err != nil {
 		return fmt.Errorf("outputting table: %w", err)
 	}
 
 	return nil
+}
+
+// collectNamespaceRequesters fetches the openshift.io/requester annotation for each
+// unique namespace referenced by impacted objects in the results.
+func collectNamespaceRequesters(
+	ctx context.Context,
+	reader client.Reader,
+	results []check.CheckExecution,
+) map[string]string {
+	// Collect unique namespaces from impacted objects.
+	namespaces := make(map[string]struct{})
+
+	for _, exec := range results {
+		for _, obj := range exec.Result.ImpactedObjects {
+			if obj.Namespace != "" {
+				namespaces[obj.Namespace] = struct{}{}
+			}
+		}
+	}
+
+	if len(namespaces) == 0 {
+		return nil
+	}
+
+	requesters := make(map[string]string, len(namespaces))
+
+	for ns := range namespaces {
+		meta, err := reader.GetResourceMetadata(ctx, resources.Namespace, ns)
+		if err != nil {
+			continue
+		}
+
+		if requester, ok := meta.Annotations["openshift.io/requester"]; ok {
+			requesters[ns] = requester
+		}
+	}
+
+	return requesters
 }

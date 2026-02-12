@@ -21,6 +21,7 @@ import (
 var listKinds = map[schema.GroupVersionResource]string{
 	resources.Notebook.GVR():           resources.Notebook.ListKind(),
 	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
+	resources.DSCInitialization.GVR():  resources.DSCInitialization.ListKind(),
 	resources.ImageStream.GVR():        resources.ImageStream.ListKind(),
 	resources.ImageStreamTag.GVR():     resources.ImageStreamTag.ListKind(),
 }
@@ -32,8 +33,11 @@ var listKinds = map[schema.GroupVersionResource]string{
 // consistency between Notebook images and ImageStream fixtures.
 
 const (
+	// Applications namespace (matches the DSCInitialization fixture).
+	applicationsNS = "redhat-ods-applications"
+
 	// Registry paths.
-	internalRegistry = "image-registry.openshift-image-registry.svc:5000/redhat-ods-applications"
+	internalRegistry = "image-registry.openshift-image-registry.svc:5000/" + applicationsNS
 	externalRegistry = "registry.redhat.io/rhoai"
 
 	// ImageStream names (used in both ImageStream metadata and dockerImageRepository).
@@ -341,9 +345,11 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			g := NewWithT(t)
 			ctx := t.Context()
 
+			objects := append(tc.objects(), testutil.NewDSCI(applicationsNS))
+
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
-				Objects:        tc.objects(),
+				Objects:        objects,
 				CurrentVersion: "2.17.0",
 				TargetVersion:  "3.0.0",
 			})
@@ -442,7 +448,10 @@ func TestImpactedWorkloadsCheck_MultiContainer(t *testing.T) {
 			ctx := t.Context()
 
 			objects := tc.objects()
-			objects = append(objects, newNotebookWithContainers("test-ns", "multi-nb", tc.containers))
+			objects = append(objects,
+				newNotebookWithContainers("test-ns", "multi-nb", tc.containers),
+				testutil.NewDSCI(applicationsNS),
+			)
 
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
@@ -482,8 +491,11 @@ func TestImpactedWorkloadsCheck_MixedNotebooks(t *testing.T) {
 	rstudioNb := newNotebook("ns2", "rstudio-nb", rstudioIncompatibleSHA)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      listKinds,
-		Objects:        []*unstructured.Unstructured{jupyterIS, rstudioIS, rstudioISTBad, jupyterNb, rstudioNb},
+		ListKinds: listKinds,
+		Objects: []*unstructured.Unstructured{
+			testutil.NewDSCI(applicationsNS),
+			jupyterIS, rstudioIS, rstudioISTBad, jupyterNb, rstudioNb,
+		},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -752,7 +764,10 @@ func TestImpactedWorkloadsCheck_LookupStrategies(t *testing.T) {
 			ctx := t.Context()
 
 			objects := tc.objects()
-			objects = append(objects, newNotebook("test-ns", "test-nb", tc.image))
+			objects = append(objects,
+				newNotebook("test-ns", "test-nb", tc.image),
+				testutil.NewDSCI(applicationsNS),
+			)
 
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
@@ -834,6 +849,7 @@ func TestImpactedWorkloadsCheck_InfrastructureContainerFiltering(t *testing.T) {
 			ctx := t.Context()
 
 			objects := []*unstructured.Unstructured{
+				testutil.NewDSCI(applicationsNS),
 				newImageStream(isJupyterDatascience, "jupyter"),
 				newNotebookWithContainers("test-ns", "test-nb", tc.containers),
 			}

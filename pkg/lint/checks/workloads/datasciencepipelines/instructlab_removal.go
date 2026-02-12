@@ -21,7 +21,10 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-const checkTypeInstructLabRemoval = "instructlab-removal"
+const (
+	kind                        = "datasciencepipelines"
+	checkTypeInstructLabRemoval = "instructlab-removal"
+)
 
 type InstructLabRemovalCheck struct {
 	check.BaseCheck
@@ -30,11 +33,11 @@ type InstructLabRemovalCheck struct {
 func NewInstructLabRemovalCheck() *InstructLabRemovalCheck {
 	return &InstructLabRemovalCheck{
 		BaseCheck: check.BaseCheck{
-			CheckGroup:       check.GroupComponent,
+			CheckGroup:       check.GroupWorkload,
 			Kind:             kind,
 			Type:             checkTypeInstructLabRemoval,
-			CheckID:          "components.datasciencepipelines.instructlab-removal",
-			CheckName:        "Components :: DataSciencePipelines :: InstructLab ManagedPipelines Removal (3.x)",
+			CheckID:          "workloads.datasciencepipelines.instructlab-removal",
+			CheckName:        "Workloads :: DataSciencePipelines :: InstructLab ManagedPipelines Removal (3.x)",
 			CheckDescription: "Validates that DSPA objects do not use the removed InstructLab managedPipelines field before upgrading to RHOAI 3.x",
 			CheckRemediation: "Remove the '.spec.apiServer.managedPipelines.instructLab' field from affected DSPA objects before upgrading",
 		},

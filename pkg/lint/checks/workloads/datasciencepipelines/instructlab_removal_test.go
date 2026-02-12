@@ -10,7 +10,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/testutil"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/datasciencepipelines"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
@@ -266,8 +266,8 @@ func TestInstructLabRemovalCheck_Metadata(t *testing.T) {
 
 	ilCheck := datasciencepipelines.NewInstructLabRemovalCheck()
 
-	g.Expect(ilCheck.ID()).To(Equal("components.datasciencepipelines.instructlab-removal"))
-	g.Expect(ilCheck.Name()).To(Equal("Components :: DataSciencePipelines :: InstructLab ManagedPipelines Removal (3.x)"))
-	g.Expect(ilCheck.Group()).To(Equal(check.GroupComponent))
+	g.Expect(ilCheck.ID()).To(Equal("workloads.datasciencepipelines.instructlab-removal"))
+	g.Expect(ilCheck.Name()).To(Equal("Workloads :: DataSciencePipelines :: InstructLab ManagedPipelines Removal (3.x)"))
+	g.Expect(ilCheck.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(ilCheck.Description()).ToNot(BeEmpty())
 }

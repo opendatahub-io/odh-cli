@@ -37,9 +37,6 @@ const (
 
 	// Label used to identify OOTB notebook images.
 	ootbLabel = "app.kubernetes.io/part-of=workbenches"
-
-	// Default namespace where ImageStreams are stored.
-	defaultImageStreamNamespace = "redhat-ods-applications"
 )
 
 // ImageStatus represents the compatibility status of a notebook's image.
@@ -157,8 +154,14 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebooks(
 		return nil
 	}
 
+	// Resolve the applications namespace from DSCInitialization.
+	appNS, err := client.GetApplicationsNamespace(ctx, req.Client)
+	if err != nil {
+		return fmt.Errorf("getting applications namespace: %w", err)
+	}
+
 	// Discover OOTB ImageStreams.
-	ootbImages, imageStreamData, err := c.discoverOOTBImageStreams(ctx, req.Client)
+	ootbImages, imageStreamData, err := c.discoverOOTBImageStreams(ctx, req.Client, appNS)
 	if err != nil {
 		return fmt.Errorf("discovering OOTB ImageStreams: %w", err)
 	}
@@ -167,7 +170,7 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebooks(
 	var analyses []notebookAnalysis
 
 	for _, nb := range notebooks {
-		analysis := c.analyzeNotebook(ctx, req.Client, nb, ootbImages, imageStreamData)
+		analysis := c.analyzeNotebook(ctx, req.Client, nb, ootbImages, imageStreamData, appNS)
 		analyses = append(analyses, analysis)
 	}
 
@@ -184,9 +187,10 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebooks(
 func (c *ImpactedWorkloadsCheck) discoverOOTBImageStreams(
 	ctx context.Context,
 	reader client.Reader,
+	appNS string,
 ) (map[string]ootbImageStream, []*unstructured.Unstructured, error) {
 	imageStreams, err := reader.List(ctx, resources.ImageStream,
-		client.WithNamespace(defaultImageStreamNamespace),
+		client.WithNamespace(appNS),
 		client.WithLabelSelector(ootbLabel),
 	)
 	if err != nil {
@@ -269,6 +273,7 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 	nb *unstructured.Unstructured,
 	ootbImages map[string]ootbImageStream,
 	imageStreamData []*unstructured.Unstructured,
+	appNS string,
 ) notebookAnalysis {
 	ns := nb.GetNamespace()
 	name := nb.GetName()
@@ -311,7 +316,7 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 			continue
 		}
 
-		analysis := c.analyzeImage(ctx, reader, image, ootbImages, imageStreamData)
+		analysis := c.analyzeImage(ctx, reader, image, ootbImages, imageStreamData, appNS)
 		analysis.ContainerName = containerName
 		analysis.ImageRef = image
 		imageAnalyses = append(imageAnalyses, analysis)
@@ -333,6 +338,7 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 	image string,
 	ootbImages map[string]ootbImageStream,
 	imageStreamData []*unstructured.Unstructured,
+	appNS string,
 ) imageAnalysis {
 	// Parse image reference to get name, tag, SHA, and full path.
 	ref := parseImageReference(image)
@@ -344,7 +350,7 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 	if lookup.Found {
 		ootbIS, isOOTB := ootbImages[lookup.ImageStreamName]
 		if isOOTB {
-			return c.analyzeOOTBImage(ctx, reader, lookup.ImageStreamName, lookup.Tag, ref.SHA, ootbIS.Type, imageStreamData)
+			return c.analyzeOOTBImage(ctx, reader, lookup.ImageStreamName, lookup.Tag, ref.SHA, ootbIS.Type, imageStreamData, appNS)
 		}
 	}
 
@@ -355,7 +361,7 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 		if lookup.Found {
 			ootbIS, isOOTB := ootbImages[lookup.ImageStreamName]
 			if isOOTB {
-				return c.analyzeOOTBImage(ctx, reader, lookup.ImageStreamName, lookup.Tag, ref.SHA, ootbIS.Type, imageStreamData)
+				return c.analyzeOOTBImage(ctx, reader, lookup.ImageStreamName, lookup.Tag, ref.SHA, ootbIS.Type, imageStreamData, appNS)
 			}
 		}
 	}
@@ -364,7 +370,7 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 	// Matches container image like: image-registry.openshift-image-registry.svc:5000/ns/name:tag
 	// Against ImageStream's: .status.dockerImageRepository
 	if ootbIS := c.findImageStreamByDockerRepo(ref.FullPath, ootbImages); ootbIS != nil {
-		return c.analyzeOOTBImage(ctx, reader, ootbIS.Name, ref.Tag, ref.SHA, ootbIS.Type, imageStreamData)
+		return c.analyzeOOTBImage(ctx, reader, ootbIS.Name, ref.Tag, ref.SHA, ootbIS.Type, imageStreamData, appNS)
 	}
 
 	// No OOTB correlation found - mark as custom image requiring user verification.
@@ -383,6 +389,7 @@ func (c *ImpactedWorkloadsCheck) analyzeOOTBImage(
 	imageName, imageTag, imageSHA string,
 	nbType NotebookType,
 	imageStreamData []*unstructured.Unstructured,
+	appNS string,
 ) imageAnalysis {
 	// Jupyter images are always compatible.
 	if nbType == NotebookTypeJupyter {
@@ -394,7 +401,7 @@ func (c *ImpactedWorkloadsCheck) analyzeOOTBImage(
 
 	// For RStudio, check build reference.
 	if nbType == NotebookTypeRStudio {
-		return c.analyzeRStudioImageCompat(ctx, reader, imageName, imageTag, imageSHA)
+		return c.analyzeRStudioImageCompat(ctx, reader, imageName, imageTag, imageSHA, appNS)
 	}
 
 	// For CodeServer and other non-Jupyter images, check tag version.
@@ -599,6 +606,7 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	ctx context.Context,
 	reader client.Reader,
 	imageName, imageTag, imageSHA string,
+	appNS string,
 ) imageAnalysis {
 	// Look up the ImageStreamTag to get build reference.
 	// Use the tag from the annotation, fall back to "latest" if not available.
@@ -610,7 +618,7 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	istName := imageName + ":" + tag
 
 	ist, err := reader.GetResource(ctx, resources.ImageStreamTag, istName,
-		client.InNamespace(defaultImageStreamNamespace))
+		client.InNamespace(appNS))
 	if err != nil {
 		return imageAnalysis{
 			Status: ImageStatusVerifyFailed,

@@ -298,12 +298,14 @@ func getImpactString(
 	return noneStr
 }
 
-const maxImpactedObjectsDisplay = 50
-
 // TableOutputOptions configures the behavior of OutputTable.
 type TableOutputOptions struct {
 	// ShowImpactedObjects enables listing impacted objects after the summary.
 	ShowImpactedObjects bool
+
+	// NamespaceRequesters maps namespace names to their openshift.io/requester annotation value.
+	// Used when ShowImpactedObjects is true to display the requester for each namespace group.
+	NamespaceRequesters map[string]string
 }
 
 // OutputTable is a shared function for outputting check results in table format.
@@ -374,7 +376,7 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 	_, _ = fmt.Fprintf(out, "  Total: %d | Passed: %d | Warnings: %d | Failed: %d\n", totalChecks, totalPassed, totalWarnings, totalFailed)
 
 	if opts.ShowImpactedObjects {
-		outputImpactedObjects(out, results)
+		outputImpactedObjects(out, results, opts.NamespaceRequesters)
 	}
 
 	return nil
@@ -386,10 +388,21 @@ type impactedGroup struct {
 	objects []metav1.PartialObjectMetadata
 }
 
-// outputImpactedObjects prints impacted objects grouped by group/kind after the summary.
-// Each group is independently capped at maxImpactedObjectsDisplay to keep output readable.
-func outputImpactedObjects(out io.Writer, results []check.CheckExecution) {
-	// Aggregate objects by group/kind, preserving insertion order
+// namespaceGroup holds objects within a single namespace for display.
+type namespaceGroup struct {
+	namespace string
+	objects   []metav1.PartialObjectMetadata
+}
+
+// outputImpactedObjects prints impacted objects grouped by group/kind and namespace.
+// Within each group/kind, objects are sub-grouped by namespace (sorted alphabetically).
+// Each namespace header includes the openshift.io/requester annotation if available.
+func outputImpactedObjects(
+	out io.Writer,
+	results []check.CheckExecution,
+	namespaceRequesters map[string]string,
+) {
+	// Aggregate objects by group/kind, preserving insertion order.
 	var groups []impactedGroup
 
 	seen := make(map[string]int) // key -> index in groups slice
@@ -426,22 +439,68 @@ func outputImpactedObjects(out io.Writer, results []check.CheckExecution) {
 
 		_, _ = fmt.Fprintf(out, "  %s:\n", g.key)
 
-		for i, obj := range g.objects {
-			if i >= maxImpactedObjectsDisplay {
-				remaining := len(g.objects) - i
-				_, _ = fmt.Fprintf(out, "    ... and %d more. Use --output json for the full list.\n", remaining)
+		// Sub-group objects by namespace.
+		nsGroups := groupByNamespace(g.objects)
 
-				break
+		for _, nsg := range nsGroups {
+			if nsg.namespace == "" {
+				// Cluster-scoped objects: list directly without namespace header.
+				for _, obj := range nsg.objects {
+					_, _ = fmt.Fprintf(out, "    - %s\n", formatImpactedObject(obj))
+				}
+			} else {
+				// Print namespace header with requester annotation if available.
+				nsHeader := nsg.namespace
+				if requester, ok := namespaceRequesters[nsg.namespace]; ok && requester != "" {
+					nsHeader = fmt.Sprintf("%s (requester: %s)", nsg.namespace, requester)
+				}
+
+				_, _ = fmt.Fprintf(out, "    %s:\n", nsHeader)
+
+				for _, obj := range nsg.objects {
+					_, _ = fmt.Fprintf(out, "      - %s\n", formatImpactedObject(obj))
+				}
 			}
-
-			name := obj.Name
-			if obj.Namespace != "" {
-				name = obj.Namespace + "/" + name
-			}
-
-			_, _ = fmt.Fprintf(out, "    - %s (%s)\n", name, obj.Kind)
 		}
 	}
+}
+
+// formatImpactedObject returns the display string for an impacted object.
+// Includes the Kind from TypeMeta when available to help identify the resource type.
+func formatImpactedObject(obj metav1.PartialObjectMetadata) string {
+	if obj.Kind != "" {
+		return fmt.Sprintf("%s (%s)", obj.Name, obj.Kind)
+	}
+
+	return obj.Name
+}
+
+// groupByNamespace sub-groups objects by namespace, sorted alphabetically.
+// Cluster-scoped objects (empty namespace) are placed first.
+func groupByNamespace(objects []metav1.PartialObjectMetadata) []namespaceGroup {
+	nsMap := make(map[string][]metav1.PartialObjectMetadata)
+
+	for _, obj := range objects {
+		nsMap[obj.Namespace] = append(nsMap[obj.Namespace], obj)
+	}
+
+	// Collect and sort namespace keys.
+	namespaces := make([]string, 0, len(nsMap))
+	for ns := range nsMap {
+		namespaces = append(namespaces, ns)
+	}
+
+	sort.Strings(namespaces)
+
+	groups := make([]namespaceGroup, 0, len(namespaces))
+	for _, ns := range namespaces {
+		groups = append(groups, namespaceGroup{
+			namespace: ns,
+			objects:   nsMap[ns],
+		})
+	}
+
+	return groups
 }
 
 // OutputJSON outputs diagnostic results in List format.

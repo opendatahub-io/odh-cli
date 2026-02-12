@@ -106,6 +106,14 @@ var (
 		Resource: "deployments",
 	}
 
+	// Namespace is the core Kubernetes Namespace resource.
+	Namespace = ResourceType{
+		Group:    "",
+		Version:  "v1",
+		Kind:     "Namespace",
+		Resource: "namespaces",
+	}
+
 	Pod = ResourceType{
 		Group:    "",
 		Version:  "v1",
