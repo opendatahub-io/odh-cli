@@ -36,4 +36,9 @@ type Target struct {
 	// Used by checks to log warnings (e.g., permission errors) when verbose mode is enabled
 	// If nil, checks should skip logging
 	IO iostreams.Interface
+
+	// Debug enables detailed diagnostic logging for troubleshooting
+	// When true, checks should emit internal processing logs for troubleshooting
+	// When false, only user-facing summary information should be logged via IO
+	Debug bool
 }

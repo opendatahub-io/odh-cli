@@ -29,7 +29,7 @@ import (
 type BaseCheck struct {
 	CheckGroup       CheckGroup
 	Kind             string
-	Type             string
+	Type             CheckType
 	CheckID          string
 	CheckName        string
 	CheckDescription string
@@ -74,7 +74,7 @@ func (b BaseCheck) CheckKind() string {
 // CheckType returns the type of check (e.g., "removal", "deprecation").
 // Required by check.Check interface.
 func (b BaseCheck) CheckType() string {
-	return b.Type
+	return string(b.Type)
 }
 
 // NewResult creates a DiagnosticResult initialized with this check's metadata.
@@ -92,7 +92,7 @@ func (b BaseCheck) NewResult() *result.DiagnosticResult {
 	return result.New(
 		string(b.CheckGroup),
 		b.Kind,
-		b.Type,
+		string(b.Type),
 		b.CheckDescription,
 	)
 }

@@ -84,6 +84,9 @@ type SharedOptions struct {
 	// Verbose enables progress messages (default: false, quiet by default)
 	Verbose bool
 
+	// Debug enables detailed diagnostic logging for troubleshooting (default: false)
+	Debug bool
+
 	// Timeout is the maximum duration for command execution
 	Timeout time.Duration
 
@@ -382,10 +385,12 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 	return nil
 }
 
-// impactedGroup holds aggregated impacted objects for a group/kind pair.
+// impactedGroup holds aggregated impacted objects for a specific check.
 type impactedGroup struct {
-	key     string
-	objects []metav1.PartialObjectMetadata
+	group     check.CheckGroup
+	kind      string
+	checkType check.CheckType
+	objects   []metav1.PartialObjectMetadata
 }
 
 // namespaceGroup holds objects within a single namespace for display.
@@ -394,33 +399,45 @@ type namespaceGroup struct {
 	objects   []metav1.PartialObjectMetadata
 }
 
-// outputImpactedObjects prints impacted objects grouped by group/kind and namespace.
-// Within each group/kind, objects are sub-grouped by namespace (sorted alphabetically).
+// outputImpactedObjects prints impacted objects grouped by group/kind/checkType and namespace.
+// Within each group/kind/checkType, objects are sub-grouped by namespace (sorted alphabetically).
 // Each namespace header includes the openshift.io/requester annotation if available.
 func outputImpactedObjects(
 	out io.Writer,
 	results []check.CheckExecution,
 	namespaceRequesters map[string]string,
 ) {
-	// Aggregate objects by group/kind, preserving insertion order.
+	// Aggregate objects by group/kind/checkType, preserving insertion order.
 	var groups []impactedGroup
 
-	seen := make(map[string]int) // key -> index in groups slice
+	type groupKey struct {
+		group     check.CheckGroup
+		kind      string
+		checkType check.CheckType
+	}
+
+	seen := make(map[groupKey]int) // key -> index in groups slice
 
 	for _, exec := range results {
 		if len(exec.Result.ImpactedObjects) == 0 {
 			continue
 		}
 
-		key := exec.Result.Group + " / " + exec.Result.Kind
+		key := groupKey{
+			group:     check.CheckGroup(exec.Result.Group),
+			kind:      exec.Result.Kind,
+			checkType: check.CheckType(exec.Result.Name),
+		}
 
 		if idx, ok := seen[key]; ok {
 			groups[idx].objects = append(groups[idx].objects, exec.Result.ImpactedObjects...)
 		} else {
 			seen[key] = len(groups)
 			groups = append(groups, impactedGroup{
-				key:     key,
-				objects: append([]metav1.PartialObjectMetadata{}, exec.Result.ImpactedObjects...),
+				group:     key.group,
+				kind:      key.kind,
+				checkType: key.checkType,
+				objects:   append([]metav1.PartialObjectMetadata{}, exec.Result.ImpactedObjects...),
 			})
 		}
 	}
@@ -437,8 +454,17 @@ func outputImpactedObjects(
 			_, _ = fmt.Fprintln(out)
 		}
 
-		_, _ = fmt.Fprintf(out, "  %s:\n", g.key)
+		_, _ = fmt.Fprintf(out, "  %s / %s / %s:\n", g.group, g.kind, g.checkType)
 
+		// Check for group renderer first (takes precedence).
+		if groupRenderer := check.GetImpactedGroupRenderer(g.group, g.kind, g.checkType); groupRenderer != nil {
+			// Pass total count as maxDisplay since upstream removed truncation
+			groupRenderer(out, g.objects, len(g.objects))
+
+			continue
+		}
+
+		// Fall back to namespace-grouped rendering.
 		// Sub-group objects by namespace.
 		nsGroups := groupByNamespace(g.objects)
 

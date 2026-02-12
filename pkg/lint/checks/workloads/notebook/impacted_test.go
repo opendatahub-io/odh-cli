@@ -91,6 +91,12 @@ const (
 	lookalikeInternal = "my-registry.example.com/" + isJupyterDatascience + ":" + tagCurrent
 	lookalikeSHA      = "my-registry.example.com/" + isJupyterDatascience + "@" + shaUnknown
 
+	// User-contributed ImageStream (has workbenches label but no platform.opendatahub.io/version).
+	// These should be treated as CUSTOM, not OOTB.
+	isUserContributed          = "custom-anythingllm"
+	shaUserContributed         = "sha256:usercontrib123"
+	userContributedInternalRef = internalRegistry + "/" + isUserContributed + ":1.2.3"
+
 	// Infrastructure sidecar images.
 	oauthProxyImage     = "registry.redhat.io/openshift4/ose-oauth-proxy-rhel9@sha256:aa00b068c4c6a2428fd7832d8b53e2c8b0d2bb03799bb2a874ceb00be2bef33f"
 	oauthProxyFakeImage = "quay.io/myorg/fake-oauth-proxy:v1.0"
@@ -160,6 +166,10 @@ func newImageStream(name string, nbType string) *unstructured.Unstructured {
 				"labels": map[string]any{
 					"app.kubernetes.io/part-of": "workbenches",
 				},
+				"annotations": map[string]any{
+					// OOTB images are managed by the operator and have this annotation.
+					"platform.opendatahub.io/version": "2.25.1",
+				},
 			},
 			"spec": map[string]any{
 				"tags": []any{
@@ -190,6 +200,44 @@ func newImageStream(name string, nbType string) *unstructured.Unstructured {
 							map[string]any{
 								"image":                shaIncompatible,
 								"dockerImageReference": externalImageBase + "@" + shaIncompatible,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// newUserContributedImageStream creates an ImageStream that has the workbenches label
+// but does NOT have the platform.opendatahub.io/version annotation.
+// This simulates user-contributed custom images that should be treated as CUSTOM.
+func newUserContributedImageStream(name string) *unstructured.Unstructured {
+	dockerImageRepo := internalRegistry + "/" + name
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.ImageStream.APIVersion(),
+			"kind":       resources.ImageStream.Kind,
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": "redhat-ods-applications",
+				"labels": map[string]any{
+					// Has the workbenches label (would normally be included in OOTB discovery)
+					"app.kubernetes.io/part-of": "workbenches",
+				},
+				// NOTE: No "annotations" with platform.opendatahub.io/version
+				// This is the key difference from OOTB ImageStreams
+			},
+			"status": map[string]any{
+				"dockerImageRepository": dockerImageRepo,
+				"tags": []any{
+					map[string]any{
+						"tag": "1.2.3",
+						"items": []any{
+							map[string]any{
+								"image":                shaUserContributed,
+								"dockerImageReference": "quay.io/user/" + name + "@" + shaUserContributed,
 							},
 						},
 					},
@@ -336,7 +384,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			expectedStatus: metav1.ConditionFalse,
 			expectedReason: check.ReasonWorkloadsImpacted,
 			expectedImpact: resultpkg.ImpactAdvisory,
-			expectImpacted: false,
+			expectImpacted: true, // Custom images are included in impacted objects for user verification
 		},
 	}
 
@@ -468,8 +516,9 @@ func TestImpactedWorkloadsCheck_MultiContainer(t *testing.T) {
 			g.Expect(result.Status.Conditions[0].Condition.Status).To(Equal(tc.expectedStatus))
 			g.Expect(result.Status.Conditions[0].Impact).To(Equal(tc.expectedImpact))
 
-			// Blocking impact means notebook is in ImpactedObjects.
-			if tc.expectedImpact == resultpkg.ImpactBlocking {
+			// Blocking or Advisory impact means notebook is in ImpactedObjects.
+			// Advisory includes custom images that need user verification.
+			if tc.expectedImpact == resultpkg.ImpactBlocking || tc.expectedImpact == resultpkg.ImpactAdvisory {
 				g.Expect(result.ImpactedObjects).To(HaveLen(1))
 				g.Expect(result.ImpactedObjects[0].Name).To(Equal("multi-nb"))
 			} else {
@@ -755,6 +804,24 @@ func TestImpactedWorkloadsCheck_LookupStrategies(t *testing.T) {
 			expectedStatus: metav1.ConditionFalse,
 			expectedReason: check.ReasonWorkloadsImpacted,
 			expectedImpact: resultpkg.ImpactAdvisory,
+		},
+
+		// User-contributed ImageStreams - have workbenches label but no platform.opendatahub.io/version
+		// These should be excluded from OOTB discovery and treated as CUSTOM
+		{
+			name:        "UserContributed_NoPlatformVersion",
+			description: "ImageStream has workbenches label but no platform.opendatahub.io/version - should be CUSTOM",
+			image:       userContributedInternalRef,
+			objects: func() []*unstructured.Unstructured {
+				return []*unstructured.Unstructured{
+					// Include both a real OOTB ImageStream and a user-contributed one
+					newImageStream(isJupyterDatascience, "jupyter"),
+					newUserContributedImageStream(isUserContributed),
+				}
+			},
+			expectedStatus: metav1.ConditionFalse,
+			expectedReason: check.ReasonWorkloadsImpacted,
+			expectedImpact: resultpkg.ImpactAdvisory, // CUSTOM = Advisory, not Blocking
 		},
 	}
 

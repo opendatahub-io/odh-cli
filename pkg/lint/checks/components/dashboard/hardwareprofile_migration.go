@@ -1,4 +1,4 @@
-package dashboard //nolint:dupl // Structurally similar to acceleratorprofile_migration.go but validates different resource types.
+package dashboard
 
 import (
 	"context"

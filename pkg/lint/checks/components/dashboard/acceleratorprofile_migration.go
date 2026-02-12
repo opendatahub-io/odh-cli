@@ -1,4 +1,4 @@
-package dashboard //nolint:dupl // Structurally similar to hardwareprofile_migration.go but validates different resource types.
+package dashboard
 
 import (
 	"context"
@@ -13,8 +13,6 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
-const acceleratorProfileCheckType = "acceleratorprofile-migration"
-
 // AcceleratorProfileMigrationCheck detects legacy AcceleratorProfiles that will be auto-migrated to
 // HardwareProfiles (infrastructure.opendatahub.io) during upgrade to RHOAI 3.x.
 type AcceleratorProfileMigrationCheck struct {
@@ -27,7 +25,7 @@ func NewAcceleratorProfileMigrationCheck() *AcceleratorProfileMigrationCheck {
 		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupComponent,
 			Kind:             constants.ComponentDashboard,
-			Type:             acceleratorProfileCheckType,
+			Type:             check.CheckTypeAcceleratorProfileMigration,
 			CheckID:          "components.dashboard.acceleratorprofile-migration",
 			CheckName:        "Components :: Dashboard :: AcceleratorProfile Migration (3.x)",
 			CheckDescription: "Lists legacy AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",

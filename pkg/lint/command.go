@@ -130,6 +130,7 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.FailOnCritical, "fail-on-critical", true, flagDescFailCritical)
 	fs.BoolVar(&c.FailOnWarning, "fail-on-warning", false, flagDescFailWarning)
 	fs.BoolVarP(&c.Verbose, "verbose", "v", false, flagDescVerbose)
+	fs.BoolVar(&c.Debug, "debug", false, flagDescDebug)
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, flagDescTimeout)
 
 	// Throttling settings
@@ -144,8 +145,8 @@ func (c *Command) Complete() error {
 		return fmt.Errorf("completing shared options: %w", err)
 	}
 
-	// Wrap IO with QuietWrapper if NOT in verbose mode (default is quiet)
-	if !c.Verbose {
+	// Wrap IO with QuietWrapper if NOT in verbose or debug mode (default is quiet)
+	if !c.Verbose && !c.Debug {
 		c.IO = iostreams.NewQuietWrapper(c.IO)
 	}
 
@@ -232,6 +233,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Versio
 		TargetVersion:  clusterVersion,
 		Resource:       nil, // No specific resource for component/service checks
 		IO:             c.IO,
+		Debug:          c.Debug,
 	}
 
 	executor := check.NewExecutor(c.registry, c.IO)
@@ -279,6 +281,7 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Versio
 				TargetVersion:  clusterVersion,
 				Resource:       instances[i],
 				IO:             c.IO,
+				Debug:          c.Debug,
 			}
 
 			results, err := executor.ExecuteSelective(ctx, workloadTarget, c.CheckSelectors, check.GroupWorkload)
@@ -326,6 +329,7 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 		TargetVersion:  c.parsedTargetVersion, // The version we're upgrading TO
 		Resource:       nil,
 		IO:             c.IO,
+		Debug:          c.Debug,
 	}
 
 	// Execute checks in canonical order: dependencies → services → components → workloads

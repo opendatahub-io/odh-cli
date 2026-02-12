@@ -30,7 +30,7 @@ func NewAcceleratorMigrationCheck() *AcceleratorMigrationCheck {
 		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupWorkload,
 			Kind:             kind,
-			Type:             check.CheckTypeImpactedWorkloads,
+			Type:             check.CheckTypeAcceleratorProfileMigration,
 			CheckID:          "workloads.notebook.accelerator-migration",
 			CheckName:        "Workloads :: Notebook :: AcceleratorProfile Migration (3.x)",
 			CheckDescription: "Detects Notebook (workbench) CRs referencing legacy AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",

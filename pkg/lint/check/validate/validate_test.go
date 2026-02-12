@@ -455,7 +455,7 @@ func TestOperatorBuilder(t *testing.T) {
 		g.Expect(dr).ToNot(BeNil())
 		g.Expect(dr.Group).To(Equal("dependency"))
 		g.Expect(dr.Kind).To(Equal("certmanager"))
-		g.Expect(dr.Name).To(Equal(check.CheckTypeInstalled))
+		g.Expect(dr.Name).To(Equal(string(check.CheckTypeInstalled)))
 		g.Expect(dr.Status.Conditions).To(HaveLen(1))
 		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 			"Type":    Equal(check.ConditionTypeAvailable),

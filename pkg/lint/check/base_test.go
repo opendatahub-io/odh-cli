@@ -34,7 +34,7 @@ func TestBaseCheck(t *testing.T) {
 
 		// Public fields (can be accessed directly)
 		g.Expect(bc.Kind).To(Equal("test-component"))
-		g.Expect(bc.Type).To(Equal("test-type"))
+		g.Expect(bc.Type).To(Equal(check.CheckType("test-type")))
 	})
 
 	t.Run("NewResult should create properly initialized result", func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestBaseCheck(t *testing.T) {
 
 		g.Expect(dr.Group).To(Equal("component"))
 		g.Expect(dr.Kind).To(Equal(constants.ComponentKServe))
-		g.Expect(dr.Name).To(Equal(check.CheckTypeRemoval))
+		g.Expect(dr.Name).To(Equal(string(check.CheckTypeRemoval)))
 		g.Expect(dr.Spec.Description).To(Equal("Validates KServe removal"))
 		g.Expect(dr.Annotations).ToNot(BeNil())
 		g.Expect(dr.Status.Conditions).ToNot(BeNil())
@@ -157,6 +157,6 @@ func TestBaseCheckIntegration(t *testing.T) {
 		g.Expect(dr).ToNot(BeNil())
 		g.Expect(dr.Group).To(Equal("component"))
 		g.Expect(dr.Kind).To(Equal("modelmeshserving"))
-		g.Expect(dr.Name).To(Equal(check.CheckTypeRemoval))
+		g.Expect(dr.Name).To(Equal(string(check.CheckTypeRemoval)))
 	})
 }

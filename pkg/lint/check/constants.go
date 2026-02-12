@@ -1,11 +1,15 @@
 package check
 
+// CheckType represents the type of check being performed.
+type CheckType string
+
 // Check type names used across multiple packages.
 const (
-	CheckTypeRemoval           = "removal"
-	CheckTypeInstalled         = "installed"
-	CheckTypeImpactedWorkloads = "impacted-workloads"
-	CheckTypeConfigMigration   = "config-migration"
+	CheckTypeRemoval                     CheckType = "removal"
+	CheckTypeInstalled                   CheckType = "installed"
+	CheckTypeImpactedWorkloads           CheckType = "impacted-workloads"
+	CheckTypeConfigMigration             CheckType = "config-migration"
+	CheckTypeAcceleratorProfileMigration CheckType = "acceleratorprofile-migration"
 )
 
 // Annotation keys used across multiple packages.

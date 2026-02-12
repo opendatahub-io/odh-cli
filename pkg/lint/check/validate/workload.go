@@ -12,6 +12,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 )
 
@@ -25,6 +26,16 @@ type WorkloadRequest[T any] struct {
 
 	// Client provides read-only access to the Kubernetes API.
 	Client client.Reader
+
+	// IO provides access to input/output streams for verbose logging.
+	// Use IO.Errorf() for debug output that appears only when --verbose is set.
+	// May be nil if no IO was provided to the check target.
+	IO iostreams.Interface
+
+	// Debug indicates whether detailed diagnostic logging is enabled.
+	// When true, checks should emit internal processing logs for troubleshooting.
+	// When false, only user-facing summary information should be logged via IO.
+	Debug bool
 }
 
 // WorkloadValidateFn is the callback invoked by WorkloadBuilder.Run after listing and filtering.
@@ -136,6 +147,8 @@ func (b *WorkloadBuilder[T]) Run(
 		Result: dr,
 		Items:  items,
 		Client: b.target.Client,
+		IO:     b.target.IO,
+		Debug:  b.target.Debug,
 	}
 
 	if err := fn(ctx, req); err != nil {

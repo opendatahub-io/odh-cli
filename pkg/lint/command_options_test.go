@@ -221,13 +221,14 @@ func TestOutputTable_VerboseImpactedObjects(t *testing.T) {
 
 	output := buf.String()
 	g.Expect(output).To(ContainSubstring("Impacted Objects:"))
-	g.Expect(output).To(ContainSubstring("workloads / kserve:"))
+	// Header includes checkType for specificity
+	g.Expect(output).To(ContainSubstring("workloads / kserve / accelerator-migration:"))
 	// Objects are grouped by namespace with Kind shown
 	g.Expect(output).To(ContainSubstring("ns1:"))
 	g.Expect(output).To(ContainSubstring("- isvc-1 (InferenceService)"))
 	g.Expect(output).To(ContainSubstring("ns2:"))
 	g.Expect(output).To(ContainSubstring("- isvc-2 (InferenceService)"))
-	g.Expect(output).To(ContainSubstring("workloads / notebook:"))
+	g.Expect(output).To(ContainSubstring("workloads / notebook / accelerator-migration:"))
 	g.Expect(output).To(ContainSubstring("- notebook-1 (Notebook)"))
 }
 
@@ -404,7 +405,7 @@ func TestOutputTable_VerboseNamespaceRequester(t *testing.T) {
 
 	output := buf.String()
 	g.Expect(output).To(ContainSubstring("Impacted Objects:"))
-	g.Expect(output).To(ContainSubstring("workloads / notebook:"))
+	g.Expect(output).To(ContainSubstring("workloads / notebook / impacted-workloads:"))
 	// Namespace headers should include requester annotation.
 	g.Expect(output).To(ContainSubstring("project-a (requester: alice@example.com):"))
 	g.Expect(output).To(ContainSubstring("project-b (requester: bob@example.com):"))

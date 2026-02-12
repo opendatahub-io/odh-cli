@@ -496,7 +496,7 @@ func TestWorkloadBuilder_ResultMetadata(t *testing.T) {
 	// Verify result metadata matches the check.
 	g.Expect(dr.Group).To(Equal("workload"))
 	g.Expect(dr.Kind).To(Equal("notebook"))
-	g.Expect(dr.Name).To(Equal(check.CheckTypeImpactedWorkloads))
+	g.Expect(dr.Name).To(Equal(string(check.CheckTypeImpactedWorkloads)))
 	g.Expect(dr.Spec.Description).To(Equal("Test workload description"))
 }
 

@@ -3,6 +3,7 @@ package notebook
 import (
 	"context"
 	"fmt"
+	iolib "io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 	"github.com/lburgazzoli/odh-cli/pkg/util/client"
 	"github.com/lburgazzoli/odh-cli/pkg/util/components"
+	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
@@ -37,6 +39,10 @@ const (
 
 	// Label used to identify OOTB notebook images.
 	ootbLabel = "app.kubernetes.io/part-of=workbenches"
+
+	// Annotation that indicates an ImageStream is managed by the RHOAI operator.
+	// ImageStreams without this annotation are user-contributed custom images.
+	ootbPlatformVersionAnnotation = "platform.opendatahub.io/version"
 )
 
 // ImageStatus represents the compatibility status of a notebook's image.
@@ -72,6 +78,7 @@ type notebookAnalysis struct {
 	Name      string
 	Status    ImageStatus
 	Reason    string
+	ImageRef  string // Primary container image reference (for image-centric grouping)
 }
 
 // imageAnalysis contains the analysis result for a single container image.
@@ -90,6 +97,14 @@ type imageRef struct {
 	FullPath string // Full path without tag/sha (e.g., "registry/ns/name")
 }
 
+// ootbImageInput bundles parameters for OOTB image analysis.
+type ootbImageInput struct {
+	ImageStreamName string       // Resolved ImageStream name
+	Tag             string       // Image tag
+	SHA             string       // Image SHA digest
+	Type            NotebookType // Notebook type (jupyter, rstudio, codeserver)
+}
+
 // ImpactedWorkloadsCheck identifies Notebook (workbench) instances that will not work in RHOAI 3.x
 // due to nginx compatibility requirements in non-Jupyter images.
 type ImpactedWorkloadsCheck struct {
@@ -97,6 +112,10 @@ type ImpactedWorkloadsCheck struct {
 }
 
 func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
+	// Register custom group renderer for verbose output of notebook impacted objects.
+	// Groups notebooks by image for better readability.
+	check.RegisterImpactedGroupRenderer(check.GroupWorkload, kind, check.CheckTypeImpactedWorkloads, renderNotebookImpactedGroup)
+
 	return &ImpactedWorkloadsCheck{
 		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupWorkload,
@@ -108,6 +127,96 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 			CheckRemediation: "Update workbenches with incompatible images to use 2025.2+ versions before upgrading",
 		},
 	}
+}
+
+// imageGroup holds notebooks grouped by their image reference.
+type imageGroup struct {
+	imageRef    string
+	imageStatus string   // CUSTOM, PROBLEMATIC, etc.
+	notebooks   []string // namespace/name format
+}
+
+// renderNotebookImpactedGroup renders notebook impacted objects grouped by image.
+// Output format:
+//
+//	image: registry/path:tag (N notebooks)
+//	  - namespace/name
+//	  - namespace/name
+func renderNotebookImpactedGroup(out iolib.Writer, objects []metav1.PartialObjectMetadata, maxDisplay int) {
+	// Group notebooks by image reference, preserving insertion order.
+	var groups []imageGroup
+
+	imageIndex := make(map[string]int) // imageRef -> index in groups
+
+	for _, obj := range objects {
+		imageRef := obj.Annotations["check.opendatahub.io/image-ref"]
+		if imageRef == "" {
+			imageRef = "(unknown image)"
+		}
+
+		imageStatus := obj.Annotations["check.opendatahub.io/image-status"]
+
+		name := obj.Name
+		if obj.Namespace != "" {
+			name = obj.Namespace + "/" + name
+		}
+
+		if idx, ok := imageIndex[imageRef]; ok {
+			groups[idx].notebooks = append(groups[idx].notebooks, name)
+		} else {
+			imageIndex[imageRef] = len(groups)
+			groups = append(groups, imageGroup{
+				imageRef:    imageRef,
+				imageStatus: imageStatus,
+				notebooks:   []string{name},
+			})
+		}
+	}
+
+	// Render grouped output.
+	displayed := 0
+
+	for _, g := range groups {
+		if displayed >= maxDisplay {
+			remaining := len(objects) - displayed
+			_, _ = fmt.Fprintf(out, "    ... and %d more notebooks. Use --output json for the full list.\n", remaining)
+
+			break
+		}
+
+		// Print image header with count, using descriptive label based on status.
+		imageLabel := imageStatusLabel(g.imageStatus)
+		_, _ = fmt.Fprintf(out, "    %s: %s (%d notebooks)\n", imageLabel, g.imageRef, len(g.notebooks))
+
+		// Print notebooks under this image.
+		for _, nb := range g.notebooks {
+			if displayed >= maxDisplay {
+				remaining := len(objects) - displayed
+				_, _ = fmt.Fprintf(out, "      ... and %d more notebooks. Use --output json for the full list.\n", remaining)
+
+				return
+			}
+
+			_, _ = fmt.Fprintf(out, "      - %s\n", nb)
+			displayed++
+		}
+	}
+}
+
+// imageStatusLabel returns a user-friendly label for the image status.
+func imageStatusLabel(status string) string {
+	switch ImageStatus(status) {
+	case ImageStatusGood:
+		return "compatible image"
+	case ImageStatusCustom:
+		return "custom image"
+	case ImageStatusProblematic:
+		return "incompatible image"
+	case ImageStatusVerifyFailed:
+		return "unverified image"
+	}
+
+	return "image"
 }
 
 // CanApply returns whether this check should run for the given target.
@@ -142,6 +251,9 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebooks(
 	req *validate.WorkloadRequest[*unstructured.Unstructured],
 ) error {
 	notebooks := req.Items
+	log := newDebugLogger(req.IO, req.Debug)
+
+	log.logf("[notebook] Analyzing %d notebook(s)", len(notebooks))
 
 	if len(notebooks) == 0 {
 		req.Result.SetCondition(check.NewCondition(
@@ -161,16 +273,19 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebooks(
 	}
 
 	// Discover OOTB ImageStreams.
-	ootbImages, imageStreamData, err := c.discoverOOTBImageStreams(ctx, req.Client, appNS)
+	ootbImages, imageStreamData, err := c.discoverOOTBImageStreams(ctx, req.Client, appNS, log)
 	if err != nil {
 		return fmt.Errorf("discovering OOTB ImageStreams: %w", err)
 	}
+
+	log.logf("[notebook] Discovered %d OOTB ImageStreams, %d total ImageStreams",
+		len(ootbImages), len(imageStreamData))
 
 	// Analyze each notebook.
 	var analyses []notebookAnalysis
 
 	for _, nb := range notebooks {
-		analysis := c.analyzeNotebook(ctx, req.Client, nb, ootbImages, imageStreamData, appNS)
+		analysis := c.analyzeNotebook(ctx, req.Client, nb, ootbImages, imageStreamData, appNS, log)
 		analyses = append(analyses, analysis)
 	}
 
@@ -188,6 +303,7 @@ func (c *ImpactedWorkloadsCheck) discoverOOTBImageStreams(
 	ctx context.Context,
 	reader client.Reader,
 	appNS string,
+	log debugLogger,
 ) (map[string]ootbImageStream, []*unstructured.Unstructured, error) {
 	imageStreams, err := reader.List(ctx, resources.ImageStream,
 		client.WithNamespace(appNS),
@@ -211,6 +327,16 @@ func (c *ImpactedWorkloadsCheck) discoverOOTBImageStreams(
 			continue
 		}
 
+		// Skip ImageStreams without the platform version annotation.
+		// These are user-contributed custom images, not operator-managed OOTB images.
+		annotations := is.GetAnnotations()
+		if annotations == nil || annotations[ootbPlatformVersionAnnotation] == "" {
+			log.logf("[notebook]   ImageStream %s: skipped (no %s annotation - custom image)",
+				name, ootbPlatformVersionAnnotation)
+
+			continue
+		}
+
 		nbType := c.determineNotebookType(is)
 		dockerRepo, _ := jq.Query[string](is, ".status.dockerImageRepository")
 		ootbImages[name] = ootbImageStream{
@@ -218,6 +344,8 @@ func (c *ImpactedWorkloadsCheck) discoverOOTBImageStreams(
 			Type:                  nbType,
 			DockerImageRepository: dockerRepo,
 		}
+
+		log.logf("[notebook]   ImageStream %s: type=%s, dockerRepo=%s", name, nbType, dockerRepo)
 	}
 
 	return ootbImages, imageStreams, nil
@@ -274,13 +402,19 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 	ootbImages map[string]ootbImageStream,
 	imageStreamData []*unstructured.Unstructured,
 	appNS string,
+	log debugLogger,
 ) notebookAnalysis {
 	ns := nb.GetNamespace()
 	name := nb.GetName()
 
+	log.logf("[notebook] Analyzing %s/%s", ns, name)
+
 	// Extract all containers from the notebook spec.
 	containers, err := jq.Query[[]any](nb, ".spec.template.spec.containers")
 	if err != nil || len(containers) == 0 {
+		log.logf("[notebook]   %s/%s: VERIFY_FAILED - could not extract containers (err=%v, count=%d)",
+			ns, name, err, len(containers))
+
 		return notebookAnalysis{
 			Namespace: ns,
 			Name:      name,
@@ -303,10 +437,14 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 
 		// Skip known infrastructure/sidecar containers that are not notebook images.
 		if isInfrastructureContainer(containerName, image) {
+			log.logf("[notebook]   %s/%s: skipping infrastructure container %s", ns, name, containerName)
+
 			continue
 		}
 
 		if image == "" {
+			log.logf("[notebook]   %s/%s: VERIFY_FAILED - container %s has no image",
+				ns, name, containerName)
 			imageAnalyses = append(imageAnalyses, imageAnalysis{
 				ContainerName: containerName,
 				Status:        ImageStatusVerifyFailed,
@@ -316,9 +454,13 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 			continue
 		}
 
-		analysis := c.analyzeImage(ctx, reader, image, ootbImages, imageStreamData, appNS)
+		analysis := c.analyzeImage(ctx, reader, image, ootbImages, imageStreamData, appNS, log)
 		analysis.ContainerName = containerName
 		analysis.ImageRef = image
+
+		log.logf("[notebook]   %s/%s container %s: status=%s reason=%q",
+			ns, name, containerName, analysis.Status, analysis.Reason)
+
 		imageAnalyses = append(imageAnalyses, analysis)
 	}
 
@@ -339,9 +481,13 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 	ootbImages map[string]ootbImageStream,
 	imageStreamData []*unstructured.Unstructured,
 	appNS string,
+	log debugLogger,
 ) imageAnalysis {
 	// Parse image reference to get name, tag, SHA, and full path.
 	ref := parseImageReference(image)
+
+	log.logf("[notebook]     image=%s parsed: name=%s tag=%s sha=%s fullPath=%s",
+		image, ref.Name, ref.Tag, truncateSHA(ref.SHA), ref.FullPath)
 
 	// Strategy 1: dockerImageReference lookup - exact match against external registry references.
 	// Matches container image like: registry.redhat.io/rhoai/...@sha256:xxx
@@ -350,32 +496,64 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 	if lookup.Found {
 		ootbIS, isOOTB := ootbImages[lookup.ImageStreamName]
 		if isOOTB {
-			return c.analyzeOOTBImage(ctx, reader, lookup.ImageStreamName, lookup.Tag, ref.SHA, ootbIS.Type, imageStreamData, appNS)
+			log.logf("[notebook]     Strategy 1 (dockerImageRef) matched: is=%s tag=%s type=%s",
+				lookup.ImageStreamName, lookup.Tag, ootbIS.Type)
+
+			return c.analyzeOOTBImage(ctx, reader, ootbImageInput{
+				ImageStreamName: lookup.ImageStreamName,
+				Tag:             lookup.Tag,
+				SHA:             ref.SHA,
+				Type:            ootbIS.Type,
+			}, imageStreamData, appNS, log)
 		}
+
+		log.logf("[notebook]     Strategy 1 matched is=%s but not in OOTB map (possibly runtime image)",
+			lookup.ImageStreamName)
 	}
 
 	// Strategy 2: SHA lookup - search all OOTB ImageStreams for this SHA.
 	// Matches container image SHA against: .status.tags[*].items[*].image
-	if ref.SHA != "" {
-		lookup := c.findImageStreamForSHA(ref.SHA, imageStreamData)
-		if lookup.Found {
-			ootbIS, isOOTB := ootbImages[lookup.ImageStreamName]
-			if isOOTB {
-				return c.analyzeOOTBImage(ctx, reader, lookup.ImageStreamName, lookup.Tag, ref.SHA, ootbIS.Type, imageStreamData, appNS)
-			}
-		}
+	if ref.SHA == "" {
+		log.logf("[notebook]     Strategy 2 skipped: no SHA in image reference")
+	} else if lookup := c.findImageStreamForSHA(ref.SHA, imageStreamData); !lookup.Found {
+		log.logf("[notebook]     Strategy 2 (SHA lookup): no match for sha=%s", truncateSHA(ref.SHA))
+	} else if ootbIS, isOOTB := ootbImages[lookup.ImageStreamName]; isOOTB {
+		log.logf("[notebook]     Strategy 2 (SHA lookup) matched: is=%s tag=%s type=%s",
+			lookup.ImageStreamName, lookup.Tag, ootbIS.Type)
+
+		return c.analyzeOOTBImage(ctx, reader, ootbImageInput{
+			ImageStreamName: lookup.ImageStreamName,
+			Tag:             lookup.Tag,
+			SHA:             ref.SHA,
+			Type:            ootbIS.Type,
+		}, imageStreamData, appNS, log)
+	} else {
+		log.logf("[notebook]     Strategy 2 matched is=%s but not in OOTB map",
+			lookup.ImageStreamName)
 	}
 
 	// Strategy 3: dockerImageRepository lookup - match container image path against internal registry path.
 	// Matches container image like: image-registry.openshift-image-registry.svc:5000/ns/name:tag
 	// Against ImageStream's: .status.dockerImageRepository
 	if ootbIS := c.findImageStreamByDockerRepo(ref.FullPath, ootbImages); ootbIS != nil {
-		return c.analyzeOOTBImage(ctx, reader, ootbIS.Name, ref.Tag, ref.SHA, ootbIS.Type, imageStreamData, appNS)
+		log.logf("[notebook]     Strategy 3 (dockerImageRepo) matched: is=%s tag=%s type=%s",
+			ootbIS.Name, ref.Tag, ootbIS.Type)
+
+		return c.analyzeOOTBImage(ctx, reader, ootbImageInput{
+			ImageStreamName: ootbIS.Name,
+			Tag:             ref.Tag,
+			SHA:             ref.SHA,
+			Type:            ootbIS.Type,
+		}, imageStreamData, appNS, log)
 	}
+
+	log.logf("[notebook]     Strategy 3 (dockerImageRepo): no match for path=%s", ref.FullPath)
 
 	// No OOTB correlation found - mark as custom image requiring user verification.
 	// We intentionally do NOT use name-based matching as a fallback because an image
 	// from any registry could coincidentally have the same name as an OOTB ImageStream.
+	log.logf("[notebook]     All strategies failed -> CUSTOM")
+
 	return imageAnalysis{
 		Status: ImageStatusCustom,
 		Reason: fmt.Sprintf("Image '%s' is not a recognized OOTB notebook image", ref.Name),
@@ -386,13 +564,18 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 func (c *ImpactedWorkloadsCheck) analyzeOOTBImage(
 	ctx context.Context,
 	reader client.Reader,
-	imageName, imageTag, imageSHA string,
-	nbType NotebookType,
+	input ootbImageInput,
 	imageStreamData []*unstructured.Unstructured,
 	appNS string,
+	log debugLogger,
 ) imageAnalysis {
+	log.logf("[notebook]     analyzeOOTBImage: is=%s tag=%s sha=%s type=%s",
+		input.ImageStreamName, input.Tag, truncateSHA(input.SHA), input.Type)
+
 	// Jupyter images are always compatible.
-	if nbType == NotebookTypeJupyter {
+	if input.Type == NotebookTypeJupyter {
+		log.logf("[notebook]     -> GOOD (Jupyter always compatible)")
+
 		return imageAnalysis{
 			Status: ImageStatusGood,
 			Reason: "Jupyter-based OOTB image (nginx compatible)",
@@ -400,12 +583,16 @@ func (c *ImpactedWorkloadsCheck) analyzeOOTBImage(
 	}
 
 	// For RStudio, check build reference.
-	if nbType == NotebookTypeRStudio {
-		return c.analyzeRStudioImageCompat(ctx, reader, imageName, imageTag, imageSHA, appNS)
+	if input.Type == NotebookTypeRStudio {
+		log.logf("[notebook]     -> checking RStudio build reference")
+
+		return c.analyzeRStudioImageCompat(ctx, reader, input.ImageStreamName, input.Tag, input.SHA, appNS, log)
 	}
 
 	// For CodeServer and other non-Jupyter images, check tag version.
-	return c.analyzeTagBasedImageCompat(imageName, imageTag, imageSHA, nbType, imageStreamData)
+	log.logf("[notebook]     -> checking tag-based compatibility (type=%s)", input.Type)
+
+	return c.analyzeTagBasedImageCompat(input.ImageStreamName, input.Tag, input.SHA, input.Type, imageStreamData, log)
 }
 
 // imageLookupResult contains the result of looking up an image in ImageStreams.
@@ -533,6 +720,7 @@ func (c *ImpactedWorkloadsCheck) findImageStreamByDockerRepo(
 
 // aggregateImageAnalyses combines individual image analyses into a notebook analysis.
 // Returns PROBLEMATIC if any image is PROBLEMATIC, otherwise returns the "best" status.
+// The ImageRef is set to the image that determines the notebook's status.
 func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 	ns, name string,
 	analyses []imageAnalysis,
@@ -548,9 +736,14 @@ func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 
 	// Check for any PROBLEMATIC images - these block the upgrade.
 	var problematicReasons []string
+	var problematicImageRef string
 
 	for _, a := range analyses {
 		if a.Status == ImageStatusProblematic {
+			if problematicImageRef == "" {
+				problematicImageRef = a.ImageRef
+			}
+
 			if a.ContainerName != "" {
 				problematicReasons = append(problematicReasons, fmt.Sprintf("%s: %s", a.ContainerName, a.Reason))
 			} else {
@@ -565,6 +758,7 @@ func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 			Name:      name,
 			Status:    ImageStatusProblematic,
 			Reason:    strings.Join(problematicReasons, "; "),
+			ImageRef:  problematicImageRef,
 		}
 	}
 
@@ -576,6 +770,7 @@ func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 				Name:      name,
 				Status:    ImageStatusVerifyFailed,
 				Reason:    a.Reason,
+				ImageRef:  a.ImageRef,
 			}
 		}
 	}
@@ -588,16 +783,18 @@ func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 				Name:      name,
 				Status:    ImageStatusCustom,
 				Reason:    a.Reason,
+				ImageRef:  a.ImageRef,
 			}
 		}
 	}
 
-	// All images are GOOD.
+	// All images are GOOD - use the first image as the representative.
 	return notebookAnalysis{
 		Namespace: ns,
 		Name:      name,
 		Status:    ImageStatusGood,
 		Reason:    "All container images are compatible",
+		ImageRef:  analyses[0].ImageRef,
 	}
 }
 
@@ -607,6 +804,7 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	reader client.Reader,
 	imageName, imageTag, imageSHA string,
 	appNS string,
+	log debugLogger,
 ) imageAnalysis {
 	// Look up the ImageStreamTag to get build reference.
 	// Use the tag from the annotation, fall back to "latest" if not available.
@@ -620,6 +818,8 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	ist, err := reader.GetResource(ctx, resources.ImageStreamTag, istName,
 		client.InNamespace(appNS))
 	if err != nil {
+		log.logf("[notebook]     RStudio: VERIFY_FAILED - could not fetch ImageStreamTag %s: %v", istName, err)
+
 		return imageAnalysis{
 			Status: ImageStatusVerifyFailed,
 			Reason: fmt.Sprintf("Could not fetch ImageStreamTag %s: %v", istName, err),
@@ -629,11 +829,15 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	// Extract OPENSHIFT_BUILD_REFERENCE from the image's environment variables.
 	buildRef := c.extractBuildReference(ist)
 	if buildRef == "" {
+		log.logf("[notebook]     RStudio: VERIFY_FAILED - no OPENSHIFT_BUILD_REFERENCE in %s", istName)
+
 		return imageAnalysis{
 			Status: ImageStatusVerifyFailed,
 			Reason: fmt.Sprintf("RStudio image %s has no OPENSHIFT_BUILD_REFERENCE", imageName),
 		}
 	}
+
+	log.logf("[notebook]     RStudio: buildRef=%s", buildRef)
 
 	// Check if the current ImageStreamTag points to the same image SHA.
 	currentSHA, _ := jq.Query[string](ist, ".image.metadata.name")
@@ -664,30 +868,42 @@ func (c *ImpactedWorkloadsCheck) analyzeTagBasedImageCompat(
 	imageName, imageTag, imageSHA string,
 	nbType NotebookType,
 	imageStreamData []*unstructured.Unstructured,
+	log debugLogger,
 ) imageAnalysis {
 	// Use tag from annotation if available, otherwise look up by SHA.
 	tag := imageTag
 	if tag == "" {
 		tag = c.findTagForSHA(imageSHA, imageName, imageStreamData)
+		log.logf("[notebook]     tag-based: imageTag empty, looked up by SHA -> tag=%q", tag)
 	}
+
+	log.logf("[notebook]     tag-based: using tag=%q for %s image %s", tag, nbType, imageName)
 
 	// If we have a valid version tag, check if it's compliant.
 	if isValidVersionTag(tag) {
 		if isTagGTE(tag, nginxFixMinTag) {
+			log.logf("[notebook]     tag-based: tag %s >= %s -> GOOD", tag, nginxFixMinTag)
+
 			return imageAnalysis{
 				Status: ImageStatusGood,
 				Reason: fmt.Sprintf("%s image with tag %s (>= %s, has nginx fix)", nbType, tag, nginxFixMinTag),
 			}
 		}
 
+		log.logf("[notebook]     tag-based: tag %s < %s, checking SHA cross-reference", tag, nginxFixMinTag)
+
 		// Tag is below minimum - check if SHA is also tagged with a compliant version.
 		compliantTag := c.findCompliantTagForSHA(imageSHA, imageStreamData)
 		if compliantTag != "" {
+			log.logf("[notebook]     tag-based: SHA cross-ref found compliant tag %s -> GOOD", compliantTag)
+
 			return imageAnalysis{
 				Status: ImageStatusGood,
 				Reason: fmt.Sprintf("%s image %s:%s has same SHA as compliant %s", nbType, imageName, tag, compliantTag),
 			}
 		}
+
+		log.logf("[notebook]     tag-based: no compliant SHA cross-ref -> PROBLEMATIC")
 
 		return imageAnalysis{
 			Status: ImageStatusProblematic,
@@ -695,16 +911,28 @@ func (c *ImpactedWorkloadsCheck) analyzeTagBasedImageCompat(
 		}
 	}
 
+	log.logf("[notebook]     tag-based: tag %q not valid version format (expected YYYY.N)", tag)
+
 	// No valid version tag found - try SHA cross-reference.
 	if imageSHA != "" {
+		log.logf("[notebook]     tag-based: trying SHA cross-reference for sha=%s", truncateSHA(imageSHA))
+
 		compliantTag := c.findCompliantTagForSHA(imageSHA, imageStreamData)
 		if compliantTag != "" {
+			log.logf("[notebook]     tag-based: SHA cross-ref found compliant tag %s -> GOOD", compliantTag)
+
 			return imageAnalysis{
 				Status: ImageStatusGood,
 				Reason: fmt.Sprintf("%s image has same SHA as compliant %s", nbType, compliantTag),
 			}
 		}
+
+		log.logf("[notebook]     tag-based: SHA cross-ref found no compliant tag")
+	} else {
+		log.logf("[notebook]     tag-based: no SHA available for cross-reference")
 	}
+
+	log.logf("[notebook]     tag-based: -> VERIFY_FAILED (no valid tag, no SHA cross-ref)")
 
 	return imageAnalysis{
 		Status: ImageStatusVerifyFailed,
@@ -826,31 +1054,62 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 	dr *result.DiagnosticResult,
 	analyses []notebookAnalysis,
 ) {
-	// Count notebooks by status.
+	// Count notebooks and unique images by status.
 	var goodCount, customCount, problematicCount, verifyFailedCount int
 
+	goodImages := make(map[string]struct{})
+	customImages := make(map[string]struct{})
+	problematicImages := make(map[string]struct{})
+	verifyFailedImages := make(map[string]struct{})
+	allImages := make(map[string]struct{})
+
 	for _, a := range analyses {
+		if a.ImageRef != "" {
+			allImages[a.ImageRef] = struct{}{}
+		}
+
 		switch a.Status {
 		case ImageStatusGood:
 			goodCount++
+
+			if a.ImageRef != "" {
+				goodImages[a.ImageRef] = struct{}{}
+			}
 		case ImageStatusCustom:
 			customCount++
+
+			if a.ImageRef != "" {
+				customImages[a.ImageRef] = struct{}{}
+			}
 		case ImageStatusProblematic:
 			problematicCount++
+
+			if a.ImageRef != "" {
+				problematicImages[a.ImageRef] = struct{}{}
+			}
 		case ImageStatusVerifyFailed:
 			verifyFailedCount++
+
+			if a.ImageRef != "" {
+				verifyFailedImages[a.ImageRef] = struct{}{}
+			}
 		}
 	}
 
 	totalCount := len(analyses)
+	totalImages := len(allImages)
 
-	// Build multi-line breakdown message.
-	message := fmt.Sprintf(`Found %d Notebook(s):
-  - %d compatible (OOTB images ready to run in 3.x)
-  - %d custom images (user verification needed)
-  - %d incompatible (must update before upgrade)
-  - %d unverified (could not determine status)`,
-		totalCount, goodCount, customCount, problematicCount, verifyFailedCount)
+	// Build multi-line breakdown message with image counts.
+	message := fmt.Sprintf(`Found %d Notebook(s) using %d unique images:
+  - %d compatible (%d images, OOTB ready for 3.x)
+  - %d custom (%d images, user verification needed)
+  - %d incompatible (%d images, must update before upgrade)
+  - %d unverified (%d images, could not determine status)`,
+		totalCount, totalImages,
+		goodCount, len(goodImages),
+		customCount, len(customImages),
+		problematicCount, len(problematicImages),
+		verifyFailedCount, len(verifyFailedImages))
 
 	switch {
 	case problematicCount > 0:
@@ -886,7 +1145,8 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 	}
 }
 
-// setImpactedObjects sets the ImpactedObjects to only problematic notebooks.
+// setImpactedObjects sets the ImpactedObjects to problematic and custom notebooks.
+// Custom notebooks are included because they require user verification before upgrade.
 // Uses an empty slice (not nil) to prevent validate.Workloads from auto-populating.
 func (c *ImpactedWorkloadsCheck) setImpactedObjects(
 	dr *result.DiagnosticResult,
@@ -895,7 +1155,8 @@ func (c *ImpactedWorkloadsCheck) setImpactedObjects(
 	impacted := make([]metav1.PartialObjectMetadata, 0)
 
 	for _, a := range analyses {
-		if a.Status != ImageStatusProblematic {
+		// Include both problematic (must fix) and custom (needs verification) notebooks
+		if a.Status != ImageStatusProblematic && a.Status != ImageStatusCustom {
 			continue
 		}
 
@@ -906,6 +1167,7 @@ func (c *ImpactedWorkloadsCheck) setImpactedObjects(
 				Name:      a.Name,
 				Annotations: map[string]string{
 					"check.opendatahub.io/image-status": string(a.Status),
+					"check.opendatahub.io/image-ref":    a.ImageRef,
 					"check.opendatahub.io/reason":       a.Reason,
 				},
 			},
@@ -1029,4 +1291,40 @@ func isCompliantBuildRef(buildRef string) bool {
 	}
 
 	return major == minMajor && minor >= minMinor
+}
+
+// debugLogger provides debug logging when enabled.
+// Use debugLogger{} (zero value) for disabled logging.
+type debugLogger struct {
+	io      iostreams.Interface
+	enabled bool
+}
+
+// newDebugLogger creates a debugLogger that logs when enabled is true.
+func newDebugLogger(io iostreams.Interface, enabled bool) debugLogger {
+	return debugLogger{io: io, enabled: enabled}
+}
+
+// logf writes a debug message if logging is enabled and io is not nil.
+func (d debugLogger) logf(format string, args ...any) {
+	if d.enabled && d.io != nil {
+		d.io.Errorf(format, args...)
+	}
+}
+
+// truncateSHA returns a shortened version of a SHA for logging purposes.
+// Returns the first 12 characters of the SHA (after "sha256:" prefix if present).
+func truncateSHA(sha string) string {
+	if sha == "" {
+		return ""
+	}
+
+	// Remove sha256: prefix if present
+	s := strings.TrimPrefix(sha, "sha256:")
+
+	if len(s) > 12 {
+		return s[:12] + "..."
+	}
+
+	return s
 }
