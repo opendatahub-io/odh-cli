@@ -150,11 +150,31 @@ For detailed documentation, see:
 
 ## Building from Source
 
+Build the binary with:
+
 ```bash
 make build
 ```
 
-The binary will be available at `bin/kubectl-odh`.
+The binary will be at `bin/kubectl-odh`. Use this (or `go build -o bin/kubectl-odh cmd/main.go`); do not run `go build .` from the repo root—the main package is in `cmd/`.
+
+**Run commands from the repo root:**
+
+```bash
+# General help
+./bin/kubectl-odh --help
+
+# Migrate (including RayCluster 2.x → 3.x) help
+./bin/kubectl-odh migrate --help
+./bin/kubectl-odh migrate raycluster --help
+./bin/kubectl-odh migrate raycluster pre-upgrade --help
+```
+
+**As a kubectl plugin:** Put `bin/kubectl-odh` in your `PATH` (e.g. `export PATH="$PATH:$(pwd)/bin"`), then run:
+
+```bash
+kubectl odh migrate raycluster --help
+```
 
 ## Building Container Image
 
