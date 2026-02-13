@@ -48,6 +48,7 @@ ENV KUBECONFIG=/kubeconfig
 
 # Install base utilities (tar, gzip, bash, curl-minimal already in ubi base)
 RUN yum install -y \
+    jq \
     wget \
     && yum clean all
 
