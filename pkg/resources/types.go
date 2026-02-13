@@ -120,6 +120,14 @@ var (
 		Resource: "services",
 	}
 
+	// Namespace is the core Kubernetes Namespace resource.
+	Namespace = ResourceType{
+		Group:    "",
+		Version:  "v1",
+		Kind:     "Namespace",
+		Resource: "namespaces",
+	}
+
 	ConfigMap = ResourceType{
 		Group:    "",
 		Version:  "v1",
@@ -258,5 +266,37 @@ var (
 		Version:  "v1alpha1",
 		Kind:     "HardwareProfile",
 		Resource: "hardwareprofiles",
+	}
+
+	// HTTPRoute is the Gateway API HTTPRoute resource (used for Ray dashboard routes).
+	HTTPRoute = ResourceType{
+		Group:    "gateway.networking.k8s.io",
+		Version:  "v1",
+		Kind:     "HTTPRoute",
+		Resource: "httproutes",
+	}
+
+	// Gateway is the Gateway API Gateway resource.
+	Gateway = ResourceType{
+		Group:    "gateway.networking.k8s.io",
+		Version:  "v1",
+		Kind:     "Gateway",
+		Resource: "gateways",
+	}
+
+	// Route is the OpenShift Route resource (exposes Gateway hostname).
+	Route = ResourceType{
+		Group:    "route.openshift.io",
+		Version:  "v1",
+		Kind:     "Route",
+		Resource: "routes",
+	}
+
+	// ServiceAccount is the core Kubernetes ServiceAccount resource.
+	ServiceAccount = ResourceType{
+		Group:    "",
+		Version:  "v1",
+		Kind:     "ServiceAccount",
+		Resource: "serviceaccounts",
 	}
 )

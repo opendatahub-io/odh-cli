@@ -8,6 +8,7 @@ import (
 
 	"github.com/lburgazzoli/odh-cli/cmd/migrate/list"
 	"github.com/lburgazzoli/odh-cli/cmd/migrate/prepare"
+	"github.com/lburgazzoli/odh-cli/cmd/migrate/raycluster"
 	"github.com/lburgazzoli/odh-cli/cmd/migrate/run"
 )
 
@@ -73,6 +74,7 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	list.AddCommand(cmd, flags, streams)
 	prepare.AddCommand(cmd, flags, streams)
 	run.AddCommand(cmd, flags, streams)
+	raycluster.AddCommand(cmd, flags, streams)
 
 	root.AddCommand(cmd)
 }
