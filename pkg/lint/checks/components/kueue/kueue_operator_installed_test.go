@@ -3,16 +3,15 @@ package kueue_test
 import (
 	"testing"
 
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/kueue"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	resultpkg "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/testutil"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kueue"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"

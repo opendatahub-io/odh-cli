@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	mocks "github.com/lburgazzoli/odh-cli/pkg/util/test/mocks/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	mocks "github.com/opendatahub-io/odh-cli/pkg/util/test/mocks/check"
 
 	. "github.com/onsi/gomega"
 )

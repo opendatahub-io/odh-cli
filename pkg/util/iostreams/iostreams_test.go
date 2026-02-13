@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 
 	. "github.com/onsi/gomega"
 )

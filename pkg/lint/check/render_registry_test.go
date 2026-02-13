@@ -7,7 +7,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 
 	. "github.com/onsi/gomega"
 )

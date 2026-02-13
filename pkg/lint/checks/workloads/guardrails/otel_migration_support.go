@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/validate"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 // hasDeprecatedOtelFields returns true if the object contains a non-empty otelExporter section.

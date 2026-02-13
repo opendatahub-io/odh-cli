@@ -6,8 +6,7 @@ import (
 	"fmt"
 
 	"github.com/blang/semver/v4"
-
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // Detect performs priority-based version detection from multiple sources

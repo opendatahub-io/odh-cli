@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/opendatahub-io/odh-cli/internal/version"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-
-	"github.com/lburgazzoli/odh-cli/internal/version"
 )
 
 const (

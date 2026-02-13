@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )
 
 // HasFields checks which of the given JQ expressions resolve to existing (non-nil) fields

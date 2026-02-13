@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 // Resolver resolves dependencies for Kubeflow Notebooks.

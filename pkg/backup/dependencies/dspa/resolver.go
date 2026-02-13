@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 )
 
 const (

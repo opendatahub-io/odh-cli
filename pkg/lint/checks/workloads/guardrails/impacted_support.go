@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 	"sigs.k8s.io/yaml"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 const (

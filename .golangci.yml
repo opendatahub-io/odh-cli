@@ -40,7 +40,7 @@ linters:
   settings:
     wrapcheck:
       ignore-package-globs:
-        - github.com/lburgazzoli/odh-cli/pkg/lint/check/validate
+        - github.com/opendatahub-io/odh-cli/pkg/lint/check/validate
     cyclop:
       max-complexity: 15  # Increased from default 10
     gocognit:
@@ -112,7 +112,7 @@ formatters:
         - blank
         - prefix(k8s.io)
         - blank
-        - prefix(github.com/lburgazzoli/odh-cli)
+        - prefix(github.com/opendatahub-io/odh-cli)
         - blank
         - dot
       custom-order: true

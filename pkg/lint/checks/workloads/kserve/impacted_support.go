@@ -4,16 +4,16 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/validate"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 )
 
 // isImpactedISVC returns true for InferenceServices with Serverless or ModelMesh deployment mode.

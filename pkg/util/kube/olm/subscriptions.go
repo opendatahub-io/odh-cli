@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // SubscriptionInfo contains the subscription fields relevant for matching.

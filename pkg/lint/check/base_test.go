@@ -5,10 +5,9 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
-
-	"github.com/lburgazzoli/odh-cli/pkg/constants"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 
 	. "github.com/onsi/gomega"
 )

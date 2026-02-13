@@ -1,14 +1,13 @@
 package migrate
 
 import (
+	"github.com/opendatahub-io/odh-cli/cmd/migrate/list"
+	"github.com/opendatahub-io/odh-cli/cmd/migrate/prepare"
+	"github.com/opendatahub-io/odh-cli/cmd/migrate/run"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-
-	"github.com/lburgazzoli/odh-cli/cmd/migrate/list"
-	"github.com/lburgazzoli/odh-cli/cmd/migrate/prepare"
-	"github.com/lburgazzoli/odh-cli/cmd/migrate/run"
 )
 
 const (

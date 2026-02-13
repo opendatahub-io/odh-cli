@@ -41,8 +41,8 @@ package dashboard
 import (
     "context"
 
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check"
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 )
 
 type Check struct {
@@ -234,7 +234,7 @@ func (c *Check) CanApply(_ context.Context, target check.Target) (bool, error) {
 Use `result.New()` to create results with flattened metadata:
 
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+import "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 
 dr := result.New(
     "component",           // Group (flattened field)
@@ -260,8 +260,8 @@ Use `check.NewCondition()` to create conditions with automatic Impact derivation
 
 ```go
 import (
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check"
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -371,7 +371,7 @@ All operations on unstructured objects in lint checks MUST use JQ queries via `p
 ### Reading Fields
 
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/util/jq"
+import "github.com/opendatahub-io/odh-cli/pkg/util/jq"
 
 // Read a field value
 result, err := jq.Query(obj, ".spec.components.dashboard.managementState")
@@ -417,7 +417,7 @@ All GroupVersionKind (GVK) and GroupVersionResource (GVR) references in lint che
 ### Accessing Resource Types
 
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/resources"
+import "github.com/opendatahub-io/odh-cli/pkg/resources"
 
 // Get GVK
 gvk := resources.DataScienceCluster.GVK()
@@ -634,7 +634,7 @@ The `pkg/lint/check/validate/` package provides fluent builder APIs that elimina
 `validate.Component()` handles DSC fetching, component state filtering, and annotation population automatically. Use for checks that validate a component's configuration in the DataScienceCluster.
 
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/lint/check/validate"
+import "github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
 
 func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
     return validate.Component(c, target).
@@ -817,10 +817,10 @@ package codeflare
 import (
     "context"
 
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check"
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-    "github.com/lburgazzoli/odh-cli/pkg/lint/check/validate"
-    "github.com/lburgazzoli/odh-cli/pkg/util/version"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
+    "github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
 type RemovalCheck struct {

@@ -9,18 +9,17 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	printerjson "github.com/opendatahub-io/odh-cli/pkg/printer/json"
+	"github.com/opendatahub-io/odh-cli/pkg/printer/table"
+	printeryaml "github.com/opendatahub-io/odh-cli/pkg/printer/yaml"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	printerjson "github.com/lburgazzoli/odh-cli/pkg/printer/json"
-	"github.com/lburgazzoli/odh-cli/pkg/printer/table"
-	printeryaml "github.com/lburgazzoli/odh-cli/pkg/printer/yaml"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 )
 
 // OutputFormat represents the output format for lint commands.

@@ -3,14 +3,13 @@ package servicemeshoperator_test
 import (
 	"testing"
 
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/testutil"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"

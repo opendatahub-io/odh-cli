@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/confirmation"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action"
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/confirmation"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube/olm"
 )
 
 const (

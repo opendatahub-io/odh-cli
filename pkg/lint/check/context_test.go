@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 
 	. "github.com/onsi/gomega"
 )

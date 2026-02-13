@@ -3,10 +3,10 @@ package kube_test
 import (
 	"testing"
 
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"

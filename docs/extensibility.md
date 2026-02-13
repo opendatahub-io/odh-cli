@@ -40,7 +40,7 @@ import (
     "os"
     "github.com/spf13/cobra"
     "k8s.io/cli-runtime/pkg/genericclioptions"
-    pkgcmd "github.com/lburgazzoli/odh-cli/pkg/cmd/mycommand"
+    pkgcmd "github.com/opendatahub-io/odh-cli/pkg/cmd/mycommand"
 )
 
 const (
@@ -93,7 +93,7 @@ import (
     "context"
     "fmt"
     "k8s.io/cli-runtime/pkg/genericclioptions"
-    utilclient "github.com/lburgazzoli/odh-cli/pkg/util/client"
+    utilclient "github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 type MyCommandOptions struct {

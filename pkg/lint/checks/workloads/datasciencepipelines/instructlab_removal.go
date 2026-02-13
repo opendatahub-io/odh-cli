@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/components"
+	"github.com/opendatahub-io/odh-cli/pkg/util/inspect"
+	"github.com/opendatahub-io/odh-cli/pkg/util/version"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/lburgazzoli/odh-cli/pkg/constants"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/validate"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/components"
-	"github.com/lburgazzoli/odh-cli/pkg/util/inspect"
-	"github.com/lburgazzoli/odh-cli/pkg/util/version"
 )
 
 const (

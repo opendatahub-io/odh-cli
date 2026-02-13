@@ -7,18 +7,17 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies/dspa"
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies/notebooks"
+	"github.com/opendatahub-io/odh-cli/pkg/backup/pipeline"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies"
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies/dspa"
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies/notebooks"
-	"github.com/lburgazzoli/odh-cli/pkg/backup/pipeline"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube"
 )
 
 const (

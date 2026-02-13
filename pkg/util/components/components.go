@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/lburgazzoli/odh-cli/pkg/constants"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 // GetManagementState queries a DSC component's management state.

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action"
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 )
 
 type runTask struct {
