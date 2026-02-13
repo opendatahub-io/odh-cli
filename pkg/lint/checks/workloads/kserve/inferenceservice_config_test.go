@@ -1,6 +1,7 @@
 package kserve_test
 
 import (
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,7 +11,7 @@ import (
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 	"github.com/lburgazzoli/odh-cli/pkg/lint/check/testutil"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/kserve"
+	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/workloads/kserve"
 	"github.com/lburgazzoli/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
@@ -78,30 +79,47 @@ func TestInferenceServiceConfigCheck_ConfigMapNotFound(t *testing.T) {
 	}))
 }
 
-func TestInferenceServiceConfigCheck_ConfigMapManagedFalse(t *testing.T) {
+func TestInferenceServiceConfigCheck_ConfigMapManagedFalseWithAnnotations(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// Create DSC with kserve managed
 	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
-	// Create DSCInitialization and ConfigMap with managed=false annotation
 	dsci := testutil.NewDSCI("opendatahub")
-	configMap := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.ConfigMap.APIVersion(),
-			"kind":       resources.ConfigMap.Kind,
-			"metadata": map[string]any{
-				"name":      "inferenceservice-config",
-				"namespace": "opendatahub",
-				"annotations": map[string]any{
-					"opendatahub.io/managed": "false",
-				},
-			},
-			"data": map[string]any{
-				"key": "value",
-			},
-		},
-	}
+	configMap := newInferenceServiceConfigMap("opendatahub", map[string]any{
+		"opendatahub.io/managed": "false",
+	}, inferenceServiceDataWithAnnotations(
+		"opendatahub.io/hardware-profile-name",
+		"opendatahub.io/hardware-profile-namespace",
+	))
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
+	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(checkResult.Status.Conditions).To(HaveLen(1))
+	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonVersionCompatible),
+	}))
+}
+
+func TestInferenceServiceConfigCheck_ConfigMapManagedFalseMissingAnnotations(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
+	dsci := testutil.NewDSCI("opendatahub")
+	// managed=false but no hardware-profile annotations in disallowed list
+	configMap := newInferenceServiceConfigMap("opendatahub", map[string]any{
+		"opendatahub.io/managed": "false",
+	}, inferenceServiceDataWithAnnotations())
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      inferenceServiceConfigListKinds,
 		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
@@ -118,9 +136,70 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedFalse(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeConfigured),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
-		"Message": And(ContainSubstring("opendatahub.io/managed"), ContainSubstring("=false"), ContainSubstring("out of sync")),
+		"Message": And(ContainSubstring("hardware-profile-name"), ContainSubstring("hardware-profile-namespace")),
 	}))
-	// Verify it's advisory (non-blocking)
+	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
+}
+
+func TestInferenceServiceConfigCheck_ConfigMapManagedFalsePartialAnnotations(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
+	dsci := testutil.NewDSCI("opendatahub")
+	// managed=false but only one of two required hardware-profile annotations
+	configMap := newInferenceServiceConfigMap("opendatahub", map[string]any{
+		"opendatahub.io/managed": "false",
+	}, inferenceServiceDataWithAnnotations("opendatahub.io/hardware-profile-name"))
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
+	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(checkResult.Status.Conditions).To(HaveLen(1))
+	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonConfigurationInvalid),
+		"Message": And(ContainSubstring("hardware-profile-namespace"), Not(ContainSubstring("hardware-profile-name,"))),
+	}))
+	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
+}
+
+func TestInferenceServiceConfigCheck_ConfigMapManagedFalseNoDataKey(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
+	dsci := testutil.NewDSCI("opendatahub")
+	// managed=false but no inferenceService data key at all
+	configMap := newInferenceServiceConfigMap("opendatahub", map[string]any{
+		"opendatahub.io/managed": "false",
+	}, "")
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      inferenceServiceConfigListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
+	checkResult, err := inferenceConfigCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(checkResult.Status.Conditions).To(HaveLen(1))
+	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonConfigurationInvalid),
+		"Message": And(ContainSubstring("hardware-profile-name"), ContainSubstring("hardware-profile-namespace")),
+	}))
 	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
 }
 
@@ -128,26 +207,11 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedTrue(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// Create DSC with kserve managed
 	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
-	// Create DSCInitialization and ConfigMap with managed=true annotation
 	dsci := testutil.NewDSCI("opendatahub")
-	configMap := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.ConfigMap.APIVersion(),
-			"kind":       resources.ConfigMap.Kind,
-			"metadata": map[string]any{
-				"name":      "inferenceservice-config",
-				"namespace": "opendatahub",
-				"annotations": map[string]any{
-					"opendatahub.io/managed": "true",
-				},
-			},
-			"data": map[string]any{
-				"key": "value",
-			},
-		},
-	}
+	configMap := newInferenceServiceConfigMap("opendatahub", map[string]any{
+		"opendatahub.io/managed": "true",
+	}, inferenceServiceDataWithAnnotations())
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      inferenceServiceConfigListKinds,
 		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
@@ -161,34 +225,21 @@ func TestInferenceServiceConfigCheck_ConfigMapManagedTrue(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(checkResult.Status.Conditions).To(HaveLen(1))
 	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("managed by operator"),
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonConfigurationUnmanaged),
+		"Message": ContainSubstring("opendatahub.io/managed"),
 	}))
+	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
 }
 
 func TestInferenceServiceConfigCheck_ConfigMapNoAnnotation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// Create DSC with kserve managed
 	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
-	// Create DSCInitialization and ConfigMap without the managed annotation
 	dsci := testutil.NewDSCI("opendatahub")
-	configMap := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.ConfigMap.APIVersion(),
-			"kind":       resources.ConfigMap.Kind,
-			"metadata": map[string]any{
-				"name":      "inferenceservice-config",
-				"namespace": "opendatahub",
-			},
-			"data": map[string]any{
-				"key": "value",
-			},
-		},
-	}
+	configMap := newInferenceServiceConfigMap("opendatahub", nil, inferenceServiceDataWithAnnotations())
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      inferenceServiceConfigListKinds,
 		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
@@ -202,35 +253,21 @@ func TestInferenceServiceConfigCheck_ConfigMapNoAnnotation(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(checkResult.Status.Conditions).To(HaveLen(1))
 	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("managed by operator"),
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonConfigurationUnmanaged),
+		"Message": ContainSubstring("opendatahub.io/managed"),
 	}))
+	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
 }
 
 func TestInferenceServiceConfigCheck_ConfigMapEmptyAnnotations(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	// Create DSC with kserve managed
 	dsc := testutil.NewDSC(map[string]string{"kserve": "Managed"})
-	// Create DSCInitialization and ConfigMap with empty annotations
 	dsci := testutil.NewDSCI("opendatahub")
-	configMap := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.ConfigMap.APIVersion(),
-			"kind":       resources.ConfigMap.Kind,
-			"metadata": map[string]any{
-				"name":        "inferenceservice-config",
-				"namespace":   "opendatahub",
-				"annotations": map[string]any{},
-			},
-			"data": map[string]any{
-				"key": "value",
-			},
-		},
-	}
+	configMap := newInferenceServiceConfigMap("opendatahub", map[string]any{}, inferenceServiceDataWithAnnotations())
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      inferenceServiceConfigListKinds,
 		Objects:        []*unstructured.Unstructured{dsc, dsci, configMap},
@@ -244,11 +281,12 @@ func TestInferenceServiceConfigCheck_ConfigMapEmptyAnnotations(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(checkResult.Status.Conditions).To(HaveLen(1))
 	g.Expect(checkResult.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("managed by operator"),
+		"Type":    Equal(check.ConditionTypeConfigured),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonConfigurationUnmanaged),
+		"Message": ContainSubstring("opendatahub.io/managed"),
 	}))
+	g.Expect(checkResult.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
 }
 
 func TestInferenceServiceConfigCheck_DSCINoNamespace(t *testing.T) {
@@ -314,9 +352,9 @@ func TestInferenceServiceConfigCheck_Metadata(t *testing.T) {
 
 	inferenceConfigCheck := kserve.NewInferenceServiceConfigCheck()
 
-	g.Expect(inferenceConfigCheck.ID()).To(Equal("components.kserve.inferenceservice-config"))
-	g.Expect(inferenceConfigCheck.Name()).To(Equal("Components :: KServe :: InferenceService Config Migration"))
-	g.Expect(inferenceConfigCheck.Group()).To(Equal(check.GroupComponent))
+	g.Expect(inferenceConfigCheck.ID()).To(Equal("workloads.kserve.inferenceservice-config"))
+	g.Expect(inferenceConfigCheck.Name()).To(Equal("Workloads :: KServe :: InferenceService Config Migration"))
+	g.Expect(inferenceConfigCheck.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(inferenceConfigCheck.Description()).ToNot(BeEmpty())
 }
 
@@ -389,4 +427,51 @@ func TestInferenceServiceConfigCheck_CanApply_ManagementState(t *testing.T) {
 			g.Expect(canApply).To(Equal(tc.expected))
 		})
 	}
+}
+
+// newInferenceServiceConfigMap creates a test ConfigMap fixture.
+// If annotations is nil, no annotations are set.
+// If inferenceServiceData is empty, no inferenceService data key is set.
+func newInferenceServiceConfigMap(
+	namespace string,
+	annotations map[string]any,
+	inferenceServiceData string,
+) *unstructured.Unstructured {
+	metadata := map[string]any{
+		"name":      "inferenceservice-config",
+		"namespace": namespace,
+	}
+
+	if annotations != nil {
+		metadata["annotations"] = annotations
+	}
+
+	data := map[string]any{}
+	if inferenceServiceData != "" {
+		data["inferenceService"] = inferenceServiceData
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.ConfigMap.APIVersion(),
+			"kind":       resources.ConfigMap.Kind,
+			"metadata":   metadata,
+			"data":       data,
+		},
+	}
+}
+
+// inferenceServiceDataWithAnnotations builds a JSON string for the inferenceService
+// data key with the given annotations in serviceAnnotationDisallowedList.
+func inferenceServiceDataWithAnnotations(annotations ...string) string {
+	if len(annotations) == 0 {
+		return `{"serviceAnnotationDisallowedList": []}`
+	}
+
+	quoted := make([]string, 0, len(annotations))
+	for _, a := range annotations {
+		quoted = append(quoted, `"`+a+`"`)
+	}
+
+	return `{"serviceAnnotationDisallowedList": [` + strings.Join(quoted, ", ") + `]}`
 }
