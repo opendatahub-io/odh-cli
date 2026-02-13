@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"github.com/blang/semver/v4"
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // DetectOpenShiftVersion queries the OpenShift ClusterVersion resource to determine the cluster version.

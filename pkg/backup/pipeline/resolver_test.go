@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
 	"github.com/opendatahub-io/odh-cli/pkg/backup/pipeline"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	. "github.com/onsi/gomega"
 )

@@ -3,9 +3,9 @@ package migrate_test
 import (
 	"testing"
 
-	"github.com/opendatahub-io/odh-cli/pkg/migrate"
-
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+
+	"github.com/opendatahub-io/odh-cli/pkg/migrate"
 
 	. "github.com/onsi/gomega"
 )

@@ -3,11 +3,12 @@ package backup
 import (
 	"fmt"
 
-	backuppkg "github.com/opendatahub-io/odh-cli/pkg/backup"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+
+	backuppkg "github.com/opendatahub-io/odh-cli/pkg/backup"
 )
 
 const (

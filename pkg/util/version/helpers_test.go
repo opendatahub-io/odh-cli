@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 
 	. "github.com/onsi/gomega"

@@ -6,12 +6,6 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
-	"github.com/opendatahub-io/odh-cli/pkg/constants"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
@@ -20,6 +14,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"

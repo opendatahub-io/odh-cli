@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/blang/semver/v4"
+
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 

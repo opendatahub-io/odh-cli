@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // DiscoveryStage lists workload instances and sends them to output channel.

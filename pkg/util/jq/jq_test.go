@@ -3,9 +3,9 @@ package jq_test
 import (
 	"testing"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 
 	. "github.com/onsi/gomega"
 )

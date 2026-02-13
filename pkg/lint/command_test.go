@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/opendatahub-io/odh-cli/pkg/cmd"
-	"github.com/opendatahub-io/odh-cli/pkg/lint"
 	"github.com/spf13/pflag"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+
+	"github.com/opendatahub-io/odh-cli/pkg/cmd"
+	"github.com/opendatahub-io/odh-cli/pkg/lint"
 
 	. "github.com/onsi/gomega"
 )

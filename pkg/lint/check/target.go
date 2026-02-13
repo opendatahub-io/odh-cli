@@ -2,10 +2,11 @@ package check
 
 import (
 	"github.com/blang/semver/v4"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 // Target holds all context needed for executing diagnostic checks, including cluster version and optional resource.

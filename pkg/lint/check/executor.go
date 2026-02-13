@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
-	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 // CheckExecution bundles a check with its execution result and any error encountered.

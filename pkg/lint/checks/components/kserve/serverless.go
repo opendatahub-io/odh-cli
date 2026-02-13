@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
@@ -13,8 +15,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const checkType = "serverless-removal"

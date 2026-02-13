@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"

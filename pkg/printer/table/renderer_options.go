@@ -6,6 +6,7 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
+
 	"github.com/opendatahub-io/odh-cli/pkg/util"
 	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )

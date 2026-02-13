@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // DiscoverWorkloads discovers user-created workload resources via CRD labels

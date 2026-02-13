@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	olmclientset "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned"
 
@@ -15,6 +14,8 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/metadata"
+
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
 )
 
 // Reader provides read-only access to Kubernetes resources.

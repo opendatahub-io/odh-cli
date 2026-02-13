@@ -3,9 +3,9 @@ package inspect_test
 import (
 	"testing"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/inspect"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/inspect"
 
 	. "github.com/onsi/gomega"
 )

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 // WriteResourceFunc is a function that writes a resource.

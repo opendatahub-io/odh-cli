@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"golang.org/x/sync/errgroup"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
+
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // FetchResourcesByName fetches resources by name from the cluster (parallel version).

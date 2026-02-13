@@ -3,10 +3,10 @@ package dependencies
 import (
 	"context"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // Dependency represents a discovered dependency resource.

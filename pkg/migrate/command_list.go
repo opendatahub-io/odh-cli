@@ -7,16 +7,17 @@ import (
 	"fmt"
 
 	"github.com/blang/semver/v4"
+	"github.com/spf13/pflag"
+	"sigs.k8s.io/yaml"
+
+	"k8s.io/cli-runtime/pkg/genericiooptions"
+
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
 	"github.com/opendatahub-io/odh-cli/pkg/printer/table"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
-	"github.com/spf13/pflag"
-	"sigs.k8s.io/yaml"
-
-	"k8s.io/cli-runtime/pkg/genericiooptions"
 )
 
 var _ cmd.Command = (*ListCommand)(nil)

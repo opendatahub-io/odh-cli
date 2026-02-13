@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )
 
 // DetectFromDataScienceCluster attempts to detect version from DataScienceCluster resource
