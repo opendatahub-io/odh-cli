@@ -3,12 +3,11 @@ package lint
 import (
 	"fmt"
 
+	lintpkg "github.com/opendatahub-io/odh-cli/pkg/lint"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-
-	lintpkg "github.com/lburgazzoli/odh-cli/pkg/lint"
 )
 
 const (

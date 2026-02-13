@@ -4,17 +4,16 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/dashboard"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/lburgazzoli/odh-cli/pkg/constants"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/testutil"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/checks/components/dashboard"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 func Prompt(io iostreams.Interface, message string) bool {

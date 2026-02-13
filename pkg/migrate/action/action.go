@@ -4,10 +4,9 @@ import (
 	"context"
 
 	"github.com/blang/semver/v4"
-
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 type ActionGroup string

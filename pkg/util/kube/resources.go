@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
 )
 
 // ToUnstructured converts a typed Kubernetes object to *unstructured.Unstructured.

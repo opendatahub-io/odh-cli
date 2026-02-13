@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 // stepRecorderImpl implements both StepRecorder and RootRecorder interfaces.

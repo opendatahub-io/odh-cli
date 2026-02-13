@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	printerjson "github.com/lburgazzoli/odh-cli/pkg/printer/json"
+	printerjson "github.com/opendatahub-io/odh-cli/pkg/printer/json"
 )
 
 type testStruct struct {

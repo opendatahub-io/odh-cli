@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/opendatahub-io/odh-cli/pkg/printer/yaml"
 	k8syaml "sigs.k8s.io/yaml"
-
-	"github.com/lburgazzoli/odh-cli/pkg/printer/yaml"
 )
 
 type testStruct struct {

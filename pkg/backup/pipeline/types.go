@@ -1,10 +1,10 @@
 package pipeline
 
 import (
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies"
 )
 
 // WorkloadItem represents a workload instance to back up.

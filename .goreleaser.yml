@@ -25,9 +25,9 @@ builds:
       - goos: darwin
         goarch: amd64
     ldflags:
-      - -X 'github.com/lburgazzoli/odh-cli/internal/version.Version={{.Version}}'
-      - -X 'github.com/lburgazzoli/odh-cli/internal/version.Commit={{.Commit}}'
-      - -X 'github.com/lburgazzoli/odh-cli/internal/version.Date={{.Date}}'
+      - -X 'github.com/opendatahub-io/odh-cli/internal/version.Version={{.Version}}'
+      - -X 'github.com/opendatahub-io/odh-cli/internal/version.Commit={{.Commit}}'
+      - -X 'github.com/opendatahub-io/odh-cli/internal/version.Date={{.Date}}'
 
 archives:
   - format: tar.gz

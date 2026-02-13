@@ -116,7 +116,7 @@ type ActionStep struct {
 **File:** `cmd/migrate/migrate.go`
 
 Cobra command wrapper with:
-- Blank imports for action auto-registration (e.g., `_ "github.com/lburgazzoli/odh-cli/pkg/migrate/actions/kueue/rhbok"`)
+- Blank imports for action auto-registration (e.g., `_ "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"`)
 - Three-phase execution: Complete → Validate → Run
 - Pattern from `cmd/lint/lint.go:83-140`
 
@@ -351,7 +351,7 @@ InstallPlan = ResourceType{
 Add after lint registration:
 ```go
 import (
-    "github.com/lburgazzoli/odh-cli/cmd/migrate"
+    "github.com/opendatahub-io/odh-cli/cmd/migrate"
 )
 
 func main() {
@@ -398,7 +398,7 @@ func init() {
 
 // In cmd/migrate/migrate.go
 import (
-    _ "github.com/lburgazzoli/odh-cli/pkg/migrate/actions/kueue/rhbok"
+    _ "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
 )
 ```
 

@@ -3,10 +3,9 @@ package mocks
 import (
 	"context"
 
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/stretchr/testify/mock"
-
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
 )
 
 // MockCheck is a mock implementation of check.Check interface using testify/mock.

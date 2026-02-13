@@ -1,4 +1,4 @@
-module github.com/lburgazzoli/odh-cli
+module github.com/opendatahub-io/odh-cli
 
 go 1.25.7
 

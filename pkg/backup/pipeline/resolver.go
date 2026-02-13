@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies"
-	"github.com/lburgazzoli/odh-cli/pkg/util/client"
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 )
 
 // ResolverStage resolves dependencies for workload instances.

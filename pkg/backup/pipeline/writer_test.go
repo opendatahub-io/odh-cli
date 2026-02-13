@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opendatahub-io/odh-cli/pkg/backup/dependencies"
+	"github.com/opendatahub-io/odh-cli/pkg/backup/pipeline"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup/dependencies"
-	"github.com/lburgazzoli/odh-cli/pkg/backup/pipeline"
-	"github.com/lburgazzoli/odh-cli/pkg/util/iostreams"
 
 	. "github.com/onsi/gomega"
 )

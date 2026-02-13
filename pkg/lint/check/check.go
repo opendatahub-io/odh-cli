@@ -3,7 +3,7 @@ package check
 import (
 	"context"
 
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 )
 
 // CheckGroup classifies checks into logical groups (component, service, workload, dependency).
@@ -40,7 +40,7 @@ var CanonicalGroupOrder = []CheckGroup{
 //
 // Example using the CR pattern:
 //
-//	import "github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+//	import "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 //
 //	diagnostic := result.New(
 //	    "components",           // Group: diagnostic category

@@ -114,7 +114,7 @@ All operations on `unstructured.Unstructured` objects must use JQ queries via `p
 
 **Required:**
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/util/jq"
+import "github.com/opendatahub-io/odh-cli/pkg/util/jq"
 
 result, err := jq.Query(obj, ".spec.fieldName")
 ```
@@ -135,7 +135,7 @@ All GroupVersionKind (GVK) and GroupVersionResource (GVR) references must use de
 
 **Required:**
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/resources"
+import "github.com/opendatahub-io/odh-cli/pkg/resources"
 
 gvk := resources.DataScienceCluster.GVK()
 gvr := resources.DataScienceCluster.GVR()
@@ -194,7 +194,7 @@ When you only need resource metadata (name, namespace, labels, annotations) and 
 
 **Use `Client.ListMetadata()` for discovery:**
 ```go
-import "github.com/lburgazzoli/odh-cli/pkg/resources"
+import "github.com/opendatahub-io/odh-cli/pkg/resources"
 
 // Efficiently list only metadata (no spec/status)
 notebooks, err := client.ListMetadata(ctx, resources.Notebook)

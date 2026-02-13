@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lburgazzoli/odh-cli/pkg/printer/table"
+	"github.com/opendatahub-io/odh-cli/pkg/printer/table"
 
 	. "github.com/onsi/gomega"
 )

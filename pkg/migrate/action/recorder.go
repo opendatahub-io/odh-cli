@@ -1,6 +1,6 @@
 package action
 
-import "github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
+import "github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 
 // StepRecorder provides methods to record migration steps hierarchically.
 // Each recorder represents a step in the migration process and can create child recorders for sub-steps.

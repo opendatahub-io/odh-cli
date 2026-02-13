@@ -12,14 +12,14 @@ Run the CLI using the pre-built container image:
 ```bash
 podman run --rm -ti \
   -v $KUBECONFIG:/kubeconfig \
-  quay.io/lburgazzoli/odh-cli:latest lint --target-version 3.3.0
+  quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest lint --target-version 3.3.0
 ```
 
 **Docker:**
 ```bash
 docker run --rm -ti \
   -v $KUBECONFIG:/kubeconfig \
-  quay.io/lburgazzoli/odh-cli:latest lint --target-version 3.3.0
+  quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest lint --target-version 3.3.0
 ```
 
 The container has `KUBECONFIG=/kubeconfig` set by default, so you just need to mount your kubeconfig to that path.
@@ -29,12 +29,12 @@ The container has `KUBECONFIG=/kubeconfig` set by default, so you just need to m
 > # Podman
 > podman run --rm -ti \
 >   -v $KUBECONFIG:/kubeconfig:Z \
->   quay.io/lburgazzoli/odh-cli:latest lint --target-version 3.3.0
+>   quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest lint --target-version 3.3.0
 >
 > # Docker
 > docker run --rm -ti \
 >   -v $KUBECONFIG:/kubeconfig:Z \
->   quay.io/lburgazzoli/odh-cli:latest lint --target-version 3.3.0
+>   quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest lint --target-version 3.3.0
 > ```
 
 **Available Tags:**
@@ -53,7 +53,7 @@ The container includes kubectl, oc, and debugging utilities for interactive trou
 podman run -it --rm \
   -v $KUBECONFIG:/kubeconfig \
   --entrypoint /bin/bash \
-  quay.io/lburgazzoli/odh-cli:latest
+  quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest
 ```
 
 **Docker:**
@@ -61,7 +61,7 @@ podman run -it --rm \
 docker run -it --rm \
   -v $KUBECONFIG:/kubeconfig \
   --entrypoint /bin/bash \
-  quay.io/lburgazzoli/odh-cli:latest
+  quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest
 ```
 
 Once inside the container, use kubectl/oc/wget/curl:
@@ -80,7 +80,7 @@ For environments where you have a token and server URL instead of a kubeconfig f
 **Podman:**
 ```bash
 podman run --rm -ti \
-  quay.io/lburgazzoli/odh-cli:latest \
+  quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest \
   lint \
   --target-version 3.3.0 \
   --token=sha256~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
@@ -90,7 +90,7 @@ podman run --rm -ti \
 **Docker:**
 ```bash
 docker run --rm -ti \
-  quay.io/lburgazzoli/odh-cli:latest \
+  quay.io/rhoai/rhoai-upgrade-helpers-rhel9:latest \
   lint \
   --target-version 3.3.0 \
   --token=sha256~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
@@ -103,13 +103,13 @@ If you have Go installed, you can run the CLI directly from GitHub without cloni
 
 ```bash
 # Show help
-go run github.com/lburgazzoli/odh-cli/cmd@latest --help
+go run github.com/opendatahub-io/odh-cli/cmd@latest --help
 
 # Show version
-go run github.com/lburgazzoli/odh-cli/cmd@latest version
+go run github.com/opendatahub-io/odh-cli/cmd@latest version
 
 # Run lint command
-go run github.com/lburgazzoli/odh-cli/cmd@latest lint --target-version 3.3.0
+go run github.com/opendatahub-io/odh-cli/cmd@latest lint --target-version 3.3.0
 ```
 
 > **Note:** Replace `@latest` with `@v1.2.3` to run a specific version, or `@main` for the latest development version.
@@ -117,7 +117,7 @@ go run github.com/lburgazzoli/odh-cli/cmd@latest lint --target-version 3.3.0
 **Token Authentication:**
 
 ```bash
-go run github.com/lburgazzoli/odh-cli/cmd@latest \
+go run github.com/opendatahub-io/odh-cli/cmd@latest \
   lint \
   --target-version 3.3.0 \
   --token=sha256~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 )
 
 type ActionExecution struct {

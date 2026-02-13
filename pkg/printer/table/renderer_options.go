@@ -6,9 +6,8 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
-
-	"github.com/lburgazzoli/odh-cli/pkg/util"
-	"github.com/lburgazzoli/odh-cli/pkg/util/jq"
+	"github.com/opendatahub-io/odh-cli/pkg/util"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )
 
 const (

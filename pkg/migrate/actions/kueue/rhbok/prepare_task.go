@@ -5,14 +5,14 @@ import (
 	"errors"
 	"path/filepath"
 
+	"github.com/opendatahub-io/odh-cli/pkg/backup"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/lburgazzoli/odh-cli/pkg/backup"
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action"
-	"github.com/lburgazzoli/odh-cli/pkg/migrate/action/result"
-	"github.com/lburgazzoli/odh-cli/pkg/resources"
 )
 
 type prepareTask struct {

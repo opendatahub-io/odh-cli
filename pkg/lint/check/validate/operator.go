@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"slices"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check"
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
-	"github.com/lburgazzoli/odh-cli/pkg/util/kube/olm"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ConditionBuilder is a function that creates a condition based on operator presence and version.

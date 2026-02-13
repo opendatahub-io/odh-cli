@@ -126,7 +126,7 @@ package version
 import (
     "context"
     "github.com/stretchr/testify/mock"
-    "github.com/lburgazzoli/odh-cli/pkg/lint/version"
+    "github.com/opendatahub-io/odh-cli/pkg/lint/version"
 )
 
 type MockDetector struct {
@@ -145,7 +145,7 @@ func (m *MockDetector) Detect(ctx context.Context) (*version.ClusterVersion, err
 **Usage in Tests:**
 ```go
 import (
-    mockversion "github.com/lburgazzoli/odh-cli/pkg/util/test/mocks/version"
+    mockversion "github.com/opendatahub-io/odh-cli/pkg/util/test/mocks/version"
 )
 
 func TestWithMock(t *testing.T) {

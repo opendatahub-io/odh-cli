@@ -1,7 +1,7 @@
 package check
 
 import (
-	"github.com/lburgazzoli/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 )
 
 // BaseCheck provides common check metadata and functionality through composition.

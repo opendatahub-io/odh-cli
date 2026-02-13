@@ -9,16 +9,16 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Build flags
-LDFLAGS = -X 'github.com/lburgazzoli/odh-cli/internal/version.Version=$(VERSION)' \
-          -X 'github.com/lburgazzoli/odh-cli/internal/version.Commit=$(COMMIT)' \
-          -X 'github.com/lburgazzoli/odh-cli/internal/version.Date=$(DATE)'
+LDFLAGS = -X 'github.com/opendatahub-io/odh-cli/internal/version.Version=$(VERSION)' \
+          -X 'github.com/opendatahub-io/odh-cli/internal/version.Commit=$(COMMIT)' \
+          -X 'github.com/opendatahub-io/odh-cli/internal/version.Date=$(DATE)'
 
 # Linter configuration
 LINT_TIMEOUT := 10m
 
 # Container registry configuration
 CONTAINER_REGISTRY ?= quay.io
-CONTAINER_REPO ?= $(CONTAINER_REGISTRY)/lburgazzoli/odh-cli
+CONTAINER_REPO ?= $(CONTAINER_REGISTRY)/rhoai/rhoai-upgrade-helpers-rhel9
 CONTAINER_PLATFORMS ?= linux/amd64,linux/arm64
 CONTAINER_TAGS ?= $(VERSION)
 
