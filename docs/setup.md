@@ -52,6 +52,14 @@ make clean
 - ❌ `gofmt` - Use `make fmt` instead
 - ❌ `goimports` - Use `make fmt` instead
 
+## Building Container Image
+
+```bash
+make publish
+```
+
+This builds a multi-platform container image (linux/amd64, linux/arm64).
+
 ## Test Commands
 
 ```bash
