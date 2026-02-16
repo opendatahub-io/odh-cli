@@ -46,11 +46,18 @@ ARG TARGETARCH
 # Users can override this with -e KUBECONFIG=<path> when running the container
 ENV KUBECONFIG=/kubeconfig
 
-# Install base utilities (tar, gzip, bash, curl-minimal already in ubi base)
+# Install base utilities (jq, wget, python3, python3-pip)
 RUN yum install -y \
     jq \
     wget \
+    python3 \
+    python3-pip \
     && yum clean all
+
+# Python deps for ray_cluster_migration.py (kubernetes, PyYAML)
+RUN python3 -m pip install --no-cache-dir \
+    'kubernetes>=28.1.0' \
+    'PyYAML>=6.0'
 
 # Install kubectl with multi-arch support (latest stable version)
 RUN set -e; \
