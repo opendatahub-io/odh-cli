@@ -84,6 +84,6 @@ func (c *ImpactedWorkloadsCheck) newAppWrapperCondition(
 		ConditionTypeAppWrapperCompatible,
 		metav1.ConditionTrue,
 		check.WithReason(check.ReasonVersionCompatible),
-		check.WithMessage("No AppWrapper(s) found - ready for RHOAI 3.x upgrade"),
+		check.WithMessage("No AppWrapper(s) found - ready for RHOAI %s upgrade", version.MajorMinorLabel(req.TargetVersion)),
 	)}, nil
 }

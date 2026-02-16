@@ -106,7 +106,7 @@ func TestManagementStateCheck_UnmanagedAllowed(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("compatible with RHOAI 3.x"),
+		"Message": ContainSubstring("compatible with RHOAI 3.1"),
 	}))
 }
 

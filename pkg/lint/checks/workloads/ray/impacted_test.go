@@ -88,7 +88,7 @@ func TestImpactedWorkloadsCheck_WithCodeFlareFinalizer(t *testing.T) {
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
 			ContainSubstring("Found 1 CodeFlare-managed RayCluster(s)"),
-			ContainSubstring("will be impacted in RHOAI 3.x"),
+			ContainSubstring("will be impacted in RHOAI 3.0"),
 		),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
@@ -230,7 +230,7 @@ func TestImpactedWorkloadsCheck_MultipleClusters(t *testing.T) {
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
 			ContainSubstring("Found 2 CodeFlare-managed RayCluster(s)"),
-			ContainSubstring("will be impacted in RHOAI 3.x"),
+			ContainSubstring("will be impacted in RHOAI 3.0"),
 		),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))

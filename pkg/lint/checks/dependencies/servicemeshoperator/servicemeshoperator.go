@@ -41,17 +41,19 @@ func (c *Check) CanApply(_ context.Context, target check.Target) (bool, error) {
 }
 
 func (c *Check) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+	tv := version.MajorMinorLabel(target.TargetVersion)
+
 	return validate.Operator(c, target).
 		WithNames("servicemeshoperator").
 		WithChannels("stable", "v2.x").
-		WithConditionBuilder(func(found bool, version string) result.Condition {
+		WithConditionBuilder(func(found bool, operatorVersion string) result.Condition {
 			// Inverted logic: NOT finding the operator is good.
 			if !found {
 				return check.NewCondition(
 					check.ConditionTypeCompatible,
 					metav1.ConditionTrue,
 					check.WithReason(check.ReasonVersionCompatible),
-					check.WithMessage("Service Mesh Operator v2 is not installed - ready for RHOAI 3.x upgrade"),
+					check.WithMessage("Service Mesh Operator v2 is not installed - ready for RHOAI %s upgrade", tv),
 				)
 			}
 
@@ -59,7 +61,7 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 				check.ConditionTypeCompatible,
 				metav1.ConditionFalse,
 				check.WithReason(check.ReasonVersionIncompatible),
-				check.WithMessage("Service Mesh Operator v2 (%s) is installed but no longer required by RHOAI 3.x and should be removed. OpenShift 4.19+ handles service mesh internally", version),
+				check.WithMessage("Service Mesh Operator v2 (%s) is installed but no longer required by RHOAI %s and should be removed. OpenShift 4.19+ handles service mesh internally", operatorVersion, tv),
 			)
 		}).
 		Run(ctx)

@@ -199,6 +199,45 @@ func TestIsVersionAtLeast(t *testing.T) {
 	}
 }
 
+func TestMajorMinorLabel(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  *semver.Version
+		expected string
+	}{
+		{
+			name:     "nil version returns unknown",
+			version:  nil,
+			expected: "unknown",
+		},
+		{
+			name:     "3.0.0 returns 3.0",
+			version:  toVersionPtr("3.0.0"),
+			expected: "3.0",
+		},
+		{
+			name:     "3.3.1 returns 3.3",
+			version:  toVersionPtr("3.3.1"),
+			expected: "3.3",
+		},
+		{
+			name:     "2.17.0 returns 2.17",
+			version:  toVersionPtr("2.17.0"),
+			expected: "2.17",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			result := version.MajorMinorLabel(tt.version)
+
+			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
 func toVersionPtr(versionStr string) *semver.Version {
 	v := semver.MustParse(versionStr)
 

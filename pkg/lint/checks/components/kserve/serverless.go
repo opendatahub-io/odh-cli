@@ -56,6 +56,7 @@ func (c *ServerlessRemovalCheck) CanApply(ctx context.Context, target check.Targ
 func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	return validate.Component(c, target).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
+			tv := version.MajorMinorLabel(req.TargetVersion)
 			state, err := jq.Query[string](req.DSC, ".spec.components.kserve.serving.managementState")
 
 			switch {
@@ -64,7 +65,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 					check.ConditionTypeCompatible,
 					metav1.ConditionTrue,
 					check.WithReason(check.ReasonVersionCompatible),
-					check.WithMessage("KServe serverless mode is not configured - ready for RHOAI 3.x upgrade"),
+					check.WithMessage("KServe serverless mode is not configured - ready for RHOAI %s upgrade", tv),
 				))
 			case err != nil:
 				return fmt.Errorf("querying kserve serving managementState: %w", err)
@@ -73,7 +74,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 					check.ConditionTypeCompatible,
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonVersionIncompatible),
-					check.WithMessage("KServe serverless mode is enabled (state: %s) but will be removed in RHOAI 3.x", state),
+					check.WithMessage("KServe serverless mode is enabled (state: %s) but will be removed in RHOAI %s", state, tv),
 					check.WithImpact(result.ImpactBlocking),
 					check.WithRemediation(c.CheckRemediation),
 				))
@@ -82,7 +83,7 @@ func (c *ServerlessRemovalCheck) Validate(ctx context.Context, target check.Targ
 					check.ConditionTypeCompatible,
 					metav1.ConditionTrue,
 					check.WithReason(check.ReasonVersionCompatible),
-					check.WithMessage("KServe serverless mode is disabled (state: %s) - ready for RHOAI 3.x upgrade", state),
+					check.WithMessage("KServe serverless mode is disabled (state: %s) - ready for RHOAI %s upgrade", state, tv),
 				))
 			}
 

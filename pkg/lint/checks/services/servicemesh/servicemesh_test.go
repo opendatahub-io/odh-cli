@@ -105,7 +105,7 @@ func TestServiceMeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("enabled"), ContainSubstring("no longer required by RHOAI 3.x")),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("no longer required by RHOAI 3.0")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
@@ -187,7 +187,7 @@ func TestServiceMeshRemovalCheck_RemovedReady(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.x upgrade")),
+		"Message": And(ContainSubstring("disabled"), ContainSubstring("ready for RHOAI 3.0 upgrade")),
 	}))
 }
 

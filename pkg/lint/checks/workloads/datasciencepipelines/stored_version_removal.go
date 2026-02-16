@@ -23,8 +23,8 @@ const (
 	// The deprecated stored version that will be removed in 3.x.
 	deprecatedStoredVersion = "v1alpha1"
 
-	msgStoredVersionFound    = "Some DataSciencePipelinesApplication resources still use the deprecated %s API version which will be removed in RHOAI 3.x"
-	msgStoredVersionNotFound = "No DataSciencePipelinesApplication resources using deprecated %s API version - ready for RHOAI 3.x upgrade"
+	msgStoredVersionFound    = "Some DataSciencePipelinesApplication resources still use the deprecated %s API version which will be removed in RHOAI %s"
+	msgStoredVersionNotFound = "No DataSciencePipelinesApplication resources using deprecated %s API version - ready for RHOAI %s upgrade"
 	msgCRDNotFound           = "DataSciencePipelinesApplication CRD not found - DataSciencePipelines may not be installed"
 )
 
@@ -62,6 +62,7 @@ func (c *StoredVersionRemovalCheck) Validate(
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
 	dr := c.NewResult()
+	tv := version.MajorMinorLabel(target.TargetVersion)
 
 	if target.TargetVersion != nil {
 		dr.Annotations[check.AnnotationCheckTargetVersion] = target.TargetVersion.String()
@@ -105,7 +106,7 @@ func (c *StoredVersionRemovalCheck) Validate(
 			check.ConditionTypeCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
-			check.WithMessage(msgStoredVersionFound, deprecatedStoredVersion),
+			check.WithMessage(msgStoredVersionFound, deprecatedStoredVersion, tv),
 			check.WithImpact(result.ImpactBlocking),
 			check.WithRemediation(c.CheckRemediation),
 		))
@@ -117,7 +118,7 @@ func (c *StoredVersionRemovalCheck) Validate(
 		check.ConditionTypeCompatible,
 		metav1.ConditionTrue,
 		check.WithReason(check.ReasonVersionCompatible),
-		check.WithMessage(msgStoredVersionNotFound, deprecatedStoredVersion),
+		check.WithMessage(msgStoredVersionNotFound, deprecatedStoredVersion, tv),
 	))
 
 	return dr, nil

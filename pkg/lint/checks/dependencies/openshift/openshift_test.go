@@ -53,7 +53,7 @@ func TestOpenShiftCheck_VersionMeetsRequirement(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("4.19.9 meets RHOAI 3.x minimum version requirement"),
+		"Message": ContainSubstring("4.19.9 meets RHOAI 3.0 minimum version requirement"),
 	}))
 }
 
@@ -107,7 +107,7 @@ func TestOpenShiftCheck_VersionBelowRequirement(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
-			ContainSubstring("4.18.5 does not meet RHOAI 3.x minimum version requirement"),
+			ContainSubstring("4.18.5 does not meet RHOAI 3.0 minimum version requirement"),
 			ContainSubstring("4.19"),
 		),
 	}))
@@ -138,7 +138,7 @@ func TestOpenShiftCheck_PatchVersionBelowRequirement(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
-			ContainSubstring("4.19.8 does not meet RHOAI 3.x minimum version requirement"),
+			ContainSubstring("4.19.8 does not meet RHOAI 3.0 minimum version requirement"),
 			ContainSubstring("4.19.9"),
 		),
 	}))

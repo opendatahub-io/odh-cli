@@ -44,6 +44,8 @@ func (c *RemovalCheck) CanApply(_ context.Context, target check.Target) (bool, e
 
 // Validate executes the check against the provided target.
 func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+	tv := version.MajorMinorLabel(target.TargetVersion)
+
 	return validate.DSCI(c, target).Run(ctx, func(dr *result.DiagnosticResult, dsci *unstructured.Unstructured) error {
 		managementState, err := jq.Query[string](dsci, ".spec.serviceMesh.managementState")
 
@@ -62,7 +64,7 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 				check.ConditionTypeCompatible,
 				metav1.ConditionFalse,
 				check.WithReason(check.ReasonVersionIncompatible),
-				check.WithMessage("ServiceMesh is enabled (state: %s) but is no longer required by RHOAI 3.x. OpenShift 4.19+ handles service mesh internally", managementState),
+				check.WithMessage("ServiceMesh is enabled (state: %s) but is no longer required by RHOAI %s. OpenShift 4.19+ handles service mesh internally", managementState, tv),
 				check.WithImpact(result.ImpactBlocking),
 				check.WithRemediation(c.CheckRemediation),
 			))
@@ -71,7 +73,7 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
 				check.ConditionTypeCompatible,
 				metav1.ConditionTrue,
 				check.WithReason(check.ReasonVersionCompatible),
-				check.WithMessage("ServiceMesh is disabled (state: %s) - ready for RHOAI 3.x upgrade", managementState),
+				check.WithMessage("ServiceMesh is disabled (state: %s) - ready for RHOAI %s upgrade", managementState, tv),
 			))
 		}
 

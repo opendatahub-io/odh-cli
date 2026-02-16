@@ -15,6 +15,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/components"
+	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
 // ComponentBuilder provides a fluent API for component-based validation.
@@ -50,7 +51,12 @@ func Component(c check.Check, target check.Target) *ComponentBuilder {
 // ComponentRequest contains pre-fetched data for component validation.
 // It provides convenient access to commonly needed data without requiring
 // callbacks to parse annotations or fetch additional resources.
+//
+// check.Target is embedded, so fields like Client, TargetVersion, and CurrentVersion
+// are directly accessible (e.g. req.Client, req.TargetVersion).
 type ComponentRequest struct {
+	check.Target
+
 	// Result is the pre-created DiagnosticResult with auto-populated annotations.
 	Result *result.DiagnosticResult
 
@@ -59,9 +65,6 @@ type ComponentRequest struct {
 
 	// ManagementState is the component's management state string.
 	ManagementState string
-
-	// Client provides read-only access to the Kubernetes API.
-	Client client.Reader
 
 	// ApplicationsNamespace is populated when WithApplicationsNamespace() is used.
 	// Empty string if not requested. If DSCI is not found, Run() returns early
@@ -101,18 +104,18 @@ func (b *ComponentBuilder) WithApplicationsNamespace() *ComponentBuilder {
 }
 
 // Removal returns a ComponentValidateFn that sets a compatibility failure condition.
-// ManagementState is automatically prepended as the first format argument.
+// ManagementState and target version label are automatically supplied as the first two format arguments.
 //
 // Example:
 //
 //	validate.Component(c, target).
 //	    InState(constants.ManagementStateManaged).
-//	    Run(ctx, validate.Removal("CodeFlare is enabled (state: %s) but will be removed in RHOAI 3.x"))
+//	    Run(ctx, validate.Removal("CodeFlare is enabled (state: %s) but will be removed in RHOAI %s"))
 func Removal(format string, opts ...check.ConditionOption) ComponentValidateFn {
 	return func(_ context.Context, req *ComponentRequest) error {
 		allOpts := append([]check.ConditionOption{
 			check.WithReason(check.ReasonVersionIncompatible),
-			check.WithMessage(format, req.ManagementState),
+			check.WithMessage(format, req.ManagementState, version.MajorMinorLabel(req.TargetVersion)),
 		}, opts...)
 		req.Result.SetCondition(check.NewCondition(
 			check.ConditionTypeCompatible,
@@ -195,10 +198,10 @@ func (b *ComponentBuilder) Run(
 
 	// Create the request with pre-populated data
 	req := &ComponentRequest{
+		Target:          b.target,
 		Result:          dr,
 		DSC:             dsc,
 		ManagementState: state,
-		Client:          b.target.Client,
 	}
 
 	// Load applications namespace if requested

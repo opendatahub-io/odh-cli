@@ -77,7 +77,7 @@ func TestModelmeshRemovalCheck_ManagedBlocking(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.x")),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("removed in RHOAI 3.0")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Annotations).To(And(

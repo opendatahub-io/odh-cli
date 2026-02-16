@@ -12,30 +12,21 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 )
 
 // WorkloadRequest contains the pre-fetched data passed to the workload validation function.
+//
+// check.Target is embedded, so fields like Client, IO, Debug, TargetVersion, and CurrentVersion
+// are directly accessible (e.g. req.Client, req.IO, req.Debug, req.TargetVersion).
 type WorkloadRequest[T any] struct {
+	check.Target
+
 	// Result is the pre-created DiagnosticResult with auto-populated annotations.
 	Result *result.DiagnosticResult
 
 	// Items contains the (optionally filtered) workload items.
 	Items []T
-
-	// Client provides read-only access to the Kubernetes API.
-	Client client.Reader
-
-	// IO provides access to input/output streams for verbose logging.
-	// Use IO.Errorf() for debug output that appears only when --verbose is set.
-	// May be nil if no IO was provided to the check target.
-	IO iostreams.Interface
-
-	// Debug indicates whether detailed diagnostic logging is enabled.
-	// When true, checks should emit internal processing logs for troubleshooting.
-	// When false, only user-facing summary information should be logged via IO.
-	Debug bool
 }
 
 // WorkloadValidateFn is the callback invoked by WorkloadBuilder.Run after listing and filtering.
@@ -144,11 +135,9 @@ func (b *WorkloadBuilder[T]) Run(
 
 	// Call the validation function.
 	req := &WorkloadRequest[T]{
+		Target: b.target,
 		Result: dr,
 		Items:  items,
-		Client: b.target.Client,
-		IO:     b.target.IO,
-		Debug:  b.target.Debug,
 	}
 
 	if err := fn(ctx, req); err != nil {

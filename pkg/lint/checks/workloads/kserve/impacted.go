@@ -142,12 +142,14 @@ func (c *ImpactedWorkloadsCheck) Validate(
 		return nil, err
 	}
 
-	// Each function appends its condition and impacted objects to the result
-	c.appendServerlessISVCCondition(dr, allISVCs)
-	c.appendModelMeshISVCCondition(dr, allISVCs)
-	c.appendModelMeshSRCondition(dr, impactedSRs)
+	tv := version.MajorMinorLabel(target.TargetVersion)
 
-	if err := c.appendRemovedRuntimeISVCCondition(dr, removedRuntimeISVCs); err != nil {
+	// Each function appends its condition and impacted objects to the result
+	c.appendServerlessISVCCondition(dr, allISVCs, tv)
+	c.appendModelMeshISVCCondition(dr, allISVCs, tv)
+	c.appendModelMeshSRCondition(dr, impactedSRs, tv)
+
+	if err := c.appendRemovedRuntimeISVCCondition(dr, removedRuntimeISVCs, tv); err != nil {
 		return nil, err
 	}
 

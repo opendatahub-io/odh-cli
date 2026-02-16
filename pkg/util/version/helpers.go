@@ -1,6 +1,20 @@
 package version
 
-import "github.com/blang/semver/v4"
+import (
+	"fmt"
+
+	"github.com/blang/semver/v4"
+)
+
+// MajorMinorLabel formats a semver version as "major.minor" for use in user-facing messages.
+// Returns "unknown" if version is nil.
+func MajorMinorLabel(v *semver.Version) string {
+	if v == nil {
+		return "unknown"
+	}
+
+	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
+}
 
 // IsUpgradeFrom2xTo3x checks if the versions represent an upgrade from 2.x to 3.x specifically.
 // Future major versions (4.x+) may have different compatibility requirements.

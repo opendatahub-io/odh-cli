@@ -29,13 +29,14 @@ func (c *ImpactedWorkloadsCheck) newWorkloadCompatibilityCondition(
 	conditionType string,
 	count int,
 	workloadDescription string,
+	targetVersionLabel string,
 ) result.Condition {
 	if count > 0 {
 		return check.NewCondition(
 			conditionType,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
-			check.WithMessage("Found %d %s - will be impacted in RHOAI 3.x", count, workloadDescription),
+			check.WithMessage("Found %d %s - will be impacted in RHOAI %s", count, workloadDescription, targetVersionLabel),
 			check.WithImpact(result.ImpactBlocking),
 			check.WithRemediation(c.CheckRemediation),
 		)
@@ -45,7 +46,7 @@ func (c *ImpactedWorkloadsCheck) newWorkloadCompatibilityCondition(
 		conditionType,
 		metav1.ConditionTrue,
 		check.WithReason(check.ReasonVersionCompatible),
-		check.WithMessage("No %s found - ready for RHOAI 3.x upgrade", workloadDescription),
+		check.WithMessage("No %s found - ready for RHOAI %s upgrade", workloadDescription, targetVersionLabel),
 	)
 }
 
@@ -54,11 +55,13 @@ func (c *ImpactedWorkloadsCheck) newWorkloadCompatibilityCondition(
 func (c *ImpactedWorkloadsCheck) appendServerlessISVCCondition(
 	dr *result.DiagnosticResult,
 	allISVCs []*metav1.PartialObjectMetadata,
+	targetVersionLabel string,
 ) {
 	c.appendISVCCondition(dr, allISVCs,
 		ConditionTypeServerlessISVCCompatible,
 		deploymentModeServerless,
 		"Serverless InferenceService(s)",
+		targetVersionLabel,
 	)
 }
 
@@ -67,11 +70,13 @@ func (c *ImpactedWorkloadsCheck) appendServerlessISVCCondition(
 func (c *ImpactedWorkloadsCheck) appendModelMeshISVCCondition(
 	dr *result.DiagnosticResult,
 	allISVCs []*metav1.PartialObjectMetadata,
+	targetVersionLabel string,
 ) {
 	c.appendISVCCondition(dr, allISVCs,
 		ConditionTypeModelMeshISVCCompatible,
 		deploymentModeModelMesh,
 		"ModelMesh InferenceService(s)",
+		targetVersionLabel,
 	)
 }
 
@@ -83,6 +88,7 @@ func (c *ImpactedWorkloadsCheck) appendISVCCondition(
 	conditionType string,
 	deploymentMode string,
 	workloadDescription string,
+	targetVersionLabel string,
 ) {
 	var filtered []*metav1.PartialObjectMetadata
 
@@ -93,7 +99,7 @@ func (c *ImpactedWorkloadsCheck) appendISVCCondition(
 	}
 
 	dr.Status.Conditions = append(dr.Status.Conditions,
-		c.newWorkloadCompatibilityCondition(conditionType, len(filtered), workloadDescription),
+		c.newWorkloadCompatibilityCondition(conditionType, len(filtered), workloadDescription, targetVersionLabel),
 	)
 
 	for _, r := range filtered {
@@ -115,12 +121,14 @@ func (c *ImpactedWorkloadsCheck) appendISVCCondition(
 func (c *ImpactedWorkloadsCheck) appendModelMeshSRCondition(
 	dr *result.DiagnosticResult,
 	impactedSRs []*unstructured.Unstructured,
+	targetVersionLabel string,
 ) {
 	dr.Status.Conditions = append(dr.Status.Conditions,
 		c.newWorkloadCompatibilityCondition(
 			ConditionTypeModelMeshSRCompatible,
 			len(impactedSRs),
 			"ModelMesh ServingRuntime(s)",
+			targetVersionLabel,
 		),
 	)
 
@@ -160,12 +168,14 @@ func isUsingRemovedRuntime(obj *unstructured.Unstructured) (bool, error) {
 func (c *ImpactedWorkloadsCheck) appendRemovedRuntimeISVCCondition(
 	dr *result.DiagnosticResult,
 	items []*unstructured.Unstructured,
+	targetVersionLabel string,
 ) error {
 	dr.Status.Conditions = append(dr.Status.Conditions,
 		c.newWorkloadCompatibilityCondition(
 			ConditionTypeRemovedSRCompatible,
 			len(items),
 			"InferenceService(s) using removed ServingRuntime(s)",
+			targetVersionLabel,
 		),
 	)
 

@@ -437,14 +437,14 @@ func TestNewCondition_WithMultipleFormatArgs(t *testing.T) {
 		check.ConditionTypeCompatible,
 		metav1.ConditionFalse,
 		check.WithReason(check.ReasonVersionIncompatible),
-		check.WithMessage("Found %d %s - will be impacted in RHOAI %s", 3, "InferenceServices", "3.x"),
+		check.WithMessage("Found %d %s - will be impacted in RHOAI %s", 3, "InferenceServices", "3.0"),
 	)
 
 	g.Expect(condition.Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": Equal("Found 3 InferenceServices - will be impacted in RHOAI 3.x"),
+		"Message": Equal("Found 3 InferenceServices - will be impacted in RHOAI 3.0"),
 	}))
 }
 

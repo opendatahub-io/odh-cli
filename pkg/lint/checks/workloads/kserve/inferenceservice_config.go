@@ -31,9 +31,9 @@ const inferenceServiceDataKey = "inferenceService"
 
 const (
 	msgConfigMapNotFound            = "inferenceservice-config ConfigMap not found in namespace %s - no migration needed"
-	msgManagedAnnotationMissing     = "inferenceservice-config ConfigMap must have %s=false and include hardware-profile annotations in serviceAnnotationDisallowedList, otherwise models may get restarted during upgrade to RHOAI 3.x"
-	msgDisallowedAnnotationsMissing = "inferenceservice-config ConfigMap must include the following annotations in serviceAnnotationDisallowedList to prevent models from being restarted during upgrade to RHOAI 3.x: %s"
-	msgConfigMapReady               = "inferenceservice-config ConfigMap has %s=false and serviceAnnotationDisallowedList includes required hardware-profile annotations - ready for RHOAI 3.x upgrade"
+	msgManagedAnnotationMissing     = "inferenceservice-config ConfigMap must have %s=false and include hardware-profile annotations in serviceAnnotationDisallowedList, otherwise models may get restarted during upgrade to RHOAI %s"
+	msgDisallowedAnnotationsMissing = "inferenceservice-config ConfigMap must include the following annotations in serviceAnnotationDisallowedList to prevent models from being restarted during upgrade to RHOAI %s: %s"
+	msgConfigMapReady               = "inferenceservice-config ConfigMap has %s=false and serviceAnnotationDisallowedList includes required hardware-profile annotations - ready for RHOAI %s upgrade"
 )
 
 // requiredDisallowedAnnotations lists annotations that must be present in the
@@ -91,6 +91,8 @@ func (c *InferenceServiceConfigCheck) Validate(ctx context.Context, target check
 	return validate.Component(c, target).
 		WithApplicationsNamespace().
 		Run(ctx, func(ctx context.Context, req *validate.ComponentRequest) error {
+			tv := version.MajorMinorLabel(req.TargetVersion)
+
 			res, err := req.Client.GetResource(
 				ctx,
 				resources.ConfigMap,
@@ -117,7 +119,7 @@ func (c *InferenceServiceConfigCheck) Validate(ctx context.Context, target check
 					check.ConditionTypeConfigured,
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonConfigurationUnmanaged),
-					check.WithMessage(msgManagedAnnotationMissing, kube.AnnotationManaged),
+					check.WithMessage(msgManagedAnnotationMissing, kube.AnnotationManaged, tv),
 					check.WithImpact(result.ImpactAdvisory),
 					check.WithRemediation(c.CheckRemediation),
 				))
@@ -137,7 +139,7 @@ func (c *InferenceServiceConfigCheck) Validate(ctx context.Context, target check
 					check.ConditionTypeConfigured,
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonConfigurationInvalid),
-					check.WithMessage(msgDisallowedAnnotationsMissing, strings.Join(missing, ", ")),
+					check.WithMessage(msgDisallowedAnnotationsMissing, tv, strings.Join(missing, ", ")),
 					check.WithImpact(result.ImpactAdvisory),
 					check.WithRemediation(c.CheckRemediation),
 				))
@@ -149,7 +151,7 @@ func (c *InferenceServiceConfigCheck) Validate(ctx context.Context, target check
 				check.ConditionTypeCompatible,
 				metav1.ConditionTrue,
 				check.WithReason(check.ReasonVersionCompatible),
-				check.WithMessage(msgConfigMapReady, kube.AnnotationManaged),
+				check.WithMessage(msgConfigMapReady, kube.AnnotationManaged, tv),
 			))
 
 			return nil

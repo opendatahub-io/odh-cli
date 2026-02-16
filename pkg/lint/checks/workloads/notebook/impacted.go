@@ -290,7 +290,7 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebooks(
 	}
 
 	// Set conditions based on analysis results.
-	c.setConditions(req.Result, analyses)
+	c.setConditions(req.Result, analyses, version.MajorMinorLabel(req.TargetVersion))
 
 	// Set impacted objects to only problematic notebooks.
 	c.setImpactedObjects(req.Result, analyses)
@@ -1053,6 +1053,7 @@ func (c *ImpactedWorkloadsCheck) findCompliantTagForSHA(sha string, imageStreams
 func (c *ImpactedWorkloadsCheck) setConditions(
 	dr *result.DiagnosticResult,
 	analyses []notebookAnalysis,
+	targetVersionLabel string,
 ) {
 	// Count notebooks and unique images by status.
 	var goodCount, customCount, problematicCount, verifyFailedCount int
@@ -1101,12 +1102,12 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 
 	// Build multi-line breakdown message with image counts.
 	message := fmt.Sprintf(`Found %d Notebook(s) using %d unique images:
-  - %d compatible (%d images, OOTB ready for 3.x)
+  - %d compatible (%d images, OOTB ready for %s)
   - %d custom (%d images, user verification needed)
   - %d incompatible (%d images, must update before upgrade)
   - %d unverified (%d images, could not determine status)`,
 		totalCount, totalImages,
-		goodCount, len(goodImages),
+		goodCount, len(goodImages), targetVersionLabel,
 		customCount, len(customImages),
 		problematicCount, len(problematicImages),
 		verifyFailedCount, len(verifyFailedImages))
@@ -1131,7 +1132,7 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 			check.WithReason(check.ReasonWorkloadsImpacted),
 			check.WithMessage("%s", message),
 			check.WithImpact(result.ImpactAdvisory),
-			check.WithRemediation("Verify custom images are compatible with RHOAI 3.x before upgrading"),
+			check.WithRemediation(fmt.Sprintf("Verify custom images are compatible with RHOAI %s before upgrading", targetVersionLabel)),
 		))
 
 	default:
