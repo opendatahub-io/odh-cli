@@ -10,7 +10,6 @@ import (
 
 	"github.com/fatih/color"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
@@ -385,148 +384,42 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 	return nil
 }
 
-// impactedGroup holds aggregated impacted objects for a specific check.
-type impactedGroup struct {
-	group     check.CheckGroup
-	kind      string
-	checkType check.CheckType
-	objects   []metav1.PartialObjectMetadata
-}
-
-// namespaceGroup holds objects within a single namespace for display.
-type namespaceGroup struct {
-	namespace string
-	objects   []metav1.PartialObjectMetadata
-}
-
-// outputImpactedObjects prints impacted objects grouped by group/kind/checkType and namespace.
-// Within each group/kind/checkType, objects are sub-grouped by namespace (sorted alphabetically).
-// Each namespace header includes the openshift.io/requester annotation if available.
+// outputImpactedObjects prints impacted objects for each check execution.
+// Each check's objects are rendered by the check's VerboseOutputFormatter if implemented,
+// or by the default namespace-grouped renderer otherwise.
 func outputImpactedObjects(
 	out io.Writer,
 	results []check.CheckExecution,
 	namespaceRequesters map[string]string,
 ) {
-	// Aggregate objects by group/kind/checkType, preserving insertion order.
-	var groups []impactedGroup
-
-	type groupKey struct {
-		group     check.CheckGroup
-		kind      string
-		checkType check.CheckType
+	defaultFmt := &check.DefaultVerboseFormatter{
+		NamespaceRequesters: namespaceRequesters,
 	}
 
-	seen := make(map[groupKey]int) // key -> index in groups slice
+	printed := false
 
 	for _, exec := range results {
 		if len(exec.Result.ImpactedObjects) == 0 {
 			continue
 		}
 
-		key := groupKey{
-			group:     check.CheckGroup(exec.Result.Group),
-			kind:      exec.Result.Kind,
-			checkType: check.CheckType(exec.Result.Name),
-		}
+		if !printed {
+			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out, "Impacted Objects:")
 
-		if idx, ok := seen[key]; ok {
-			groups[idx].objects = append(groups[idx].objects, exec.Result.ImpactedObjects...)
+			printed = true
 		} else {
-			seen[key] = len(groups)
-			groups = append(groups, impactedGroup{
-				group:     key.group,
-				kind:      key.kind,
-				checkType: key.checkType,
-				objects:   append([]metav1.PartialObjectMetadata{}, exec.Result.ImpactedObjects...),
-			})
-		}
-	}
-
-	if len(groups) == 0 {
-		return
-	}
-
-	_, _ = fmt.Fprintln(out)
-	_, _ = fmt.Fprintln(out, "Impacted Objects:")
-
-	for i, g := range groups {
-		if i > 0 {
 			_, _ = fmt.Fprintln(out)
 		}
 
-		_, _ = fmt.Fprintf(out, "  %s / %s / %s:\n", g.group, g.kind, g.checkType)
+		_, _ = fmt.Fprintf(out, "  %s / %s / %s:\n", exec.Result.Group, exec.Result.Kind, exec.Result.Name)
 
-		// Check for group renderer first (takes precedence).
-		if groupRenderer := check.GetImpactedGroupRenderer(g.group, g.kind, g.checkType); groupRenderer != nil {
-			// Pass total count as maxDisplay since upstream removed truncation
-			groupRenderer(out, g.objects, len(g.objects))
-
-			continue
-		}
-
-		// Fall back to namespace-grouped rendering.
-		// Sub-group objects by namespace.
-		nsGroups := groupByNamespace(g.objects)
-
-		for _, nsg := range nsGroups {
-			if nsg.namespace == "" {
-				// Cluster-scoped objects: list directly without namespace header.
-				for _, obj := range nsg.objects {
-					_, _ = fmt.Fprintf(out, "    - %s\n", formatImpactedObject(obj))
-				}
-			} else {
-				// Print namespace header with requester annotation if available.
-				nsHeader := nsg.namespace
-				if requester, ok := namespaceRequesters[nsg.namespace]; ok && requester != "" {
-					nsHeader = fmt.Sprintf("%s (requester: %s)", nsg.namespace, requester)
-				}
-
-				_, _ = fmt.Fprintf(out, "    %s:\n", nsHeader)
-
-				for _, obj := range nsg.objects {
-					_, _ = fmt.Fprintf(out, "      - %s\n", formatImpactedObject(obj))
-				}
-			}
+		if f, ok := exec.Check.(check.VerboseOutputFormatter); ok {
+			f.FormatVerboseOutput(out, exec.Result)
+		} else {
+			defaultFmt.FormatVerboseOutput(out, exec.Result)
 		}
 	}
-}
-
-// formatImpactedObject returns the display string for an impacted object.
-// Includes the Kind from TypeMeta when available to help identify the resource type.
-func formatImpactedObject(obj metav1.PartialObjectMetadata) string {
-	if obj.Kind != "" {
-		return fmt.Sprintf("%s (%s)", obj.Name, obj.Kind)
-	}
-
-	return obj.Name
-}
-
-// groupByNamespace sub-groups objects by namespace, sorted alphabetically.
-// Cluster-scoped objects (empty namespace) are placed first.
-func groupByNamespace(objects []metav1.PartialObjectMetadata) []namespaceGroup {
-	nsMap := make(map[string][]metav1.PartialObjectMetadata)
-
-	for _, obj := range objects {
-		nsMap[obj.Namespace] = append(nsMap[obj.Namespace], obj)
-	}
-
-	// Collect and sort namespace keys.
-	namespaces := make([]string, 0, len(nsMap))
-	for ns := range nsMap {
-		namespaces = append(namespaces, ns)
-	}
-
-	sort.Strings(namespaces)
-
-	groups := make([]namespaceGroup, 0, len(namespaces))
-	for _, ns := range namespaces {
-		groups = append(groups, namespaceGroup{
-			namespace: ns,
-			objects:   nsMap[ns],
-		})
-	}
-
-	return groups
 }
 
 // OutputJSON outputs diagnostic results in List format.

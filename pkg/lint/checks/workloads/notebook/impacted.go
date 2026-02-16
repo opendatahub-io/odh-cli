@@ -112,10 +112,6 @@ type ImpactedWorkloadsCheck struct {
 }
 
 func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
-	// Register custom group renderer for verbose output of notebook impacted objects.
-	// Groups notebooks by image for better readability.
-	check.RegisterImpactedGroupRenderer(check.GroupWorkload, kind, check.CheckTypeImpactedWorkloads, renderNotebookImpactedGroup)
-
 	return &ImpactedWorkloadsCheck{
 		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupWorkload,
@@ -129,26 +125,21 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 	}
 }
 
-// imageGroup holds notebooks grouped by their image reference.
-type imageGroup struct {
-	imageRef    string
-	imageStatus string   // CUSTOM, PROBLEMATIC, etc.
-	notebooks   []string // namespace/name format
-}
-
-// renderNotebookImpactedGroup renders notebook impacted objects grouped by image.
+// FormatVerboseOutput implements check.VerboseOutputFormatter.
+// Groups notebook impacted objects by image for better readability.
+//
 // Output format:
 //
 //	image: registry/path:tag (N notebooks)
 //	  - namespace/name
 //	  - namespace/name
-func renderNotebookImpactedGroup(out iolib.Writer, objects []metav1.PartialObjectMetadata, maxDisplay int) {
+func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out iolib.Writer, dr *result.DiagnosticResult) {
 	// Group notebooks by image reference, preserving insertion order.
 	var groups []imageGroup
 
 	imageIndex := make(map[string]int) // imageRef -> index in groups
 
-	for _, obj := range objects {
+	for _, obj := range dr.ImpactedObjects {
 		imageRef := obj.Annotations["check.opendatahub.io/image-ref"]
 		if imageRef == "" {
 			imageRef = "(unknown image)"
@@ -173,34 +164,21 @@ func renderNotebookImpactedGroup(out iolib.Writer, objects []metav1.PartialObjec
 		}
 	}
 
-	// Render grouped output.
-	displayed := 0
-
 	for _, g := range groups {
-		if displayed >= maxDisplay {
-			remaining := len(objects) - displayed
-			_, _ = fmt.Fprintf(out, "    ... and %d more notebooks. Use --output json for the full list.\n", remaining)
-
-			break
-		}
-
-		// Print image header with count, using descriptive label based on status.
 		imageLabel := imageStatusLabel(g.imageStatus)
 		_, _ = fmt.Fprintf(out, "    %s: %s (%d notebooks)\n", imageLabel, g.imageRef, len(g.notebooks))
 
-		// Print notebooks under this image.
 		for _, nb := range g.notebooks {
-			if displayed >= maxDisplay {
-				remaining := len(objects) - displayed
-				_, _ = fmt.Fprintf(out, "      ... and %d more notebooks. Use --output json for the full list.\n", remaining)
-
-				return
-			}
-
 			_, _ = fmt.Fprintf(out, "      - %s\n", nb)
-			displayed++
 		}
 	}
+}
+
+// imageGroup holds notebooks grouped by their image reference.
+type imageGroup struct {
+	imageRef    string
+	imageStatus string   // CUSTOM, PROBLEMATIC, etc.
+	notebooks   []string // namespace/name format
 }
 
 // imageStatusLabel returns a user-friendly label for the image status.
