@@ -74,6 +74,7 @@ type ListResourcesConfig struct {
 	Namespace     string
 	LabelSelector string
 	FieldSelector string
+	Limit         int64
 }
 
 // ListResourcesOption is an option for configuring ListResources.
@@ -100,8 +101,17 @@ func WithFieldSelector(selector string) ListResourcesOption {
 	})
 }
 
+// WithLimit caps the total number of items returned across all pages.
+func WithLimit(limit int64) ListResourcesOption {
+	return util.FunctionalOption[ListResourcesConfig](func(c *ListResourcesConfig) {
+		c.Limit = limit
+	})
+}
+
 // ListResources lists all instances of a resource type handling pagination automatically.
 // Returns pointers to avoid copying large objects.
+//
+//nolint:dupl // Pagination loop is similar to ListMetadata but operates on different client and types
 func (c *defaultClient) ListResources(ctx context.Context, gvr schema.GroupVersionResource, opts ...ListResourcesOption) ([]*unstructured.Unstructured, error) {
 	cfg := &ListResourcesConfig{}
 	util.ApplyOptions(cfg, opts...)
@@ -113,6 +123,7 @@ func (c *defaultClient) ListResources(ctx context.Context, gvr schema.GroupVersi
 		listOpts := metav1.ListOptions{
 			LabelSelector: cfg.LabelSelector,
 			FieldSelector: cfg.FieldSelector,
+			Limit:         cfg.Limit,
 			Continue:      continueToken,
 		}
 
@@ -139,7 +150,11 @@ func (c *defaultClient) ListResources(ctx context.Context, gvr schema.GroupVersi
 			allItems = append(allItems, &list.Items[i])
 		}
 
-		// Check if more pages exist
+		// Stop if limit reached or no more pages
+		if cfg.Limit > 0 && int64(len(allItems)) >= cfg.Limit {
+			break
+		}
+
 		if list.GetContinue() == "" {
 			break
 		}
@@ -159,6 +174,8 @@ func (c *defaultClient) List(ctx context.Context, resourceType resources.Resourc
 // ListMetadata lists all instances of a resource type returning only metadata.
 // Handles pagination automatically. Returns pointers to avoid copying.
 // This is more efficient than List when only metadata fields (name, namespace, labels, annotations) are needed.
+//
+//nolint:dupl // Pagination loop is similar to ListResources but operates on different client and types
 func (c *defaultClient) ListMetadata(ctx context.Context, resourceType resources.ResourceType, opts ...ListResourcesOption) ([]*metav1.PartialObjectMetadata, error) {
 	cfg := &ListResourcesConfig{}
 	util.ApplyOptions(cfg, opts...)
@@ -172,6 +189,7 @@ func (c *defaultClient) ListMetadata(ctx context.Context, resourceType resources
 		listOpts := metav1.ListOptions{
 			LabelSelector: cfg.LabelSelector,
 			FieldSelector: cfg.FieldSelector,
+			Limit:         cfg.Limit,
 			Continue:      continueToken,
 		}
 
@@ -198,7 +216,11 @@ func (c *defaultClient) ListMetadata(ctx context.Context, resourceType resources
 			allItems = append(allItems, &list.Items[i])
 		}
 
-		// Check if more pages exist
+		// Stop if limit reached or no more pages
+		if cfg.Limit > 0 && int64(len(allItems)) >= cfg.Limit {
+			break
+		}
+
 		if list.GetContinue() == "" {
 			break
 		}

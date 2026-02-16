@@ -284,6 +284,30 @@ var (
 		Resource: "llamastackdistributions",
 	}
 
+	// Kuadrant is the Kuadrant gateway API resource.
+	Kuadrant = ResourceType{
+		Group:    "kuadrant.io",
+		Version:  "v1beta1",
+		Kind:     "Kuadrant",
+		Resource: "kuadrants",
+	}
+
+	// Authorino is the Authorino operator resource.
+	Authorino = ResourceType{
+		Group:    "operator.authorino.kuadrant.io",
+		Version:  "v1beta1",
+		Kind:     "Authorino",
+		Resource: "authorinos",
+	}
+
+	// LLMInferenceService is the llm-d LLMInferenceService resource.
+	LLMInferenceService = ResourceType{
+		Group:    "serving.kserve.io",
+		Version:  "v1alpha1",
+		Kind:     "LLMInferenceService",
+		Resource: "llminferenceservices",
+	}
+
 	// ImageStream is the OpenShift ImageStream resource.
 	ImageStream = ResourceType{
 		Group:    "image.openshift.io",
