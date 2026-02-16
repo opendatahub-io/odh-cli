@@ -261,7 +261,7 @@ func TestAuthorinoTLSReadinessCheck_MissingReadyCondition(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeReady),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonInsufficientData),
-		"Message": ContainSubstring("Ready condition is missing"),
+		"Message": ContainSubstring("Ready condition status is empty"),
 	}))
 	g.Expect(result.Status.Conditions[1].Impact).To(Equal(resultpkg.ImpactBlocking))
 }

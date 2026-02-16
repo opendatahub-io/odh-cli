@@ -45,7 +45,7 @@ func validateReadyCondition(
 	readyStatus, err := jq.Query[string](obj, `.status.conditions[] | select(.type == "Ready") | .status`)
 
 	switch {
-	case errors.Is(err, jq.ErrNotFound), readyStatus == "":
+	case errors.Is(err, jq.ErrNotFound):
 		dr.SetCondition(check.NewCondition(
 			check.ConditionTypeReady,
 			metav1.ConditionFalse,
@@ -55,6 +55,14 @@ func validateReadyCondition(
 		))
 	case err != nil:
 		return fmt.Errorf("querying %s Ready condition: %w", resourceName, err)
+	case readyStatus == "":
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeReady,
+			metav1.ConditionFalse,
+			check.WithReason(check.ReasonInsufficientData),
+			check.WithMessage("%s resource found but Ready condition status is empty", resourceName),
+			check.WithImpact(result.ImpactBlocking),
+		))
 	case readyStatus != "True":
 		dr.SetCondition(check.NewCondition(
 			check.ConditionTypeReady,

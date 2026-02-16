@@ -63,6 +63,16 @@ func (c *AuthorinoTLSReadinessCheck) Validate(ctx context.Context, target check.
 		return dr, nil
 	case err != nil:
 		return nil, fmt.Errorf("getting Authorino resource: %w", err)
+	case obj == nil:
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeReady,
+			metav1.ConditionFalse,
+			check.WithReason(check.ReasonInsufficientData),
+			check.WithMessage("Unable to read Authorino resource (insufficient permissions)"),
+			check.WithImpact(result.ImpactBlocking),
+		))
+
+		return dr, nil
 	}
 
 	if err := validateAuthorinoTLS(dr, obj); err != nil {

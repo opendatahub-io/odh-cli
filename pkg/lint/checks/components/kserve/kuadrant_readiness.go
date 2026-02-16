@@ -60,6 +60,16 @@ func (c *KuadrantReadinessCheck) Validate(ctx context.Context, target check.Targ
 		return dr, nil
 	case err != nil:
 		return nil, fmt.Errorf("getting Kuadrant resource: %w", err)
+	case obj == nil:
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeReady,
+			metav1.ConditionFalse,
+			check.WithReason(check.ReasonInsufficientData),
+			check.WithMessage("Unable to read Kuadrant resource (insufficient permissions)"),
+			check.WithImpact(result.ImpactBlocking),
+		))
+
+		return dr, nil
 	}
 
 	if err := validateReadyCondition(dr, obj, "Kuadrant"); err != nil {
