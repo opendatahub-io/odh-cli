@@ -1,29 +1,22 @@
-package codeflare_test
+package ray_test
 
 import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/codeflare"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 )
 
-//nolint:gochecknoglobals // Test fixture - shared across test functions
-var listKinds = map[schema.GroupVersionResource]string{
-	resources.AppWrapper.GVR():         resources.AppWrapper.ListKind(),
-	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
-}
-
-func TestImpactedWorkloadsCheck_NoAppWrappers(t *testing.T) {
+func TestAppWrapperCleanupCheck_NoAppWrappers(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -34,13 +27,13 @@ func TestImpactedWorkloadsCheck_NoAppWrappers(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := codeflare.NewImpactedWorkloadsCheck()
+	chk := ray.NewAppWrapperCleanupCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(codeflare.ConditionTypeAppWrapperCompatible),
+		"Type":    Equal(ray.ConditionTypeAppWrapperCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
 		"Message": ContainSubstring("No AppWrapper(s) found"),
@@ -49,7 +42,7 @@ func TestImpactedWorkloadsCheck_NoAppWrappers(t *testing.T) {
 	g.Expect(result.ImpactedObjects).To(BeEmpty())
 }
 
-func TestImpactedWorkloadsCheck_WithAppWrappers(t *testing.T) {
+func TestAppWrapperCleanupCheck_WithAppWrappers(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -72,13 +65,13 @@ func TestImpactedWorkloadsCheck_WithAppWrappers(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := codeflare.NewImpactedWorkloadsCheck()
+	chk := ray.NewAppWrapperCleanupCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":   Equal(codeflare.ConditionTypeAppWrapperCompatible),
+		"Type":   Equal(ray.ConditionTypeAppWrapperCompatible),
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
@@ -93,7 +86,7 @@ func TestImpactedWorkloadsCheck_WithAppWrappers(t *testing.T) {
 	g.Expect(result.ImpactedObjects[0].Namespace).To(Equal("test-ns"))
 }
 
-func TestImpactedWorkloadsCheck_MultipleAppWrappers(t *testing.T) {
+func TestAppWrapperCleanupCheck_MultipleAppWrappers(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -127,13 +120,13 @@ func TestImpactedWorkloadsCheck_MultipleAppWrappers(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := codeflare.NewImpactedWorkloadsCheck()
+	chk := ray.NewAppWrapperCleanupCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(codeflare.ConditionTypeAppWrapperCompatible),
+		"Type":    Equal(ray.ConditionTypeAppWrapperCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
 		"Message": ContainSubstring("Found 2 AppWrapper workload CRs"),
@@ -142,23 +135,24 @@ func TestImpactedWorkloadsCheck_MultipleAppWrappers(t *testing.T) {
 	g.Expect(result.ImpactedObjects).To(HaveLen(2))
 }
 
-func TestImpactedWorkloadsCheck_Metadata(t *testing.T) {
+func TestAppWrapperCleanupCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	chk := codeflare.NewImpactedWorkloadsCheck()
+	chk := ray.NewAppWrapperCleanupCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.codeflare.impacted-workloads"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: CodeFlare :: Impacted Workloads (3.x)"))
+	g.Expect(chk.ID()).To(Equal("workloads.ray.appwrapper-cleanup"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Ray :: AppWrapper Cleanup (3.x)"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
+	g.Expect(chk.CheckKind()).To(Equal("ray"))
 	g.Expect(chk.Description()).ToNot(BeEmpty())
 	g.Expect(chk.Remediation()).To(ContainSubstring("AppWrapper"))
 }
 
-func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
+func TestAppWrapperCleanupCheck_CanApply(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	chk := codeflare.NewImpactedWorkloadsCheck()
+	chk := ray.NewAppWrapperCleanupCheck()
 
 	// Should not apply when versions are nil
 	target := testutil.NewTarget(t, testutil.TargetConfig{

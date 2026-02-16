@@ -1,4 +1,4 @@
-package codeflare_test
+package ray_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/codeflare"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/ray"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
@@ -31,7 +31,7 @@ func TestCodeFlareRemovalCheck_CanApply_NoDSC(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := codeflare.NewRemovalCheck()
+	chk := ray.NewCodeFlareRemovalCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 
 	g.Expect(err).To(HaveOccurred())
@@ -49,7 +49,7 @@ func TestCodeFlareRemovalCheck_CanApply_NotConfigured(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := codeflare.NewRemovalCheck()
+	chk := ray.NewCodeFlareRemovalCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -68,8 +68,8 @@ func TestCodeFlareRemovalCheck_ManagedBlocking(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	codeflareCheck := codeflare.NewRemovalCheck()
-	result, err := codeflareCheck.Validate(ctx, target)
+	chk := ray.NewCodeFlareRemovalCheck()
+	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
@@ -87,9 +87,7 @@ func TestCodeFlareRemovalCheck_ManagedBlocking(t *testing.T) {
 }
 
 func TestCodeFlareRemovalCheck_CanApply_ManagementState(t *testing.T) {
-	g := NewWithT(t)
-
-	chk := codeflare.NewRemovalCheck()
+	chk := ray.NewCodeFlareRemovalCheck()
 
 	testCases := []struct {
 		name     string
@@ -103,6 +101,8 @@ func TestCodeFlareRemovalCheck_CanApply_ManagementState(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+
 			dsc := testutil.NewDSC(map[string]string{"codeflare": tc.state})
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
@@ -121,10 +121,11 @@ func TestCodeFlareRemovalCheck_CanApply_ManagementState(t *testing.T) {
 func TestCodeFlareRemovalCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	codeflareCheck := codeflare.NewRemovalCheck()
+	chk := ray.NewCodeFlareRemovalCheck()
 
-	g.Expect(codeflareCheck.ID()).To(Equal("components.codeflare.removal"))
-	g.Expect(codeflareCheck.Name()).To(Equal("Components :: CodeFlare :: Removal (3.x)"))
-	g.Expect(codeflareCheck.Group()).To(Equal(check.GroupComponent))
-	g.Expect(codeflareCheck.Description()).ToNot(BeEmpty())
+	g.Expect(chk.ID()).To(Equal("components.ray.codeflare-removal"))
+	g.Expect(chk.Name()).To(Equal("Components :: Ray :: CodeFlare Removal (3.x)"))
+	g.Expect(chk.Group()).To(Equal(check.GroupComponent))
+	g.Expect(chk.CheckKind()).To(Equal("ray"))
+	g.Expect(chk.Description()).ToNot(BeEmpty())
 }

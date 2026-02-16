@@ -20,9 +20,10 @@ const (
 	finalizerCodeFlareOAuth = "ray.openshift.ai/oauth-finalizer"
 )
 
-//nolint:gochecknoglobals // Test fixture - shared across test functions
+//nolint:gochecknoglobals // Test fixture - shared across test functions in ray_test package
 var listKinds = map[schema.GroupVersionResource]string{
 	resources.RayCluster.GVR():         resources.RayCluster.ListKind(),
+	resources.AppWrapper.GVR():         resources.AppWrapper.ListKind(),
 	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
 }
 

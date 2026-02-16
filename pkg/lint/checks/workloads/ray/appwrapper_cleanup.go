@@ -1,4 +1,4 @@
-package codeflare
+package ray
 
 import (
 	"context"
@@ -16,24 +16,26 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
-const kind = "codeflare"
+// dscComponent is the DSC spec key for the CodeFlare component.
+// The user-facing kind is "ray" but the DSC still uses "codeflare".
+const dscComponent = "codeflare"
 
 const ConditionTypeAppWrapperCompatible = "AppWrapperCompatible" //nolint:gosec // Not a credential
 
-// ImpactedWorkloadsCheck lists AppWrappers that will be impacted when CodeFlare is removed in RHOAI 3.x.
-type ImpactedWorkloadsCheck struct {
+// AppWrapperCleanupCheck lists AppWrappers that will be impacted when CodeFlare is removed in RHOAI 3.x.
+type AppWrapperCleanupCheck struct {
 	check.BaseCheck
 }
 
-func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
-	return &ImpactedWorkloadsCheck{
+func NewAppWrapperCleanupCheck() *AppWrapperCleanupCheck {
+	return &AppWrapperCleanupCheck{
 		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupWorkload,
 			Kind:             kind,
 			Type:             check.CheckTypeImpactedWorkloads,
-			CheckID:          "workloads.codeflare.impacted-workloads",
-			CheckName:        "Workloads :: CodeFlare :: Impacted Workloads (3.x)",
-			CheckDescription: "Lists AppWrappers that will be impacted in RHOAI 3.x (CodeFlare not available)",
+			CheckID:          "workloads.ray.appwrapper-cleanup",
+			CheckName:        "Workloads :: Ray :: AppWrapper Cleanup (3.x)",
+			CheckDescription: "Lists AppWrappers managed by CodeFlare that will be impacted in RHOAI 3.x",
 			CheckRemediation: "Remove redundant AppWrapper CRs or install the AppWrapper controller separately before upgrading",
 		},
 	}
@@ -41,7 +43,7 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 
 // CanApply returns whether this check should run for the given target.
 // Only applies when upgrading from 2.x to 3.x and CodeFlare is Managed.
-func (c *ImpactedWorkloadsCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
+func (c *AppWrapperCleanupCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
 	if !version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion) {
 		return false, nil
 	}
@@ -51,11 +53,11 @@ func (c *ImpactedWorkloadsCheck) CanApply(ctx context.Context, target check.Targ
 		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	return components.HasManagementState(dsc, kind, constants.ManagementStateManaged), nil
+	return components.HasManagementState(dsc, dscComponent, constants.ManagementStateManaged), nil
 }
 
 // Validate executes the check against the provided target.
-func (c *ImpactedWorkloadsCheck) Validate(
+func (c *AppWrapperCleanupCheck) Validate(
 	ctx context.Context,
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
@@ -63,7 +65,7 @@ func (c *ImpactedWorkloadsCheck) Validate(
 		Complete(ctx, c.newAppWrapperCondition)
 }
 
-func (c *ImpactedWorkloadsCheck) newAppWrapperCondition(
+func (c *AppWrapperCleanupCheck) newAppWrapperCondition(
 	_ context.Context,
 	req *validate.WorkloadRequest[*metav1.PartialObjectMetadata],
 ) ([]result.Condition, error) {

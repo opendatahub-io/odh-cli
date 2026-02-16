@@ -80,6 +80,15 @@ type ComponentValidateFn func(ctx context.Context, req *ComponentRequest) error
 // Use with Complete as a higher-level alternative to Run when the callback only needs to set conditions.
 type ComponentConditionFn func(ctx context.Context, req *ComponentRequest) ([]result.Condition, error)
 
+// WithComponentName overrides the DSC component key used for management state queries.
+// By default, Component() derives the key from c.CheckKind(). Use this when the
+// user-facing kind differs from the DSC spec key (e.g., kind="ray" but DSC key="codeflare").
+func (b *ComponentBuilder) WithComponentName(name string) *ComponentBuilder {
+	b.componentName = name
+
+	return b
+}
+
 // InState specifies which management states trigger validation.
 // If the component is not in any of the specified states, a "not configured" result is returned.
 // If no states are specified (InState not called), validation runs for any configured state.
