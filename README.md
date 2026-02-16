@@ -44,9 +44,9 @@ The container has `KUBECONFIG=/kubeconfig` set by default, so you just need to m
 
 > **Note:** The images are OCI-compliant and work with both Podman and Docker. Examples for both are provided below.
 
-**Interactive Debugging:**
+**Shell Access:**
 
-The container includes kubectl, oc, and debugging utilities for interactive troubleshooting:
+The container also bundles migration tools and CLI utilities that can be used directly from a shell session:
 
 **Podman:**
 ```bash
@@ -64,14 +64,29 @@ docker run -it --rm \
   quay.io/rhoai/rhoai-upgrade-helpers-rhel9:dev
 ```
 
-Once inside the container, use kubectl/oc/wget/curl:
+Available tools:
+- `rhai-cli`
+- `kubectl` (latest stable)
+- `oc` (latest stable)
+- `jq`
+- `wget`
+- `curl`
+- `tar`
+- `gzip`
+- `bash`
+
+Example usage:
 ```bash
+oc login --token=sha256~xxxx --server=https://api.my-cluster.p3.openshiftapps.com:6443
+
 kubectl get pods -n opendatahub
 oc get dsci
-kubectl-odh lint --target-version 3.3.0
+
+rhai-cli lint --target-version 3.3.0
 ```
 
-Available tools: `kubectl` (latest stable), `oc` (latest stable), `wget`, `curl`, `tar`, `gzip`, `bash`
+The `rhai-cli` binary is located at `/opt/rhai-cli/bin/rhai-cli` (already on `PATH`).
+Upgrade helper scripts are located at `/opt/rhai-upgrade-helpers`.
 
 **Token Authentication:**
 
