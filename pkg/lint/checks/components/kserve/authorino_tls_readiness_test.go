@@ -91,12 +91,14 @@ func TestAuthorinoTLSReadinessCheck_FullyConfiguredAndReady(t *testing.T) {
 		"Reason":  Equal(check.ReasonConfigurationValid),
 		"Message": ContainSubstring("authorino-server-cert"),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactNone))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(check.ConditionTypeReady),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonResourceAvailable),
 		"Message": ContainSubstring("Authorino is installed and ready"),
 	}))
+	g.Expect(result.Status.Conditions[1].Impact).To(Equal(resultpkg.ImpactNone))
 }
 
 func TestAuthorinoTLSReadinessCheck_NotFound(t *testing.T) {
@@ -310,6 +312,26 @@ func TestAuthorinoTLSReadinessCheck_CanApply_NotUpgrade2xTo3x(t *testing.T) {
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		CurrentVersion: "2.24.0",
 		TargetVersion:  "2.25.0",
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.LLMInferenceService.GVR(): resources.LLMInferenceService.ListKind(),
+		},
+		Objects: []*unstructured.Unstructured{
+			newLLMInferenceService(),
+		},
+	})
+
+	c := kserve.NewAuthorinoTLSReadinessCheck()
+	canApply, err := c.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
+func TestAuthorinoTLSReadinessCheck_CanApply_NotUpgrade3xTo4x(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		CurrentVersion: "3.0.0",
+		TargetVersion:  "4.0.0",
 		ListKinds: map[schema.GroupVersionResource]string{
 			resources.LLMInferenceService.GVR(): resources.LLMInferenceService.ListKind(),
 		},

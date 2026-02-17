@@ -119,10 +119,7 @@ func TestKuadrantReadinessCheck_NotFound(t *testing.T) {
 	ctx := t.Context()
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: map[schema.GroupVersionResource]string{
-			resources.LLMInferenceService.GVR(): resources.LLMInferenceService.ListKind(),
-			resources.Kuadrant.GVR():            resources.Kuadrant.ListKind(),
-		},
+		ListKinds: llmdListKinds(),
 		Objects: []*unstructured.Unstructured{
 			newLLMInferenceService(),
 		},
@@ -212,6 +209,26 @@ func TestKuadrantReadinessCheck_CanApply_NotUpgrade2xTo3x(t *testing.T) {
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		CurrentVersion: "2.24.0",
 		TargetVersion:  "2.25.0",
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.LLMInferenceService.GVR(): resources.LLMInferenceService.ListKind(),
+		},
+		Objects: []*unstructured.Unstructured{
+			newLLMInferenceService(),
+		},
+	})
+
+	c := kserve.NewKuadrantReadinessCheck()
+	canApply, err := c.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
+func TestKuadrantReadinessCheck_CanApply_NotUpgrade3xTo4x(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		CurrentVersion: "3.0.0",
+		TargetVersion:  "4.0.0",
 		ListKinds: map[schema.GroupVersionResource]string{
 			resources.LLMInferenceService.GVR(): resources.LLMInferenceService.ListKind(),
 		},
