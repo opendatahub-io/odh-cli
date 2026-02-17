@@ -13,7 +13,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
-// AcceleratorProfileMigrationCheck detects legacy AcceleratorProfiles that will be auto-migrated to
+// AcceleratorProfileMigrationCheck detects deprecated AcceleratorProfiles that will be auto-migrated to
 // HardwareProfiles (infrastructure.opendatahub.io) during upgrade to RHOAI 3.x.
 type AcceleratorProfileMigrationCheck struct {
 	check.BaseCheck
@@ -28,8 +28,8 @@ func NewAcceleratorProfileMigrationCheck() *AcceleratorProfileMigrationCheck {
 			Type:             check.CheckTypeAcceleratorProfileMigration,
 			CheckID:          "components.dashboard.acceleratorprofile-migration",
 			CheckName:        "Components :: Dashboard :: AcceleratorProfile Migration (3.x)",
-			CheckDescription: "Lists legacy AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
-			CheckRemediation: "Legacy AcceleratorProfiles will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade - no manual action required",
+			CheckDescription: "Lists deprecated AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
+			CheckRemediation: "Deprecated AcceleratorProfiles will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade - no manual action required",
 		},
 	}
 }
@@ -59,14 +59,14 @@ func (c *AcceleratorProfileMigrationCheck) newMigrationCondition(
 			check.ConditionTypeMigrationRequired,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonNoMigrationRequired),
-			check.WithMessage("No legacy AcceleratorProfiles found - no migration required"),
+			check.WithMessage("No deprecated AcceleratorProfiles found - no migration required"),
 		)}, nil
 	default:
 		return []result.Condition{check.NewCondition(
 			check.ConditionTypeMigrationRequired,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonMigrationPending),
-			check.WithMessage("Found %d legacy AcceleratorProfile(s) that will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade", len(req.Items)),
+			check.WithMessage("Found %d deprecated AcceleratorProfile(s) that will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade", len(req.Items)),
 			check.WithImpact(result.ImpactAdvisory),
 			check.WithRemediation(c.CheckRemediation),
 		)}, nil

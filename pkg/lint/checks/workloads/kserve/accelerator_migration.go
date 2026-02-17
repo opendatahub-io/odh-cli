@@ -19,7 +19,7 @@ import (
 
 const ConditionTypeISVCAcceleratorProfileCompatible = "AcceleratorProfileCompatible"
 
-// AcceleratorMigrationCheck detects InferenceService CRs referencing legacy AcceleratorProfiles
+// AcceleratorMigrationCheck detects InferenceService CRs referencing deprecated AcceleratorProfiles
 // that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during RHOAI 3.x upgrade.
 type AcceleratorMigrationCheck struct {
 	check.BaseCheck
@@ -33,8 +33,8 @@ func NewAcceleratorMigrationCheck() *AcceleratorMigrationCheck {
 			Type:             check.CheckTypeImpactedWorkloads,
 			CheckID:          "workloads.kserve.accelerator-migration",
 			CheckName:        "Workloads :: KServe :: AcceleratorProfile Migration (3.x)",
-			CheckDescription: "Detects InferenceService CRs referencing legacy AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
-			CheckRemediation: "Legacy AcceleratorProfiles will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade - no manual action required",
+			CheckDescription: "Detects InferenceService CRs referencing deprecated AcceleratorProfiles that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade",
+			CheckRemediation: "Deprecated AcceleratorProfiles will be automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade - no manual action required",
 		},
 	}
 }
@@ -95,7 +95,7 @@ func (c *AcceleratorMigrationCheck) newISVCAcceleratorMigrationCondition(
 			ConditionTypeISVCAcceleratorProfileCompatible,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonVersionCompatible),
-			check.WithMessage("No InferenceServices found using legacy AcceleratorProfiles - no migration needed"),
+			check.WithMessage("No InferenceServices found using deprecated AcceleratorProfiles - no migration needed"),
 		)
 	}
 
@@ -105,7 +105,7 @@ func (c *AcceleratorMigrationCheck) newISVCAcceleratorMigrationCondition(
 			ConditionTypeISVCAcceleratorProfileCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonResourceNotFound),
-			check.WithMessage("Found %d InferenceService(s) referencing legacy AcceleratorProfiles (%d missing): AcceleratorProfiles and InferenceService references are automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade", totalImpacted, totalMissing),
+			check.WithMessage("Found %d InferenceService(s) referencing deprecated AcceleratorProfiles (%d missing): AcceleratorProfiles and InferenceService references are automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade", totalImpacted, totalMissing),
 			check.WithImpact(result.ImpactAdvisory),
 			check.WithRemediation(c.CheckRemediation),
 		)
@@ -116,7 +116,7 @@ func (c *AcceleratorMigrationCheck) newISVCAcceleratorMigrationCondition(
 		ConditionTypeISVCAcceleratorProfileCompatible,
 		metav1.ConditionFalse,
 		check.WithReason(check.ReasonConfigurationInvalid),
-		check.WithMessage("Found %d InferenceService(s) using legacy AcceleratorProfiles: AcceleratorProfiles and InferenceService references are automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade", totalImpacted),
+		check.WithMessage("Found %d InferenceService(s) using deprecated AcceleratorProfiles: AcceleratorProfiles and InferenceService references are automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade", totalImpacted),
 		check.WithImpact(result.ImpactAdvisory),
 		check.WithRemediation(c.CheckRemediation),
 	)
