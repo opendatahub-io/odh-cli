@@ -6,6 +6,11 @@ import (
 	"fmt"
 
 	"github.com/blang/semver/v4"
+	"github.com/spf13/pflag"
+
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/genericiooptions"
+
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
@@ -33,10 +38,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube/discovery"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
-	"github.com/spf13/pflag"
-
-	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/cli-runtime/pkg/genericiooptions"
 )
 
 // Verify Command implements cmd.Command interface at compile time.

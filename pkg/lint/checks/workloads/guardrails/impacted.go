@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
@@ -12,8 +14,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (

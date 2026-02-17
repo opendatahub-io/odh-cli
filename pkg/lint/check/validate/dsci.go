@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // DSCIBuilder provides a fluent API for DSCInitialization-based validation.

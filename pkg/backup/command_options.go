@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
-
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
 
 const DefaultTimeout = 10 * time.Minute

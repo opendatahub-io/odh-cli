@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
 )
 
 const (

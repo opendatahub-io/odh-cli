@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )

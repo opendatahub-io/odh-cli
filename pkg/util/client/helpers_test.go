@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/onsi/gomega/types"
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -17,6 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
+
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
 )

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/blang/semver/v4"
+
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"

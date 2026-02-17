@@ -3,9 +3,9 @@ package kube_test
 import (
 	"testing"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
-
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 
 	. "github.com/onsi/gomega"
 )

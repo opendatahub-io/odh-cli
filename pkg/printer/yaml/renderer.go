@@ -5,8 +5,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util"
 	"sigs.k8s.io/yaml"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util"
 )
 
 // Renderer provides a generic interface for rendering values as YAML.

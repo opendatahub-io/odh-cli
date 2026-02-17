@@ -3,10 +3,10 @@ package client_test
 import (
 	"testing"
 
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/rest"
+
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 )

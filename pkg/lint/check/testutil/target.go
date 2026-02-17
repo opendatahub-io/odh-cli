@@ -4,10 +4,6 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
-	"github.com/opendatahub-io/odh-cli/pkg/resources"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 	olmclientset "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +12,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
+
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 )
 
 // TargetConfig holds all parameters needed to build a check.Target for tests.

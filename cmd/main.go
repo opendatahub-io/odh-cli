@@ -3,11 +3,12 @@ package main
 import (
 	"os"
 
-	"github.com/opendatahub-io/odh-cli/cmd/lint"
-	"github.com/opendatahub-io/odh-cli/cmd/version"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+
+	"github.com/opendatahub-io/odh-cli/cmd/lint"
+	"github.com/opendatahub-io/odh-cli/cmd/version"
 )
 
 func main() {

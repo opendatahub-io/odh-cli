@@ -1,11 +1,12 @@
 package run
 
 import (
-	"github.com/opendatahub-io/odh-cli/pkg/migrate"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+
+	"github.com/opendatahub-io/odh-cli/pkg/migrate"
 )
 
 const (
