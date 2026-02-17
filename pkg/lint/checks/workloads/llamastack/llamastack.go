@@ -3,11 +3,9 @@ package llamastack
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
@@ -22,10 +20,9 @@ import (
 const (
 	kind = "llamastackdistribution"
 
-	ConditionTypeVLLMConfigured      = "VLLMConfigured"
-	ConditionTypePostgresConfigured  = "PostgresConfigured"
-	ConditionTypeEmbeddingConfigured = "EmbeddingConfigured"
-	ConditionTypeConfigMapValid      = "ConfigMapValid"
+	ConditionTypeRequiresRecreation = "RequiresRecreation"
+
+	numConditions = 1 // Number of conditions in buildConditions
 )
 
 // ConfigCheck validates LlamaStackDistribution resources for 3.3 upgrade compatibility.
@@ -40,9 +37,9 @@ func NewConfigCheck() *ConfigCheck {
 			Kind:             kind,
 			Type:             "config",
 			CheckID:          "workloads.llamastack.config",
-			CheckName:        "Workloads :: LlamaStack :: Configuration (3.3)",
-			CheckDescription: "Validates LlamaStackDistribution resources for required configuration changes in RHOAI 3.3",
-			CheckRemediation: "Update LlamaStackDistribution CRs with required environment variables before upgrading",
+			CheckName:        "Workloads :: LlamaStack :: Upgrade Preparation (2.x to 3.3)",
+			CheckDescription: "Identifies LlamaStackDistribution resources that require deletion and recreation for RHOAI 3.3 upgrade",
+			CheckRemediation: "Back up configurations using the backup script from rhoai-upgrade-helpers repository, coordinate with owners, then delete and recreate LlamaStackDistributions in RHOAI 3.3.0 following the migration guide",
 		},
 	}
 }
@@ -71,120 +68,69 @@ func (c *ConfigCheck) Validate(
 }
 
 func (c *ConfigCheck) validateDistributions(
-	ctx context.Context,
+	_ context.Context,
 	req *validate.WorkloadRequest[*unstructured.Unstructured],
 ) error {
 	count := len(req.Items)
 
 	if count == 0 {
-		// No LlamaStackDistributions found - nothing to validate
+		// No LlamaStackDistributions found - upgrade can proceed
 		req.Result.SetCondition(newNoWorkloadsCondition())
 
 		return nil
 	}
 
-	// Track validation results across all LLSDs
-	var (
-		missingVLLMURL         []string
-		missingPostgresHost    []string
-		missingPostgresPass    []string
-		missingEmbeddingURL    []string
-		invalidConfigMaps      []string
-		hasBedrockOldFormat    []string
-		hasDeprecatedTelemetry []string
-	)
-
-	// Track impacted resources with specific issues per LLSD
-	impactedMap := make(map[types.NamespacedName][]string)
-
-	// Validate each LlamaStackDistribution
-	for _, llsd := range req.Items {
-		namespace := llsd.GetNamespace()
-		name := llsd.GetName()
-		key := fmt.Sprintf("%s/%s", namespace, name)
-		nsName := types.NamespacedName{Namespace: namespace, Name: name}
-
-		env, err := getEnvVars(llsd)
-		if err != nil {
-			return fmt.Errorf("getting env vars for %s: %w", key, err)
-		}
-
-		// Check required VLLM configuration
-		if !hasEnvVar(env, "VLLM_URL") {
-			missingVLLMURL = append(missingVLLMURL, key)
-			impactedMap[nsName] = append(impactedMap[nsName], "missing-vllm-url")
-		}
-
-		// Check required PostgreSQL configuration
-		if !hasEnvVar(env, "POSTGRES_HOST") {
-			missingPostgresHost = append(missingPostgresHost, key)
-			impactedMap[nsName] = append(impactedMap[nsName], "missing-postgres-host")
-		}
-		if !hasEnvVar(env, "POSTGRES_PASSWORD") {
-			missingPostgresPass = append(missingPostgresPass, key)
-			impactedMap[nsName] = append(impactedMap[nsName], "missing-postgres-password")
-		}
-
-		// Check required embedding configuration
-		if !hasEnvVar(env, "VLLM_EMBEDDING_URL") {
-			missingEmbeddingURL = append(missingEmbeddingURL, key)
-			impactedMap[nsName] = append(impactedMap[nsName], "missing-embedding-url")
-		}
-
-		// Check ConfigMap if configured
-		if err := validateConfigMap(ctx, req.Client, llsd); err != nil {
-			invalidConfigMaps = append(invalidConfigMaps, fmt.Sprintf("%s: %s", key, err.Error()))
-			impactedMap[nsName] = append(impactedMap[nsName], "invalid-configmap")
-		}
-
-		// Check for old Bedrock format (advisory)
-		if hasOldBedrockFormat(env) && !hasEnvVar(env, "AWS_BEARER_TOKEN_BEDROCK") {
-			hasBedrockOldFormat = append(hasBedrockOldFormat, key)
-			impactedMap[nsName] = append(impactedMap[nsName], "deprecated-bedrock-format")
-		}
-
-		// Check for deprecated telemetry variables (advisory)
-		if hasDeprecatedTelemetryVars(env) {
-			hasDeprecatedTelemetry = append(hasDeprecatedTelemetry, key)
-			impactedMap[nsName] = append(impactedMap[nsName], "deprecated-telemetry-vars")
-		}
-	}
-
-	// Create conditions based on validation results
-	conditions := c.buildConditions(
-		missingVLLMURL,
-		missingPostgresHost,
-		missingPostgresPass,
-		missingEmbeddingURL,
-		invalidConfigMaps,
-		hasBedrockOldFormat,
-		hasDeprecatedTelemetry,
-		count,
-	)
+	// ALL LlamaStackDistributions require recreation
+	// Create conditions
+	conditions := c.buildConditions(count)
 
 	for _, cond := range conditions {
 		req.Result.SetCondition(cond)
 	}
 
-	// Manually populate impacted objects with annotations describing specific issues
-	// Initialize to empty slice (not nil) to prevent auto-population by the builder
-	req.Result.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0)
+	// Populate impacted objects - ALL LLSDs are impacted
+	req.Result.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(req.Items))
 
-	for nsName, issues := range impactedMap {
-		// Only add objects that actually have issues
-		if len(issues) > 0 {
-			req.Result.ImpactedObjects = append(req.Result.ImpactedObjects, metav1.PartialObjectMetadata{
-				TypeMeta: resources.LlamaStackDistribution.TypeMeta(),
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: nsName.Namespace,
-					Name:      nsName.Name,
-					Annotations: map[string]string{
-						"llsd.issues": strings.Join(issues, ","),
-					},
+	for _, llsd := range req.Items {
+		namespace := llsd.GetNamespace()
+		name := llsd.GetName()
+
+		req.Result.ImpactedObjects = append(req.Result.ImpactedObjects, metav1.PartialObjectMetadata{
+			TypeMeta: resources.LlamaStackDistribution.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      name,
+				Annotations: map[string]string{
+					"upgrade.action": "requires-recreation",
 				},
-			})
-		}
+			},
+		})
 	}
 
 	return nil
+}
+
+func newNoWorkloadsCondition() result.Condition {
+	return check.NewCondition(
+		ConditionTypeRequiresRecreation,
+		metav1.ConditionTrue,
+		check.WithReason(check.ReasonResourceNotFound),
+		check.WithMessage("No LlamaStackDistribution resources found - upgrade can proceed without LlamaStack-specific actions"),
+	)
+}
+
+func (c *ConfigCheck) buildConditions(totalCount int) []result.Condition {
+	conditions := make([]result.Condition, 0, numConditions)
+
+	// ALL LlamaStackDistributions require recreation (BLOCKING)
+	conditions = append(conditions, check.NewCondition(
+		ConditionTypeRequiresRecreation,
+		metav1.ConditionFalse,
+		check.WithReason("ArchitecturalIncompatibility"),
+		check.WithMessage("Found %d LlamaStackDistribution(s) that must be deleted and recreated after RHOAI 3.3 upgrade. In-place upgrade is not supported. ALL DATA WILL BE LOST - Archive data before upgrade.", totalCount),
+		check.WithImpact(result.ImpactBlocking),
+		check.WithRemediation("1. Run backup script: llamastack/backup-all-llamastack.sh from rhoai-upgrade-helpers repo to archive existing configurations. 2. Coordinate with LLSD owners about data loss and recreation requirements. 3. After RHOAI 3.3 upgrade, delete old LLSDs and create new ones following RHOAI 3.3 documentation."),
+	))
+
+	return conditions
 }
