@@ -184,7 +184,8 @@ func TestAuthorinoTLSReadinessCheck_TLSEnabledEmptyCertSecretName(t *testing.T) 
 
 	// Create Authorino with certSecretRef present but name empty
 	obj := newAuthorino(true, "placeholder", "True")
-	_ = unstructured.SetNestedField(obj.Object, "", "spec", "listener", "tls", "certSecretRef", "name")
+	err := unstructured.SetNestedField(obj.Object, "", "spec", "listener", "tls", "certSecretRef", "name")
+	g.Expect(err).ToNot(HaveOccurred())
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds: authorinoListKinds(),
