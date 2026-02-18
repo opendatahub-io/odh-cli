@@ -89,7 +89,7 @@ func TestImpactedWorkloadsCheck_WithCodeFlareFinalizer(t *testing.T) {
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
 			ContainSubstring("Found 1 CodeFlare-managed RayCluster(s)"),
-			ContainSubstring("will be impacted in RHOAI 3.0"),
+			ContainSubstring("not ready for RHOAI 3.0 upgrade"),
 		),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
@@ -231,8 +231,69 @@ func TestImpactedWorkloadsCheck_MultipleClusters(t *testing.T) {
 		"Reason": Equal(check.ReasonVersionIncompatible),
 		"Message": And(
 			ContainSubstring("Found 2 CodeFlare-managed RayCluster(s)"),
-			ContainSubstring("will be impacted in RHOAI 3.0"),
+			ContainSubstring("not ready for RHOAI 3.0 upgrade"),
 		),
+	}))
+	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))
+}
+
+func TestImpactedWorkloadsCheck_AllWithPreUpgradeAnnotation(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	preUpgradeAnnotation := ray.RayPreUpgradeBackupAnnotation
+	cluster1 := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.RayCluster.APIVersion(),
+			"kind":       resources.RayCluster.Kind,
+			"metadata": map[string]any{
+				"name":      "codeflare-cluster-1",
+				"namespace": "ns1",
+				"finalizers": []any{
+					finalizerCodeFlareOAuth,
+				},
+				"annotations": map[string]any{
+					preUpgradeAnnotation: "2024-01-01T00:00:00Z",
+				},
+			},
+		},
+	}
+
+	cluster2 := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.RayCluster.APIVersion(),
+			"kind":       resources.RayCluster.Kind,
+			"metadata": map[string]any{
+				"name":      "codeflare-cluster-2",
+				"namespace": "ns2",
+				"finalizers": []any{
+					finalizerCodeFlareOAuth,
+				},
+				"annotations": map[string]any{
+					preUpgradeAnnotation: "2024-01-02T00:00:00Z",
+				},
+			},
+		},
+	}
+
+	dsc := testutil.NewDSC(map[string]string{"ray": "Managed"})
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{cluster1, cluster2, dsc},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	impactedCheck := ray.NewImpactedWorkloadsCheck()
+	result, err := impactedCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(ray.ConditionTypeCodeFlareRayClusterCompatible),
+		"Status":  Equal(metav1.ConditionTrue),
+		"Reason":  Equal(check.ReasonVersionCompatible),
+		"Message": Equal("All 2 CodeFlare-managed RayCluster(s) have completed pre-upgrade steps - ready for RHOAI 3.0"),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))
 }
