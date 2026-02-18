@@ -57,6 +57,7 @@ ENV KUBECONFIG=/kubeconfig
 # Install base utilities (jq, wget, python3, python3-pip)
 RUN yum install -y \
     jq \
+    yq \
     wget \
     python3 \
     python3-pip \
