@@ -67,28 +67,43 @@ RUN python3 -m pip install --no-cache-dir \
     'kubernetes>=28.1.0' \
     'PyYAML>=6.0'
 
-# Install kubectl, oc, and yq with multi-arch support
+# Install kubectl with multi-arch support (latest stable version)
 RUN set -e; \
     ARCH=${TARGETARCH:-amd64}; \
     case "$ARCH" in \
-        amd64) KUBE_ARCH="amd64"; OC_ARCH="amd64"; YQ_ARCH="amd64" ;; \
-        arm64) KUBE_ARCH="arm64"; OC_ARCH="arm64"; YQ_ARCH="arm64" ;; \
+        amd64) KUBE_ARCH="amd64" ;; \
+        arm64) KUBE_ARCH="arm64" ;; \
         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac; \
-    \
     echo "Installing kubectl for architecture: $KUBE_ARCH"; \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBE_ARCH}/kubectl"; \
     chmod +x kubectl; \
-    mv kubectl /usr/local/bin/kubectl; \
-    \
+    mv kubectl /usr/local/bin/kubectl
+
+# Install OpenShift CLI (oc) with multi-arch support (stable version)
+RUN set -e; \
+    ARCH=${TARGETARCH:-amd64}; \
+    case "$ARCH" in \
+        amd64) OC_ARCH="amd64" ;; \
+        arm64) OC_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac; \
     echo "Installing oc for architecture: $OC_ARCH"; \
     curl -fsSL -o openshift-client.tar.gz \
         "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable-4.17/openshift-client-linux-${OC_ARCH}-rhel9.tar.gz"; \
     tar -xzf openshift-client.tar.gz; \
     chmod +x oc; \
     mv oc /usr/local/bin/oc; \
-    rm -f openshift-client.tar.gz kubectl README.md; \
-    \
+    rm -f openshift-client.tar.gz kubectl README.md
+
+# Install yq with multi-arch support (stable version)
+RUN set -e; \
+    ARCH=${TARGETARCH:-amd64}; \
+    case "$ARCH" in \
+        amd64) YQ_ARCH="amd64" ;; \
+        arm64) YQ_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac; \
     echo "Installing yq for architecture: $YQ_ARCH"; \
     YQ_VERSION="v4.44.6"; \
     curl -fsSL -o /usr/local/bin/yq \
