@@ -4,8 +4,6 @@ package lint
 const (
 	flagDescTargetVersion = "target version for upgrade readiness checks (e.g., 2.25.0, 3.0.0)"
 	flagDescOutput        = "output format (table|json|yaml)"
-	flagDescFailCritical  = "exit with error if critical findings are detected"
-	flagDescFailWarning   = "exit with error if warning or critical findings are detected"
 	flagDescVerbose       = "show impacted objects and summary information"
 	flagDescDebug         = "show detailed diagnostic logs for troubleshooting"
 	flagDescTimeout       = "operation timeout (e.g., 10m, 30m)"

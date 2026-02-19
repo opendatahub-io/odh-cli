@@ -187,8 +187,6 @@ func TestCommand_AddFlags(t *testing.T) {
 		g.Expect(fs.Lookup("target-version")).ToNot(BeNil())
 		g.Expect(fs.Lookup("output")).ToNot(BeNil())
 		g.Expect(fs.Lookup("checks")).ToNot(BeNil())
-		g.Expect(fs.Lookup("fail-on-critical")).ToNot(BeNil())
-		g.Expect(fs.Lookup("fail-on-warning")).ToNot(BeNil())
 		g.Expect(fs.Lookup("timeout")).ToNot(BeNil())
 	})
 }

@@ -359,16 +359,22 @@ func (r *DiagnosticResult) AddImpactedObjects(
 
 // DiagnosticResultList represents a list of diagnostic results.
 type DiagnosticResultList struct {
-	ClusterVersion *string             `json:"clusterVersion,omitempty" yaml:"clusterVersion,omitempty"`
-	TargetVersion  *string             `json:"targetVersion,omitempty"  yaml:"targetVersion,omitempty"`
-	Results        []*DiagnosticResult `json:"results"                  yaml:"results"`
+	ClusterVersion   *string             `json:"clusterVersion,omitempty"   yaml:"clusterVersion,omitempty"`
+	TargetVersion    *string             `json:"targetVersion,omitempty"    yaml:"targetVersion,omitempty"`
+	OpenShiftVersion *string             `json:"openShiftVersion,omitempty" yaml:"openShiftVersion,omitempty"`
+	Results          []*DiagnosticResult `json:"results"                    yaml:"results"`
 }
 
 // NewDiagnosticResultList creates a new list.
-func NewDiagnosticResultList(clusterVersion *string, targetVersion *string) *DiagnosticResultList {
+func NewDiagnosticResultList(
+	clusterVersion *string,
+	targetVersion *string,
+	openShiftVersion *string,
+) *DiagnosticResultList {
 	return &DiagnosticResultList{
-		ClusterVersion: clusterVersion,
-		TargetVersion:  targetVersion,
-		Results:        make([]*DiagnosticResult, 0),
+		ClusterVersion:   clusterVersion,
+		TargetVersion:    targetVersion,
+		OpenShiftVersion: openShiftVersion,
+		Results:          make([]*DiagnosticResult, 0),
 	}
 }

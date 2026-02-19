@@ -50,6 +50,24 @@ var (
 	tableHeaders = []string{"STATUS", "KIND", "GROUP", "CHECK", "IMPACT", "MESSAGE"}
 )
 
+// printVerdict prints the Result section after the summary.
+func printVerdict(out io.Writer, hasBlocking bool, hasAdvisory bool) {
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "Result:")
+
+	switch {
+	case hasBlocking:
+		verdict := color.New(color.FgRed, color.Bold).Sprint("FAIL")
+		_, _ = fmt.Fprintf(out, "  %s - blocking findings detected\n", verdict)
+	case hasAdvisory:
+		verdict := color.New(color.FgYellow, color.Bold).Sprint("WARNING")
+		_, _ = fmt.Fprintf(out, "  %s - advisory findings detected\n", verdict)
+	default:
+		verdict := color.New(color.FgGreen, color.Bold).Sprint("PASS")
+		_, _ = fmt.Fprintf(out, "  %s - all checks passed\n", verdict)
+	}
+}
+
 // Validate checks if the output format is valid.
 func (o OutputFormat) Validate() error {
 	switch o {
@@ -73,12 +91,6 @@ type SharedOptions struct {
 
 	// CheckSelectors filters which checks to run (glob patterns, repeatable)
 	CheckSelectors []string
-
-	// FailOnCritical exits with non-zero code if critical findings detected
-	FailOnCritical bool
-
-	// FailOnWarning exits with non-zero code if warning findings detected
-	FailOnWarning bool
 
 	// Verbose enables progress messages (default: false, quiet by default)
 	Verbose bool
@@ -107,8 +119,6 @@ func NewSharedOptions(
 		ConfigFlags:    configFlags,
 		OutputFormat:   OutputFormatTable,
 		CheckSelectors: []string{"*"},  // Run all checks by default
-		FailOnCritical: true,           // Exit with error on critical findings (default)
-		FailOnWarning:  false,          // Don't exit on warnings by default
 		Timeout:        DefaultTimeout, // Default timeout to prevent hanging on slow clusters
 		IO:             iostreams.NewIOStreams(streams.In, streams.Out, streams.ErrOut),
 		QPS:            client.DefaultQPS,
@@ -340,8 +350,18 @@ func groupSortPriority(group string) int {
 	return len(check.CanonicalGroupOrder)
 }
 
+// VersionInfo holds version data for display in the status report.
+type VersionInfo struct {
+	RHOAICurrentVersion string
+	RHOAITargetVersion  string // empty in lint mode
+	OpenShiftVersion    string
+}
+
 // TableOutputOptions configures the behavior of OutputTable.
 type TableOutputOptions struct {
+	// VersionInfo contains version data to display in the Environment section.
+	VersionInfo *VersionInfo
+
 	// ShowImpactedObjects enables listing impacted objects after the summary.
 	ShowImpactedObjects bool
 
@@ -449,6 +469,11 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 		return fmt.Errorf("rendering table: %w", err)
 	}
 
+	if opts.VersionInfo != nil {
+		_, _ = fmt.Fprintln(out)
+		outputVersionInfo(out, opts.VersionInfo)
+	}
+
 	_, _ = fmt.Fprintln(out)
 	_, _ = fmt.Fprintln(out, "Summary:")
 	_, _ = fmt.Fprintf(out, "  Total: %d | Passed: %d | Warnings: %d | Failed: %d\n", totalChecks, totalPassed, totalWarnings, totalFailed)
@@ -458,6 +483,21 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 	}
 
 	return nil
+}
+
+// outputVersionInfo prints the Environment section with version details.
+func outputVersionInfo(out io.Writer, info *VersionInfo) {
+	_, _ = fmt.Fprintln(out, "Environment:")
+
+	if info.RHOAITargetVersion != "" {
+		_, _ = fmt.Fprintf(out, "  OpenShift AI version: %s -> %s\n", info.RHOAICurrentVersion, info.RHOAITargetVersion)
+	} else {
+		_, _ = fmt.Fprintf(out, "  OpenShift AI version: %s\n", info.RHOAICurrentVersion)
+	}
+
+	if info.OpenShiftVersion != "" {
+		_, _ = fmt.Fprintf(out, "  OpenShift version:    %s\n", info.OpenShiftVersion)
+	}
 }
 
 // outputImpactedObjects prints impacted objects for each check execution.
@@ -499,9 +539,15 @@ func outputImpactedObjects(
 }
 
 // OutputJSON outputs diagnostic results in List format.
-func OutputJSON(out io.Writer, results []check.CheckExecution, clusterVersion *string, targetVersion *string) error {
+func OutputJSON(
+	out io.Writer,
+	results []check.CheckExecution,
+	clusterVersion *string,
+	targetVersion *string,
+	openShiftVersion *string,
+) error {
 	// Create the list
-	list := result.NewDiagnosticResultList(clusterVersion, targetVersion)
+	list := result.NewDiagnosticResultList(clusterVersion, targetVersion, openShiftVersion)
 
 	// Add all results in execution order
 	for _, exec := range results {
@@ -520,9 +566,15 @@ func OutputJSON(out io.Writer, results []check.CheckExecution, clusterVersion *s
 }
 
 // OutputYAML outputs diagnostic results in List format.
-func OutputYAML(out io.Writer, results []check.CheckExecution, clusterVersion *string, targetVersion *string) error {
+func OutputYAML(
+	out io.Writer,
+	results []check.CheckExecution,
+	clusterVersion *string,
+	targetVersion *string,
+	openShiftVersion *string,
+) error {
 	// Create the list
-	list := result.NewDiagnosticResultList(clusterVersion, targetVersion)
+	list := result.NewDiagnosticResultList(clusterVersion, targetVersion, openShiftVersion)
 
 	// Add all results in execution order
 	for _, exec := range results {
