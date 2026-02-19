@@ -23,8 +23,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/trainingoperator"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/certmanager"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/openshift"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/services/servicemesh"
 	datasciencepipelinesworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/guardrails"
 	kserveworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kserve"
@@ -75,7 +73,7 @@ func NewCommand(
 	registry := check.NewRegistry()
 
 	// Explicitly register all checks (no global state, full test isolation)
-	// Components (11)
+	// Components (13)
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
 	registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
@@ -83,18 +81,16 @@ func NewCommand(
 	registry.MustRegister(kserve.NewServerlessRemovalCheck())
 	registry.MustRegister(kserve.NewKuadrantReadinessCheck())
 	registry.MustRegister(kserve.NewAuthorinoTLSReadinessCheck())
+	registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
+	registry.MustRegister(kserve.NewServiceMeshRemovalCheck())
 	registry.MustRegister(kueue.NewManagementStateCheck())
 	registry.MustRegister(kueue.NewOperatorInstalledCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-	// Dependencies (3)
+	// Dependencies (2)
 	registry.MustRegister(certmanager.NewCheck())
 	registry.MustRegister(openshift.NewCheck())
-	registry.MustRegister(servicemeshoperator.NewCheck())
-
-	// Services (1)
-	registry.MustRegister(servicemesh.NewRemovalCheck())
 
 	// Workloads (13)
 	registry.MustRegister(ray.NewAppWrapperCleanupCheck())

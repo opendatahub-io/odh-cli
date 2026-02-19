@@ -1,4 +1,4 @@
-package servicemeshoperator_test
+package kserve_test
 
 import (
 	"testing"
@@ -10,13 +10,13 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/servicemeshoperator"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/kserve"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 )
 
-func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
+func TestServiceMeshOperatorCheck_NotInstalled(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -25,8 +25,8 @@ func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
 		TargetVersion: "3.0.0",
 	})
 
-	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
-	result, err := serviceMeshOperator2Check.Validate(ctx, target)
+	chk := kserve.NewServiceMeshOperatorCheck()
+	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
@@ -38,7 +38,7 @@ func TestServiceMeshOperator2Check_NotInstalled(t *testing.T) {
 	}))
 }
 
-func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
+func TestServiceMeshOperatorCheck_InstalledBlocking(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -60,8 +60,8 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 		TargetVersion: "3.0.0",
 	})
 
-	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
-	result, err := serviceMeshOperator2Check.Validate(ctx, target)
+	chk := kserve.NewServiceMeshOperatorCheck()
+	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
@@ -74,13 +74,13 @@ func TestServiceMeshOperator2Check_InstalledBlocking(t *testing.T) {
 	g.Expect(result.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "servicemeshoperator.v2.5.0"))
 }
 
-func TestServiceMeshOperator2Check_Metadata(t *testing.T) {
+func TestServiceMeshOperatorCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	serviceMeshOperator2Check := servicemeshoperator.NewCheck()
+	chk := kserve.NewServiceMeshOperatorCheck()
 
-	g.Expect(serviceMeshOperator2Check.ID()).To(Equal("dependencies.servicemeshoperator2.upgrade"))
-	g.Expect(serviceMeshOperator2Check.Name()).To(Equal("Dependencies :: ServiceMeshOperator2 :: Upgrade (3.x)"))
-	g.Expect(serviceMeshOperator2Check.Group()).To(Equal(check.GroupDependency))
-	g.Expect(serviceMeshOperator2Check.Description()).ToNot(BeEmpty())
+	g.Expect(chk.ID()).To(Equal("components.kserve.servicemesh-operator-upgrade"))
+	g.Expect(chk.Name()).To(Equal("Components :: KServe :: ServiceMesh Operator Upgrade (3.x)"))
+	g.Expect(chk.Group()).To(Equal(check.GroupComponent))
+	g.Expect(chk.Description()).ToNot(BeEmpty())
 }

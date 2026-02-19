@@ -1,4 +1,4 @@
-package servicemesh
+package kserve
 
 import (
 	"context"
@@ -16,34 +16,30 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
-// RemovalCheck validates that ServiceMesh is disabled before upgrading to 3.x.
-type RemovalCheck struct {
+// ServiceMeshRemovalCheck validates that ServiceMesh is disabled before upgrading to 3.x.
+type ServiceMeshRemovalCheck struct {
 	check.BaseCheck
 }
 
-// NewRemovalCheck creates a new ServiceMesh removal check.
-func NewRemovalCheck() *RemovalCheck {
-	return &RemovalCheck{
+func NewServiceMeshRemovalCheck() *ServiceMeshRemovalCheck {
+	return &ServiceMeshRemovalCheck{
 		BaseCheck: check.BaseCheck{
-			CheckGroup:       check.GroupService,
-			Kind:             "servicemesh",
-			Type:             check.CheckTypeRemoval,
-			CheckID:          "services.servicemesh.removal",
-			CheckName:        "Services :: ServiceMesh :: Removal (3.x)",
+			CheckGroup:       check.GroupComponent,
+			Kind:             constants.ComponentKServe,
+			Type:             "servicemesh-removal",
+			CheckID:          "components.kserve.servicemesh-removal",
+			CheckName:        "Components :: KServe :: ServiceMesh Removal (3.x)",
 			CheckDescription: "Validates that ServiceMesh is disabled before upgrading from RHOAI 2.x to 3.x (no longer required, OpenShift 4.19+ handles service mesh internally)",
 			CheckRemediation: "Disable ServiceMesh by setting managementState to 'Removed' in DSCInitialization before upgrading",
 		},
 	}
 }
 
-// CanApply returns whether this check should run for the given target.
-// This check only applies when upgrading FROM 2.x TO 3.x.
-func (c *RemovalCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
+func (c *ServiceMeshRemovalCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
 	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
-// Validate executes the check against the provided target.
-func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
+func (c *ServiceMeshRemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	tv := version.MajorMinorLabel(target.TargetVersion)
 
 	return validate.DSCI(c, target).Run(ctx, func(dr *result.DiagnosticResult, dsci *unstructured.Unstructured) error {

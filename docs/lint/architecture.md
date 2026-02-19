@@ -86,7 +86,7 @@ func NewCommand(
     registry := check.NewRegistry()
 
     // Explicitly register all checks (no global state, full test isolation)
-    // Components (11)
+    // Components (13)
     registry.MustRegister(codeflare.NewRemovalCheck())
     registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
     registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
@@ -94,18 +94,16 @@ func NewCommand(
     registry.MustRegister(datasciencepipelines.NewRenamingCheck())
     registry.MustRegister(kserve.NewServerlessRemovalCheck())
     registry.MustRegister(kserve.NewInferenceServiceConfigCheck())
+    registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
+    registry.MustRegister(kserve.NewServiceMeshRemovalCheck())
     registry.MustRegister(kueue.NewManagementStateCheck())
     registry.MustRegister(kueue.NewOperatorInstalledCheck())
     registry.MustRegister(modelmesh.NewRemovalCheck())
     registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-    // Dependencies (3)
+    // Dependencies (2)
     registry.MustRegister(certmanager.NewCheck())
     registry.MustRegister(openshift.NewCheck())
-    registry.MustRegister(servicemeshoperator.NewCheck())
-
-    // Services (1)
-    registry.MustRegister(servicemesh.NewRemovalCheck())
 
     // Workloads (8)
     registry.MustRegister(guardrails.NewImpactedWorkloadsCheck())

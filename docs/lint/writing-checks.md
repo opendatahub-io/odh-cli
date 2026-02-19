@@ -140,12 +140,9 @@ func NewCommand(
     registry.MustRegister(datasciencepipelines.NewInstructLabRemovalCheck())
     // ... additional component checks
 
-    // Dependencies (4)
+    // Dependencies (2)
     registry.MustRegister(certmanager.NewCheck())
     // ... additional dependency checks
-
-    // Services (1)
-    registry.MustRegister(servicemesh.NewRemovalCheck())
 
     // Workloads (7)
     registry.MustRegister(guardrails.NewOtelMigrationCheck())
