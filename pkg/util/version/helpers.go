@@ -37,6 +37,16 @@ func IsVersion3x(v *semver.Version) bool {
 	return v.Major == 3 //nolint:mnd
 }
 
+// SameMajorMinor checks if two versions share the same major and minor version.
+// Patch version is ignored. Returns false if either version is nil.
+func SameMajorMinor(a *semver.Version, b *semver.Version) bool {
+	if a == nil || b == nil {
+		return false
+	}
+
+	return a.Major == b.Major && a.Minor == b.Minor
+}
+
 // IsVersionAtLeast checks if the given version is at least the specified major.minor version.
 // Patch version is ignored in the comparison.
 // Returns false if version is nil.

@@ -22,7 +22,7 @@ func testConfigFlags() *genericclioptions.ConfigFlags {
 
 // T022: Test lint mode (no --target-version flag).
 func TestLintMode_NoVersionFlag(t *testing.T) {
-	t.Run("lint mode should validate current state only", func(t *testing.T) {
+	t.Run("lint mode should skip checks when no target version provided", func(t *testing.T) {
 		g := NewWithT(t)
 
 		var out, errOut bytes.Buffer
@@ -32,13 +32,12 @@ func TestLintMode_NoVersionFlag(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		// Use current non-deprecated constructor
 		cmd := lint.NewCommand(streams, testConfigFlags())
 
-		// No --target-version flag set (lint mode)
 		g.Expect(cmd.TargetVersion).To(BeEmpty())
 
-		// In lint mode, target version should default to current version
+		// Without --target-version, Run() will short-circuit when
+		// current and target versions share the same major.minor
 		err := cmd.Complete()
 		g.Expect(err).ToNot(HaveOccurred())
 	})
@@ -87,11 +86,8 @@ func TestLintMode_CheckTargetVersionMatches(t *testing.T) {
 		// Verify no --target-version flag set (lint mode)
 		g.Expect(command.TargetVersion).To(BeEmpty())
 
-		// In lint mode, when Run() executes, it should create CheckTarget
-		// with CurrentVersion == TargetVersion (both pointing to detected cluster version)
-		// This is architectural verification - the actual Run() implementation
-		// already does this at lint.go:169-170
-		// We verify the logic path exists without requiring a real cluster
+		// In lint mode, Run() detects that current == target (same major.minor)
+		// and short-circuits with a "no checks will be executed" message
 	})
 }
 
@@ -118,11 +114,8 @@ func TestUpgradeMode_CheckTargetVersionDiffers(t *testing.T) {
 		err := command.Complete()
 		g.Expect(err).ToNot(HaveOccurred())
 
-		// In upgrade mode, when Run() executes, it should create CheckTarget
-		// with CurrentVersion != TargetVersion (current vs target)
-		// This is architectural verification - the actual Run() implementation
-		// already does this at lint.go:297-298
-		// We verify the command is properly configured for upgrade mode
+		// In upgrade mode, Run() delegates to runUpgradeMode() when
+		// current and target differ at the major.minor level
 	})
 }
 
@@ -163,9 +156,8 @@ func TestIntegration_LintAndUpgradeModes(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 
 		// Note: Full end-to-end Run() testing requires k3s-envtest infrastructure
-		// The Run() logic is verified through the implementation at lint.go:115-132
-		// - Lint mode: calls runLintMode() when TargetVersion is empty
-		// - Upgrade mode: calls runUpgradeMode() when TargetVersion is set
+		// Run() prints environment, then either short-circuits (same major.minor)
+		// or delegates to runUpgradeMode() (different major.minor)
 	})
 }
 

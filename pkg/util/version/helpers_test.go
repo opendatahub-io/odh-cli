@@ -199,6 +199,80 @@ func TestIsVersionAtLeast(t *testing.T) {
 	}
 }
 
+func TestSameMajorMinor(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        *semver.Version
+		b        *semver.Version
+		expected bool
+	}{
+		{
+			name:     "nil a returns false",
+			a:        nil,
+			b:        toVersionPtr("3.0.0"),
+			expected: false,
+		},
+		{
+			name:     "nil b returns false",
+			a:        toVersionPtr("3.0.0"),
+			b:        nil,
+			expected: false,
+		},
+		{
+			name:     "both nil returns false",
+			a:        nil,
+			b:        nil,
+			expected: false,
+		},
+		{
+			name:     "identical versions returns true",
+			a:        toVersionPtr("2.25.2"),
+			b:        toVersionPtr("2.25.2"),
+			expected: true,
+		},
+		{
+			name:     "same major.minor different patch returns true",
+			a:        toVersionPtr("2.25.2"),
+			b:        toVersionPtr("2.25.5"),
+			expected: true,
+		},
+		{
+			name:     "different minor returns false",
+			a:        toVersionPtr("2.25.0"),
+			b:        toVersionPtr("2.26.0"),
+			expected: false,
+		},
+		{
+			name:     "different major returns false",
+			a:        toVersionPtr("2.25.0"),
+			b:        toVersionPtr("3.25.0"),
+			expected: false,
+		},
+		{
+			name:     "3.x to 3.x same minor returns true",
+			a:        toVersionPtr("3.3.0"),
+			b:        toVersionPtr("3.3.1"),
+			expected: true,
+		},
+		{
+			name:     "3.x to 3.x different minor returns false",
+			a:        toVersionPtr("3.0.0"),
+			b:        toVersionPtr("3.1.0"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			result := version.SameMajorMinor(tt.a, tt.b)
+
+			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
 func TestMajorMinorLabel(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -35,7 +35,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
-	"github.com/opendatahub-io/odh-cli/pkg/util/kube/discovery"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
@@ -178,149 +177,56 @@ func (c *Command) Validate() error {
 
 // Run executes the lint command in either lint or upgrade mode.
 func (c *Command) Run(ctx context.Context) error {
-	// Create context with timeout to prevent hanging on slow clusters
 	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 
-	// Detect current cluster version (needed for both modes)
 	currentVersion, err := version.Detect(ctx, c.Client)
 	if err != nil {
 		return fmt.Errorf("detecting cluster version: %w", err)
 	}
 
-	// Store current version for output formatting
 	c.currentClusterVersion = currentVersion.String()
 
-	// Determine mode: upgrade (with --target-version) or lint (without --target-version)
-	if c.TargetVersion != "" {
-		return c.runUpgradeMode(ctx, currentVersion)
+	// Determine effective target version (defaults to current for lint mode)
+	targetVersion := currentVersion
+	if c.parsedTargetVersion != nil {
+		targetVersion = c.parsedTargetVersion
 	}
 
-	return c.runLintMode(ctx, currentVersion)
-}
+	// Same major.minor means no upgrade checks are needed (checked before
+	// the downgrade guard so that e.g. --target-version 2.25 with current
+	// 2.25.2 is treated as "same version", not as a downgrade).
+	if version.SameMajorMinor(currentVersion, targetVersion) {
+		openshiftVersion, _ := version.DetectOpenShiftVersion(ctx, c.Client)
 
-// runLintMode validates current cluster state.
-func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Version) error {
-	c.IO.Errorf("Detected OpenShift AI version: %s\n", clusterVersion.String())
+		c.IO.Fprintln()
+		c.IO.Fprintln("Environment:")
+		c.IO.Fprintf("  OpenShift AI version: %s", currentVersion.String())
 
-	// Discover components and services
-	c.IO.Errorf("Discovering OpenShift AI components and services...")
-	components, err := discovery.DiscoverComponentsAndServices(ctx, c.Client)
-	if err != nil {
-		return fmt.Errorf("discovering components and services: %w", err)
-	}
-	c.IO.Errorf("Found %d API groups", len(components))
-	for _, comp := range components {
-		c.IO.Errorf("  - %s/%s (%d resources)", comp.APIGroup, comp.Version, len(comp.Resources))
-	}
-	c.IO.Fprintln()
-
-	// Discover workloads
-	c.IO.Errorf("Discovering workload custom resources...")
-	workloads, err := discovery.DiscoverWorkloads(ctx, c.Client)
-	if err != nil {
-		return fmt.Errorf("discovering workloads: %w", err)
-	}
-	c.IO.Errorf("Found %d workload types", len(workloads))
-	for _, gvr := range workloads {
-		c.IO.Errorf("  - %s/%s %s", gvr.Group, gvr.Version, gvr.Resource)
-	}
-	c.IO.Fprintln()
-
-	// Execute component and service checks (Resource: nil)
-	c.IO.Errorf("Running component and service checks...")
-	componentTarget := check.Target{
-		Client:         c.Client,
-		CurrentVersion: clusterVersion, // For lint mode, current = target
-		TargetVersion:  clusterVersion,
-		Resource:       nil, // No specific resource for component/service checks
-		IO:             c.IO,
-		Debug:          c.Debug,
-	}
-
-	executor := check.NewExecutor(c.registry, c.IO)
-
-	// Execute checks in canonical order: dependencies → services → components → workloads
-	// Store results by group for later organization
-	resultsByGroup := make(map[check.CheckGroup][]check.CheckExecution)
-
-	for _, group := range check.CanonicalGroupOrder {
-		if group == check.GroupWorkload {
-			continue // Workloads handled separately below
+		if openshiftVersion != nil {
+			c.IO.Fprintf("  OpenShift version:    %s", openshiftVersion.String())
 		}
 
-		results, err := executor.ExecuteSelective(ctx, componentTarget, c.CheckSelectors, group)
-		if err != nil {
-			// Log error but continue with other checks
-			c.IO.Errorf("Warning: Failed to execute %s checks: %v", group, err)
-			resultsByGroup[group] = []check.CheckExecution{}
+		c.IO.Fprintln()
+		c.IO.Fprintf("Current and target versions are the same (%s), no checks will be executed.",
+			version.MajorMinorLabel(currentVersion))
 
-			continue
-		}
-
-		resultsByGroup[group] = results
+		return nil
 	}
 
-	// Execute workload checks for each discovered workload instance
-	c.IO.Errorf("Running workload checks...")
-	var workloadResults []check.CheckExecution
-
-	for _, gvr := range workloads {
-		// List all instances of this workload type
-		instances, err := c.Client.ListResources(ctx, gvr)
-		if err != nil {
-			// Skip workloads we can't access
-			c.IO.Errorf("Warning: Failed to list %s: %v", gvr.Resource, err)
-
-			continue
-		}
-
-		// Run workload checks for each instance
-		for i := range instances {
-			workloadTarget := check.Target{
-				Client:         c.Client,
-				CurrentVersion: clusterVersion, // For lint mode, current = target
-				TargetVersion:  clusterVersion,
-				Resource:       instances[i],
-				IO:             c.IO,
-				Debug:          c.Debug,
-			}
-
-			results, err := executor.ExecuteSelective(ctx, workloadTarget, c.CheckSelectors, check.GroupWorkload)
-			if err != nil {
-				return fmt.Errorf("executing workload checks: %w", err)
-			}
-
-			workloadResults = append(workloadResults, results...)
-		}
-	}
-
-	// Add workload results to the results map
-	resultsByGroup[check.GroupWorkload] = workloadResults
-
-	// Format and output results based on output format
-	if err := c.formatAndOutputResults(ctx, resultsByGroup); err != nil {
-		return err
-	}
-
-	// Determine exit code based on fail-on flags
-	return c.determineExitCode(resultsByGroup)
-}
-
-// runUpgradeMode assesses upgrade readiness for a target version.
-func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Version) error {
-	c.IO.Errorf("Current OpenShift AI version: %s", currentVersion.String())
-	c.IO.Errorf("Target OpenShift AI version: %s\n", c.TargetVersion)
-
-	// Check if target version is greater than or equal to current
-	if c.parsedTargetVersion.LT(*currentVersion) {
+	// Reject downgrades when explicit --target-version is provided
+	if c.parsedTargetVersion != nil && c.parsedTargetVersion.LT(*currentVersion) {
 		return fmt.Errorf("target version %s is older than current version %s (downgrades not supported)",
 			c.TargetVersion, currentVersion.String())
 	}
 
-	c.IO.Errorf("Assessing upgrade readiness: %s → %s\n", currentVersion.String(), c.TargetVersion)
+	return c.runUpgradeMode(ctx, currentVersion)
+}
 
-	// Execute checks using target version for applicability filtering
+// runUpgradeMode assesses upgrade readiness for a target version.
+// Downgrade and same-version guards are handled by Run() before calling this method.
+func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Version) error {
+	c.IO.Errorf("Assessing upgrade readiness: %s → %s\n", currentVersion.String(), c.TargetVersion)
 	c.IO.Errorf("Running upgrade compatibility checks...")
 	executor := check.NewExecutor(c.registry, c.IO)
 
@@ -398,59 +304,6 @@ func (c *Command) determineExitCode(resultsByGroup map[check.CheckGroup][]check.
 
 	if c.FailOnWarning && hasAdvisory {
 		return errors.New("advisory findings detected")
-	}
-
-	return nil
-}
-
-// formatAndOutputResults formats and outputs check results based on the output format.
-func (c *Command) formatAndOutputResults(
-	ctx context.Context,
-	resultsByGroup map[check.CheckGroup][]check.CheckExecution,
-) error {
-	clusterVer := &c.currentClusterVersion
-	var targetVer *string
-	if c.TargetVersion != "" {
-		targetVer = &c.TargetVersion
-	}
-
-	// Flatten results to sorted array
-	flatResults := FlattenResults(resultsByGroup)
-
-	switch c.OutputFormat {
-	case OutputFormatTable:
-		return c.outputTable(ctx, flatResults)
-	case OutputFormatJSON:
-		if err := OutputJSON(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
-			return fmt.Errorf("outputting JSON: %w", err)
-		}
-
-		return nil
-	case OutputFormatYAML:
-		if err := OutputYAML(c.IO.Out(), flatResults, clusterVer, targetVer); err != nil {
-			return fmt.Errorf("outputting YAML: %w", err)
-		}
-
-		return nil
-	default:
-		return fmt.Errorf("unsupported output format: %s", c.OutputFormat)
-	}
-}
-
-// outputTable outputs results in table format.
-func (c *Command) outputTable(ctx context.Context, results []check.CheckExecution) error {
-	c.IO.Fprintln()
-	c.IO.Fprintln("Check Results:")
-	c.IO.Fprintln("==============")
-
-	opts := TableOutputOptions{ShowImpactedObjects: c.Verbose}
-
-	if c.Verbose {
-		opts.NamespaceRequesters = collectNamespaceRequesters(ctx, c.Client, results)
-	}
-
-	if err := OutputTable(c.IO.Out(), results, opts); err != nil {
-		return fmt.Errorf("outputting table: %w", err)
 	}
 
 	return nil
