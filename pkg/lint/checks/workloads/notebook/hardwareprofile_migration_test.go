@@ -19,7 +19,8 @@ import (
 
 //nolint:gochecknoglobals // Test fixture - shared across test functions
 var hardwareProfileListKinds = map[schema.GroupVersionResource]string{
-	resources.Notebook.GVR(): resources.Notebook.ListKind(),
+	resources.Notebook.GVR():           resources.Notebook.ListKind(),
+	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
 }
 
 func TestHardwareProfileMigration_NoNotebooks(t *testing.T) {
@@ -51,16 +52,7 @@ func TestHardwareProfileMigration_NotebookWithoutAnnotation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "test-notebook",
-				"namespace": "test-ns",
-			},
-		},
-	}
+	nb := newNotebook("test-notebook", "test-ns", notebookOptions{})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
@@ -87,19 +79,11 @@ func TestHardwareProfileMigration_NotebookWithEmptyAnnotation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "test-notebook",
-				"namespace": "test-ns",
-				"annotations": map[string]any{
-					"opendatahub.io/legacy-hardware-profile-name": "",
-				},
-			},
+	nb := newNotebook("test-notebook", "test-ns", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/legacy-hardware-profile-name": "",
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
@@ -126,19 +110,11 @@ func TestHardwareProfileMigration_NotebookWithAnnotation(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "legacy-notebook",
-				"namespace": "user-ns",
-				"annotations": map[string]any{
-					"opendatahub.io/legacy-hardware-profile-name": "old-profile",
-				},
-			},
+	nb := newNotebook("legacy-notebook", "user-ns", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/legacy-hardware-profile-name": "old-profile",
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
@@ -171,46 +147,21 @@ func TestHardwareProfileMigration_MixedNotebooks(t *testing.T) {
 	ctx := t.Context()
 
 	// Notebook without annotation
-	nb1 := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "plain-notebook",
-				"namespace": "ns1",
-			},
-		},
-	}
+	nb1 := newNotebook("plain-notebook", "ns1", notebookOptions{})
 
 	// Notebook with legacy annotation
-	nb2 := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "legacy-notebook-1",
-				"namespace": "ns2",
-				"annotations": map[string]any{
-					"opendatahub.io/legacy-hardware-profile-name": "old-profile-a",
-				},
-			},
+	nb2 := newNotebook("legacy-notebook-1", "ns2", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/legacy-hardware-profile-name": "old-profile-a",
 		},
-	}
+	})
 
 	// Another notebook with legacy annotation
-	nb3 := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "legacy-notebook-2",
-				"namespace": "ns3",
-				"annotations": map[string]any{
-					"opendatahub.io/legacy-hardware-profile-name": "old-profile-b",
-				},
-			},
+	nb3 := newNotebook("legacy-notebook-2", "ns3", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/legacy-hardware-profile-name": "old-profile-b",
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
@@ -234,6 +185,34 @@ func TestHardwareProfileMigration_MixedNotebooks(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))
 	g.Expect(result.ImpactedObjects).To(HaveLen(2))
+}
+
+func TestHardwareProfileMigration_CanApply_Managed(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: hardwareProfileListKinds,
+		Objects:   []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+	})
+
+	chk := notebook.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeTrue())
+}
+
+func TestHardwareProfileMigration_CanApply_Removed(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: hardwareProfileListKinds,
+		Objects:   []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Removed"})},
+	})
+
+	chk := notebook.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
 }
 
 func TestHardwareProfileMigration_Metadata(t *testing.T) {

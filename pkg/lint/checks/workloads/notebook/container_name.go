@@ -2,19 +2,12 @@ package notebook
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
-	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 )
-
-// ConditionTypeContainerNameValid indicates whether notebook container names match the notebook name.
-const ConditionTypeContainerNameValid = "ContainerNameValid"
 
 // ContainerNameCheck detects Notebook (workbench) CRs where the primary container name
 // does not match the Notebook CR name. This mismatch can cause issues with accelerator
@@ -42,12 +35,7 @@ func NewContainerNameCheck() *ContainerNameCheck {
 // CanApply returns whether this check should run for the given target.
 // Applies in all modes when Workbenches is Managed.
 func (c *ContainerNameCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
-	if err != nil {
-		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
-	}
-
-	return components.HasManagementState(dsc, "workbenches", constants.ManagementStateManaged), nil
+	return isWorkbenchesManaged(ctx, target)
 }
 
 // Validate executes the check against the provided target.

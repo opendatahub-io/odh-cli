@@ -9,6 +9,8 @@ const (
 	CheckTypeInstalled                   CheckType = "installed"
 	CheckTypeImpactedWorkloads           CheckType = "impacted-workloads"
 	CheckTypeConfigMigration             CheckType = "config-migration"
+	CheckTypeDataIntegrity               CheckType = "data-integrity"
+	CheckTypeWorkloadState               CheckType = "workload-state"
 	CheckTypeAcceleratorProfileMigration CheckType = "acceleratorprofile-migration"
 )
 

@@ -1,13 +1,29 @@
 package notebook
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )
+
+// isWorkbenchesManaged returns true when the Workbenches component is set to Managed on the DSC.
+// Used as the common precondition for all notebook checks.
+func isWorkbenchesManaged(ctx context.Context, target check.Target) (bool, error) {
+	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
+	if err != nil {
+		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
+	}
+
+	return components.HasManagementState(dsc, componentWorkbenches, constants.ManagementStateManaged), nil
+}
 
 // NotebookContainer holds the parsed name and image of a container from a notebook spec.
 type NotebookContainer struct {

@@ -108,7 +108,10 @@ func NewCommand(
 	registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
 	registry.MustRegister(notebook.NewContainerNameCheck())
 	registry.MustRegister(notebook.NewHardwareProfileMigrationCheck())
+	registry.MustRegister(notebook.NewConnectionIntegrityCheck())
+	registry.MustRegister(notebook.NewHardwareProfileIntegrityCheck())
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
+	registry.MustRegister(notebook.NewRunningWorkloadsCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 

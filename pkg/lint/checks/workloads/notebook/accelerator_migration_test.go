@@ -1,6 +1,7 @@
 package notebook_test
 
 import (
+	"fmt"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +46,7 @@ func TestAcceleratorMigrationCheck_NoNotebooks(t *testing.T) {
 		"Type":    Equal(notebook.ConditionTypeAcceleratorProfileCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("No Notebooks found"),
+		"Message": Equal(notebook.MsgNoAcceleratorProfiles),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
 	g.Expect(result.ImpactedObjects).To(BeEmpty())
@@ -56,17 +57,7 @@ func TestAcceleratorMigrationCheck_NotebookWithoutAcceleratorProfile(t *testing.
 	ctx := t.Context()
 
 	// Notebook without accelerator annotations
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "test-notebook",
-				"namespace": "test-ns",
-			},
-			"spec": map[string]any{},
-		},
-	}
+	nb := newNotebook("test-notebook", "test-ns", notebookOptions{})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
@@ -106,21 +97,12 @@ func TestAcceleratorMigrationCheck_NotebookWithExistingAcceleratorProfile(t *tes
 	}
 
 	// Notebook referencing existing AcceleratorProfile
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "gpu-notebook",
-				"namespace": "user-ns",
-				"annotations": map[string]any{
-					"opendatahub.io/accelerator-name":              "nvidia-gpu",
-					"opendatahub.io/accelerator-profile-namespace": "redhat-ods-applications",
-				},
-			},
-			"spec": map[string]any{},
+	nb := newNotebook("gpu-notebook", "user-ns", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/accelerator-name":              "nvidia-gpu",
+			"opendatahub.io/accelerator-profile-namespace": "redhat-ods-applications",
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
@@ -137,8 +119,8 @@ func TestAcceleratorMigrationCheck_NotebookWithExistingAcceleratorProfile(t *tes
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(notebook.ConditionTypeAcceleratorProfileCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
-		"Reason":  Equal(check.ReasonConfigurationInvalid),
-		"Message": And(ContainSubstring("Found 1 Notebook(s)"), ContainSubstring("HardwareProfiles")),
+		"Reason":  Equal(check.ReasonMigrationPending),
+		"Message": Equal(fmt.Sprintf(notebook.MsgAcceleratorProfilesMigrating, 1)),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
@@ -154,21 +136,12 @@ func TestAcceleratorMigrationCheck_NotebookWithMissingAcceleratorProfile(t *test
 	ctx := t.Context()
 
 	// Notebook referencing non-existent AcceleratorProfile
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "broken-notebook",
-				"namespace": "user-ns",
-				"annotations": map[string]any{
-					"opendatahub.io/accelerator-name":              "missing-profile",
-					"opendatahub.io/accelerator-profile-namespace": "some-ns",
-				},
-			},
-			"spec": map[string]any{},
+	nb := newNotebook("broken-notebook", "user-ns", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/accelerator-name":              "missing-profile",
+			"opendatahub.io/accelerator-profile-namespace": "some-ns",
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
@@ -186,7 +159,7 @@ func TestAcceleratorMigrationCheck_NotebookWithMissingAcceleratorProfile(t *test
 		"Type":    Equal(notebook.ConditionTypeAcceleratorProfileCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonResourceNotFound),
-		"Message": And(ContainSubstring("1 missing"), ContainSubstring("automatically migrated to HardwareProfiles")),
+		"Message": Equal(fmt.Sprintf(notebook.MsgAcceleratorProfilesMissing, 1, 1)),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
@@ -211,51 +184,23 @@ func TestAcceleratorMigrationCheck_MixedNotebooks(t *testing.T) {
 	}
 
 	// Notebook without accelerator
-	nb1 := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "plain-notebook",
-				"namespace": "ns1",
-			},
-			"spec": map[string]any{},
-		},
-	}
+	nb1 := newNotebook("plain-notebook", "ns1", notebookOptions{})
 
 	// Notebook with existing accelerator
-	nb2 := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "gpu-notebook",
-				"namespace": "ns2",
-				"annotations": map[string]any{
-					"opendatahub.io/accelerator-name":              "nvidia-gpu",
-					"opendatahub.io/accelerator-profile-namespace": "redhat-ods-applications",
-				},
-			},
-			"spec": map[string]any{},
+	nb2 := newNotebook("gpu-notebook", "ns2", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/accelerator-name":              "nvidia-gpu",
+			"opendatahub.io/accelerator-profile-namespace": "redhat-ods-applications",
 		},
-	}
+	})
 
 	// Notebook with missing accelerator
-	nb3 := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "broken-notebook",
-				"namespace": "ns3",
-				"annotations": map[string]any{
-					"opendatahub.io/accelerator-name":              "missing-profile",
-					"opendatahub.io/accelerator-profile-namespace": "some-ns",
-				},
-			},
-			"spec": map[string]any{},
+	nb3 := newNotebook("broken-notebook", "ns3", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/accelerator-name":              "missing-profile",
+			"opendatahub.io/accelerator-profile-namespace": "some-ns",
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
@@ -273,7 +218,7 @@ func TestAcceleratorMigrationCheck_MixedNotebooks(t *testing.T) {
 		"Type":    Equal(notebook.ConditionTypeAcceleratorProfileCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonResourceNotFound),
-		"Message": And(ContainSubstring("2 Notebook(s)"), ContainSubstring("1 missing")),
+		"Message": Equal(fmt.Sprintf(notebook.MsgAcceleratorProfilesMissing, 2, 1)),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("HardwareProfiles"))
@@ -401,21 +346,12 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 	}
 
 	// Notebook with accelerator name but no namespace annotation (should default to applications namespace)
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      "notebook-default-ns",
-				"namespace": "user-ns",
-				"annotations": map[string]any{
-					"opendatahub.io/accelerator-name": "my-gpu",
-					// No namespace annotation - should default to applications namespace
-				},
-			},
-			"spec": map[string]any{},
+	nb := newNotebook("notebook-default-ns", "user-ns", notebookOptions{
+		Annotations: map[string]any{
+			"opendatahub.io/accelerator-name": "my-gpu",
+			// No namespace annotation - should default to applications namespace
 		},
-	}
+	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
@@ -433,7 +369,7 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":   Equal(notebook.ConditionTypeAcceleratorProfileCompatible),
 		"Status": Equal(metav1.ConditionFalse),
-		"Reason": Equal(check.ReasonConfigurationInvalid),
+		"Reason": Equal(check.ReasonMigrationPending),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))

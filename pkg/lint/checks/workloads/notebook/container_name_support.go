@@ -23,13 +23,8 @@ func hasDashboardAnnotation(annotations map[string]string) bool {
 		annotations[annotationLastSizeSelection] != ""
 }
 
-const (
-	// annotationLastSizeSelection is set by the Dashboard when a user selects a container size for a workbench.
-	annotationLastSizeSelection = "notebooks.opendatahub.io/last-size-selection"
-
-	msgNoNotebooksMismatch = "No Notebooks found with container name mismatch"
-	msgNotebooksMismatch   = "Found %d Notebook(s) where the primary container name does not match the Notebook CR name"
-)
+// annotationLastSizeSelection is set by the Dashboard when a user selects a container size for a workbench.
+const annotationLastSizeSelection = "notebooks.opendatahub.io/last-size-selection"
 
 // hasDashboardAnnotationAndNameMismatch returns true if the notebook has a Dashboard-managed
 // annotation (accelerator profile or size selection) and its primary (non-infrastructure)
@@ -66,7 +61,7 @@ func (c *ContainerNameCheck) newContainerNameCondition(
 			ConditionTypeContainerNameValid,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonConfigurationValid),
-			check.WithMessage(msgNoNotebooksMismatch),
+			check.WithMessage(MsgNoContainerNameMismatch),
 		)}, nil
 	}
 
@@ -74,7 +69,7 @@ func (c *ContainerNameCheck) newContainerNameCondition(
 		ConditionTypeContainerNameValid,
 		metav1.ConditionFalse,
 		check.WithReason(check.ReasonConfigurationInvalid),
-		check.WithMessage(msgNotebooksMismatch, count),
+		check.WithMessage(MsgContainerNameMismatch, count),
 		check.WithImpact(result.ImpactAdvisory),
 		check.WithRemediation(c.CheckRemediation),
 	)}, nil

@@ -276,6 +276,14 @@ var (
 		Resource: "hardwareprofiles",
 	}
 
+	// InfrastructureHardwareProfile is the HardwareProfile resource in the infrastructure API group.
+	InfrastructureHardwareProfile = ResourceType{
+		Group:    "infrastructure.opendatahub.io",
+		Version:  "v1",
+		Kind:     "HardwareProfile",
+		Resource: "hardwareprofiles",
+	}
+
 	// LlamaStackDistribution is the LlamaStack distribution configuration resource.
 	LlamaStackDistribution = ResourceType{
 		Group:    "llamastack.io",

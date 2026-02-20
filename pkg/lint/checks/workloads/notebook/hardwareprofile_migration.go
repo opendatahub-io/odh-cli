@@ -13,9 +13,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 )
 
-// ConditionTypeHardwareProfileCompatible indicates whether notebooks reference legacy hardware profiles.
-const ConditionTypeHardwareProfileCompatible = "HardwareProfileCompatible"
-
 // HardwareProfileMigrationCheck detects Notebook CRs carrying the legacy
 // opendatahub.io/legacy-hardware-profile-name annotation that may need attention.
 type HardwareProfileMigrationCheck struct {
@@ -38,9 +35,9 @@ func NewHardwareProfileMigrationCheck() *HardwareProfileMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Applies in all modes (lint and upgrade).
-func (c *HardwareProfileMigrationCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
-	return true, nil
+// Applies whenever Workbenches is Managed.
+func (c *HardwareProfileMigrationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
+	return isWorkbenchesManaged(ctx, target)
 }
 
 // Validate executes the check against the provided target.
@@ -70,7 +67,7 @@ func (c *HardwareProfileMigrationCheck) newCondition(
 			ConditionTypeHardwareProfileCompatible,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonNoMigrationRequired),
-			check.WithMessage("No Notebooks found with legacy hardware profile annotation - no migration needed"),
+			check.WithMessage(MsgNoLegacyHardwareProfiles),
 		)}, nil
 	}
 
@@ -78,7 +75,7 @@ func (c *HardwareProfileMigrationCheck) newCondition(
 		ConditionTypeHardwareProfileCompatible,
 		metav1.ConditionFalse,
 		check.WithReason(check.ReasonMigrationPending),
-		check.WithMessage("Found %d Notebook(s) with legacy hardware profile annotation that may need attention", count),
+		check.WithMessage(MsgLegacyHardwareProfiles, count),
 		check.WithImpact(result.ImpactAdvisory),
 		check.WithRemediation(c.CheckRemediation),
 	)}, nil

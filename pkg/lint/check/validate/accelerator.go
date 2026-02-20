@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
@@ -39,15 +40,26 @@ func FindWorkloadsWithAcceleratorRefs(
 		return nil, 0, fmt.Errorf("listing %s: %w", workloadType.Kind, err)
 	}
 
+	return FilterWorkloadsWithAcceleratorRefs(ctx, target.Client, workloads)
+}
+
+// FilterWorkloadsWithAcceleratorRefs checks which of the given workload items reference
+// AcceleratorProfiles via annotations, and returns the impacted workload names
+// along with a count of missing profiles.
+func FilterWorkloadsWithAcceleratorRefs(
+	ctx context.Context,
+	c client.Reader,
+	items []*metav1.PartialObjectMetadata,
+) ([]types.NamespacedName, int, error) {
 	// Resolve the applications namespace for AcceleratorProfile lookups.
 	// AcceleratorProfiles live in the applications namespace, but workloads may not
 	// have the namespace annotation set, so we need a proper default.
-	appNS, err := client.GetApplicationsNamespace(ctx, target.Client)
+	appNS, err := client.GetApplicationsNamespace(ctx, c)
 	if err != nil {
 		return nil, 0, fmt.Errorf("getting applications namespace: %w", err)
 	}
 
-	profileCache, err := kube.BuildResourceNameSet(ctx, target.Client, resources.AcceleratorProfile)
+	profileCache, err := kube.BuildResourceNameSet(ctx, c, resources.AcceleratorProfile)
 	if err != nil {
 		return nil, 0, fmt.Errorf("building AcceleratorProfile cache: %w", err)
 	}
@@ -56,7 +68,7 @@ func FindWorkloadsWithAcceleratorRefs(
 
 	missingCount := 0
 
-	for _, w := range workloads {
+	for _, w := range items {
 		profileRef := types.NamespacedName{
 			Namespace: kube.GetAnnotation(w, AnnotationAcceleratorNamespace),
 			Name:      kube.GetAnnotation(w, AnnotationAcceleratorName),

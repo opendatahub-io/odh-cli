@@ -25,81 +25,49 @@ var containerNameListKinds = map[schema.GroupVersionResource]string{
 }
 
 // newContainerNameNotebook creates a test Notebook with the given name, container name, and optional annotations.
-func newContainerNameNotebook(name string, namespace string, containerName string, annotations map[string]string) *unstructured.Unstructured {
-	metadata := map[string]any{
-		"name":      name,
-		"namespace": namespace,
-	}
-
-	if annotations != nil {
-		anns := make(map[string]any, len(annotations))
-		for k, v := range annotations {
-			anns[k] = v
-		}
-
-		metadata["annotations"] = anns
-	}
-
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata":   metadata,
-			"spec": map[string]any{
-				"template": map[string]any{
-					"spec": map[string]any{
-						"containers": []any{
-							map[string]any{
-								"name":  containerName,
-								"image": "quay.io/modh/jupyter-datascience:2025.2",
-							},
-						},
-					},
-				},
+func newContainerNameNotebook(name, namespace, containerName string, annotations map[string]string) *unstructured.Unstructured {
+	opts := notebookOptions{
+		Containers: []any{
+			map[string]any{
+				"name":  containerName,
+				"image": "quay.io/modh/jupyter-datascience:2025.2",
 			},
 		},
 	}
+
+	if annotations != nil {
+		opts.Annotations = make(map[string]any, len(annotations))
+		for k, v := range annotations {
+			opts.Annotations[k] = v
+		}
+	}
+
+	return newNotebook(name, namespace, opts)
 }
 
 // newContainerNameNotebookWithOAuthProxy creates a test Notebook with an oauth-proxy sidecar.
-func newContainerNameNotebookWithOAuthProxy(name string, namespace string, containerName string, annotations map[string]string) *unstructured.Unstructured {
-	metadata := map[string]any{
-		"name":      name,
-		"namespace": namespace,
-	}
-
-	if annotations != nil {
-		anns := make(map[string]any, len(annotations))
-		for k, v := range annotations {
-			anns[k] = v
-		}
-
-		metadata["annotations"] = anns
-	}
-
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata":   metadata,
-			"spec": map[string]any{
-				"template": map[string]any{
-					"spec": map[string]any{
-						"containers": []any{
-							map[string]any{
-								"name":  containerName,
-								"image": "quay.io/modh/jupyter-datascience:2025.2",
-							},
-							map[string]any{
-								"name":  "oauth-proxy",
-								"image": "registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:v4.14",
-							},
-						},
-					},
-				},
+func newContainerNameNotebookWithOAuthProxy(name, namespace, containerName string, annotations map[string]string) *unstructured.Unstructured {
+	opts := notebookOptions{
+		Containers: []any{
+			map[string]any{
+				"name":  containerName,
+				"image": "quay.io/modh/jupyter-datascience:2025.2",
+			},
+			map[string]any{
+				"name":  "oauth-proxy",
+				"image": "registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:v4.14",
 			},
 		},
 	}
+
+	if annotations != nil {
+		opts.Annotations = make(map[string]any, len(annotations))
+		for k, v := range annotations {
+			opts.Annotations[k] = v
+		}
+	}
+
+	return newNotebook(name, namespace, opts)
 }
 
 func TestContainerNameCheck_NoNotebooks(t *testing.T) {

@@ -3,8 +3,6 @@ package notebook_test
 import (
 	"testing"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/notebook"
 
 	. "github.com/onsi/gomega"
@@ -20,8 +18,10 @@ const (
 func TestExtractWorkloadContainers_SingleContainer(t *testing.T) {
 	g := NewWithT(t)
 
-	nb := notebook.NewTestNotebook([]any{
-		map[string]any{"name": "notebook", "image": testImage},
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{
+		Containers: []any{
+			map[string]any{"name": "notebook", "image": testImage},
+		},
 	})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
@@ -36,9 +36,11 @@ func TestExtractWorkloadContainers_SingleContainer(t *testing.T) {
 func TestExtractWorkloadContainers_MultipleContainers(t *testing.T) {
 	g := NewWithT(t)
 
-	nb := notebook.NewTestNotebook([]any{
-		map[string]any{"name": "primary", "image": testImage},
-		map[string]any{"name": "sidecar", "image": "quay.io/custom/sidecar:latest"},
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{
+		Containers: []any{
+			map[string]any{"name": "primary", "image": testImage},
+			map[string]any{"name": "sidecar", "image": "quay.io/custom/sidecar:latest"},
+		},
 	})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
@@ -51,9 +53,11 @@ func TestExtractWorkloadContainers_MultipleContainers(t *testing.T) {
 func TestExtractWorkloadContainers_FiltersOAuthProxy(t *testing.T) {
 	g := NewWithT(t)
 
-	nb := notebook.NewTestNotebook([]any{
-		map[string]any{"name": "notebook", "image": testImage},
-		map[string]any{"name": testOAuthProxyName, "image": testOAuthProxyImg},
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{
+		Containers: []any{
+			map[string]any{"name": "notebook", "image": testImage},
+			map[string]any{"name": testOAuthProxyName, "image": testOAuthProxyImg},
+		},
 	})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
@@ -65,7 +69,7 @@ func TestExtractWorkloadContainers_FiltersOAuthProxy(t *testing.T) {
 func TestExtractWorkloadContainers_EmptyContainersList(t *testing.T) {
 	g := NewWithT(t)
 
-	nb := notebook.NewTestNotebook([]any{})
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{Containers: []any{}})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -76,17 +80,7 @@ func TestExtractWorkloadContainers_NoContainersField(t *testing.T) {
 	g := NewWithT(t)
 
 	// Notebook with no .spec.template.spec.containers path.
-	nb := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "kubeflow.org/v1",
-			"kind":       "Notebook",
-			"metadata": map[string]any{
-				"name":      "test-nb",
-				"namespace": "test-ns",
-			},
-			"spec": map[string]any{},
-		},
-	}
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
 	g.Expect(err).To(HaveOccurred())
@@ -97,8 +91,10 @@ func TestExtractWorkloadContainers_MissingNameAndImage(t *testing.T) {
 	g := NewWithT(t)
 
 	// Container map entries without name or image fields are still returned with zero-value strings.
-	nb := notebook.NewTestNotebook([]any{
-		map[string]any{"resources": map[string]any{}},
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{
+		Containers: []any{
+			map[string]any{"resources": map[string]any{}},
+		},
 	})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
@@ -114,10 +110,12 @@ func TestExtractWorkloadContainers_NonMapEntriesSkipped(t *testing.T) {
 	g := NewWithT(t)
 
 	// Non-map entries in the containers array are silently skipped.
-	nb := notebook.NewTestNotebook([]any{
-		"not-a-map",
-		42,
-		map[string]any{"name": "valid", "image": testImage},
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{
+		Containers: []any{
+			"not-a-map",
+			42,
+			map[string]any{"name": "valid", "image": testImage},
+		},
 	})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)
@@ -130,8 +128,10 @@ func TestExtractWorkloadContainers_OnlyInfraContainers(t *testing.T) {
 	g := NewWithT(t)
 
 	// All containers are infrastructure sidecars — returns empty.
-	nb := notebook.NewTestNotebook([]any{
-		map[string]any{"name": testOAuthProxyName, "image": testOAuthProxyImg},
+	nb := newNotebook("test-nb", "test-ns", notebookOptions{
+		Containers: []any{
+			map[string]any{"name": testOAuthProxyName, "image": testOAuthProxyImg},
+		},
 	})
 
 	containers, err := notebook.ExtractWorkloadContainers(nb)

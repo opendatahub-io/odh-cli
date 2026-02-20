@@ -1,6 +1,7 @@
 package notebook_test
 
 import (
+	"fmt"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -76,7 +77,6 @@ const (
 
 	// Strategy 3: Internal registry with tag (dockerImageRepository + tag).
 	jupyterCompatibleTag      = internalRegistry + "/" + isJupyterDatascience + ":" + tagCurrent
-	codeserverCompatibleTag   = internalRegistry + "/" + isCodeserverDatascience + ":" + tagCurrent
 	codeserverIncompatibleTag = internalRegistry + "/" + isCodeserverDatascience + ":" + tagPrevious
 
 	// Strategy 1: External registry (dockerImageReference format).
@@ -104,11 +104,11 @@ const (
 
 // Helper functions to create test fixtures.
 
-func newNotebook(ns, name, image string) *unstructured.Unstructured {
-	return newNotebookWithContainers(ns, name, map[string]string{"notebook": image})
+func newNotebookWithImage(name, ns, image string) *unstructured.Unstructured {
+	return newNotebookWithContainers(name, ns, map[string]string{"notebook": image})
 }
 
-func newNotebookWithContainers(ns, name string, containers map[string]string) *unstructured.Unstructured {
+func newNotebookWithContainers(name, ns string, containers map[string]string) *unstructured.Unstructured {
 	containerList := make([]any, 0, len(containers))
 	for containerName, image := range containers {
 		containerList = append(containerList, map[string]any{
@@ -117,23 +117,7 @@ func newNotebookWithContainers(ns, name string, containers map[string]string) *u
 		})
 	}
 
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.Notebook.APIVersion(),
-			"kind":       resources.Notebook.Kind,
-			"metadata": map[string]any{
-				"name":      name,
-				"namespace": ns,
-			},
-			"spec": map[string]any{
-				"template": map[string]any{
-					"spec": map[string]any{
-						"containers": containerList,
-					},
-				},
-			},
-		},
-	}
+	return newNotebook(name, ns, notebookOptions{Containers: containerList})
 }
 
 func newImageStream(name string, nbType string) *unstructured.Unstructured {
@@ -292,7 +276,7 @@ func TestImpactedWorkloadsCheck_NoNotebooks(t *testing.T) {
 		"Type":    Equal(notebook.ConditionTypeNotebooksCompatible),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("No Notebook (workbench) instances found"),
+		"Message": Equal(notebook.MsgNoNotebookInstances),
 	}))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
 	g.Expect(result.ImpactedObjects).To(BeEmpty())
@@ -312,7 +296,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			objects: func() []*unstructured.Unstructured {
 				return []*unstructured.Unstructured{
 					newImageStream(isJupyterDatascience, "jupyter"),
-					newNotebook("test-ns", "jupyter-nb", jupyterCompatibleSHA),
+					newNotebookWithImage("jupyter-nb", "test-ns", jupyterCompatibleSHA),
 				}
 			},
 			expectedStatus: metav1.ConditionTrue,
@@ -326,7 +310,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 				return []*unstructured.Unstructured{
 					newImageStream(isRstudioRhel9, "rstudio"),
 					newRStudioImageStreamTag(isRstudioRhel9, buildRefCompatible, shaRstudioCompatible),
-					newNotebook("test-ns", "rstudio-nb", rstudioCompatibleSHA),
+					newNotebookWithImage("rstudio-nb", "test-ns", rstudioCompatibleSHA),
 				}
 			},
 			expectedStatus: metav1.ConditionTrue,
@@ -340,7 +324,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 				return []*unstructured.Unstructured{
 					newImageStream(isRstudioRhel9, "rstudio"),
 					newRStudioImageStreamTag(isRstudioRhel9, buildRefIncompatible, shaRstudioIncompatible),
-					newNotebook("test-ns", "rstudio-nb", rstudioIncompatibleSHA),
+					newNotebookWithImage("rstudio-nb", "test-ns", rstudioIncompatibleSHA),
 				}
 			},
 			expectedStatus: metav1.ConditionFalse,
@@ -353,7 +337,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			objects: func() []*unstructured.Unstructured {
 				return []*unstructured.Unstructured{
 					newImageStream(isCodeserverDatascience, "codeserver"),
-					newNotebook("test-ns", "codeserver-nb", codeserverCompatibleSHA),
+					newNotebookWithImage("codeserver-nb", "test-ns", codeserverCompatibleSHA),
 				}
 			},
 			expectedStatus: metav1.ConditionTrue,
@@ -366,7 +350,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			objects: func() []*unstructured.Unstructured {
 				return []*unstructured.Unstructured{
 					newImageStream(isCodeserverDatascience, "codeserver"),
-					newNotebook("test-ns", "codeserver-nb", codeserverIncompatibleSHA),
+					newNotebookWithImage("codeserver-nb", "test-ns", codeserverIncompatibleSHA),
 				}
 			},
 			expectedStatus: metav1.ConditionFalse,
@@ -378,7 +362,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			name: "CustomImage",
 			objects: func() []*unstructured.Unstructured {
 				return []*unstructured.Unstructured{
-					newNotebook("test-ns", "custom-nb", customImageTag),
+					newNotebookWithImage("custom-nb", "test-ns", customImageTag),
 				}
 			},
 			expectedStatus: metav1.ConditionFalse,
@@ -497,7 +481,7 @@ func TestImpactedWorkloadsCheck_MultiContainer(t *testing.T) {
 
 			objects := tc.objects()
 			objects = append(objects,
-				newNotebookWithContainers("test-ns", "multi-nb", tc.containers),
+				newNotebookWithContainers("multi-nb", "test-ns", tc.containers),
 				testutil.NewDSCI(applicationsNS),
 			)
 
@@ -536,8 +520,8 @@ func TestImpactedWorkloadsCheck_MixedNotebooks(t *testing.T) {
 	rstudioIS := newImageStream(isRstudioRhel9, "rstudio")
 	rstudioISTBad := newRStudioImageStreamTag(isRstudioRhel9, buildRefIncompatible, shaRstudioIncompatible)
 
-	jupyterNb := newNotebook("ns1", "jupyter-nb", jupyterCompatibleSHA)
-	rstudioNb := newNotebook("ns2", "rstudio-nb", rstudioIncompatibleSHA)
+	jupyterNb := newNotebookWithImage("jupyter-nb", "ns1", jupyterCompatibleSHA)
+	rstudioNb := newNotebookWithImage("rstudio-nb", "ns2", rstudioIncompatibleSHA)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds: listKinds,
@@ -558,7 +542,7 @@ func TestImpactedWorkloadsCheck_MixedNotebooks(t *testing.T) {
 		"Type":    Equal(notebook.ConditionTypeNotebooksCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonWorkloadsImpacted),
-		"Message": ContainSubstring("2 Notebook(s)"),
+		"Message": ContainSubstring(fmt.Sprintf(notebook.MsgNotebookImageSummary, 2, 2)),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 
@@ -832,7 +816,7 @@ func TestImpactedWorkloadsCheck_LookupStrategies(t *testing.T) {
 
 			objects := tc.objects()
 			objects = append(objects,
-				newNotebook("test-ns", "test-nb", tc.image),
+				newNotebookWithImage("test-nb", "test-ns", tc.image),
 				testutil.NewDSCI(applicationsNS),
 			)
 
@@ -918,7 +902,7 @@ func TestImpactedWorkloadsCheck_InfrastructureContainerFiltering(t *testing.T) {
 			objects := []*unstructured.Unstructured{
 				testutil.NewDSCI(applicationsNS),
 				newImageStream(isJupyterDatascience, "jupyter"),
-				newNotebookWithContainers("test-ns", "test-nb", tc.containers),
+				newNotebookWithContainers("test-nb", "test-ns", tc.containers),
 			}
 
 			target := testutil.NewTarget(t, testutil.TargetConfig{
