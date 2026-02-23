@@ -14,6 +14,7 @@ import (
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
@@ -32,6 +33,12 @@ var notebookListKinds = map[schema.GroupVersionResource]string{
 //nolint:gochecknoglobals // Test fixture - shared across test functions
 var pytorchJobListKinds = map[schema.GroupVersionResource]string{
 	resources.PyTorchJob.GVR(): resources.PyTorchJob.ListKind(),
+}
+
+//nolint:gochecknoglobals // Test fixture - merged DSC + Notebook list kinds for ForComponent tests
+var dscAndNotebookListKinds = map[schema.GroupVersionResource]string{
+	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
+	resources.Notebook.GVR():           resources.Notebook.ListKind(),
 }
 
 func newWorkloadTestCheck() *testCheck {
@@ -576,4 +583,252 @@ func TestWorkloadBuilder_Complete_ErrorPropagated(t *testing.T) {
 		})
 
 	g.Expect(err).To(MatchError(expectedErr))
+}
+
+func TestWorkloadBuilder_ForComponent_RemovedReturnsPassingResult(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	dsc := createDSCWithComponent("kserve", constants.ManagementStateRemoved)
+
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, dscAndNotebookListKinds, dsc)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	})
+
+	chk := newWorkloadTestCheck()
+	chk.Kind = "kserve"
+
+	targetVer := semver.MustParse("3.0.0")
+	target := check.Target{
+		Client:        c,
+		TargetVersion: &targetVer,
+	}
+
+	validationCalled := false
+
+	dr, err := validate.WorkloadsMetadata(chk, target, resources.Notebook).
+		ForComponent("kserve").
+		Run(ctx, func(_ context.Context, _ *validate.WorkloadRequest[*metav1.PartialObjectMetadata]) error {
+			validationCalled = true
+
+			return nil
+		})
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(dr).ToNot(BeNil())
+	g.Expect(validationCalled).To(BeFalse())
+	g.Expect(dr.Status.Conditions).To(HaveLen(1))
+	g.Expect(dr.Status.Conditions[0].Type).To(Equal(check.ConditionTypeConfigured))
+	g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
+	g.Expect(dr.Status.Conditions[0].Reason).To(Equal(check.ReasonRequirementsMet))
+	g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationCheckTargetVersion, "3.0.0"))
+}
+
+func TestWorkloadBuilder_ForComponent_ManagedProceedsNormally(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	dsc := createDSCWithComponent("kserve", constants.ManagementStateManaged)
+	nb := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.Notebook.APIVersion(),
+			"kind":       resources.Notebook.Kind,
+			"metadata":   map[string]any{"name": "nb-1", "namespace": "ns1"},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, dscAndNotebookListKinds, dsc, nb)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(nb)...)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	})
+
+	chk := newWorkloadTestCheck()
+	chk.Kind = "kserve"
+
+	targetVer := semver.MustParse("3.0.0")
+	target := check.Target{
+		Client:        c,
+		TargetVersion: &targetVer,
+	}
+
+	validationCalled := false
+
+	dr, err := validate.WorkloadsMetadata(chk, target, resources.Notebook).
+		ForComponent("kserve").
+		Run(ctx, func(_ context.Context, req *validate.WorkloadRequest[*metav1.PartialObjectMetadata]) error {
+			validationCalled = true
+			g.Expect(req.Items).To(HaveLen(1))
+			req.Result.SetCondition(check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionTrue,
+				check.WithReason(check.ReasonVersionCompatible),
+				check.WithMessage("Found %d notebooks", len(req.Items)),
+			))
+
+			return nil
+		})
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(dr).ToNot(BeNil())
+	g.Expect(validationCalled).To(BeTrue())
+	g.Expect(dr.Status.Conditions).To(HaveLen(1))
+	g.Expect(dr.Status.Conditions[0].Type).To(Equal(check.ConditionTypeCompatible))
+}
+
+func TestWorkloadBuilder_ForComponent_DSCNotFound(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	// No DSC in the cluster.
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, dscAndNotebookListKinds)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	})
+
+	chk := newWorkloadTestCheck()
+	chk.Kind = "kserve"
+
+	target := check.Target{
+		Client: c,
+	}
+
+	validationCalled := false
+
+	dr, err := validate.WorkloadsMetadata(chk, target, resources.Notebook).
+		ForComponent("kserve").
+		Run(ctx, func(_ context.Context, _ *validate.WorkloadRequest[*metav1.PartialObjectMetadata]) error {
+			validationCalled = true
+
+			return nil
+		})
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(dr).ToNot(BeNil())
+	g.Expect(validationCalled).To(BeFalse())
+	g.Expect(dr.Status.Conditions).To(HaveLen(1))
+	g.Expect(dr.Status.Conditions[0].Type).To(Equal(check.ConditionTypeAvailable))
+	g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(dr.Status.Conditions[0].Reason).To(Equal(check.ReasonResourceNotFound))
+}
+
+func TestWorkloadBuilder_ForComponent_MultipleComponentsORSemantics(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	// DSC with kserve Removed but modelmesh Managed - at least one is active.
+	dsc := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DataScienceCluster.APIVersion(),
+			"kind":       resources.DataScienceCluster.Kind,
+			"metadata":   map[string]any{"name": "default-dsc"},
+			"spec": map[string]any{
+				"components": map[string]any{
+					"kserve":    map[string]any{"managementState": constants.ManagementStateRemoved},
+					"modelmesh": map[string]any{"managementState": constants.ManagementStateManaged},
+				},
+			},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, dscAndNotebookListKinds, dsc)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	})
+
+	chk := newWorkloadTestCheck()
+
+	target := check.Target{
+		Client: c,
+	}
+
+	validationCalled := false
+
+	dr, err := validate.WorkloadsMetadata(chk, target, resources.Notebook).
+		ForComponent("kserve", "modelmesh").
+		Run(ctx, func(_ context.Context, req *validate.WorkloadRequest[*metav1.PartialObjectMetadata]) error {
+			validationCalled = true
+			req.Result.SetCondition(check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionTrue,
+				check.WithReason(check.ReasonVersionCompatible),
+				check.WithMessage("Validation proceeded"),
+			))
+
+			return nil
+		})
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(dr).ToNot(BeNil())
+	g.Expect(validationCalled).To(BeTrue())
+}
+
+func TestWorkloadBuilder_NoForComponent_BackwardCompatible(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	nb := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.Notebook.APIVersion(),
+			"kind":       resources.Notebook.Kind,
+			"metadata":   map[string]any{"name": "nb-1", "namespace": "ns1"},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, notebookListKinds, nb)
+	metadataClient := metadatafake.NewSimpleMetadataClient(scheme, kube.ToPartialObjectMetadata(nb)...)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:  dynamicClient,
+		Metadata: metadataClient,
+	})
+
+	chk := newWorkloadTestCheck()
+	target := check.Target{
+		Client: c,
+	}
+
+	// No ForComponent() called - should proceed without checking DSC.
+	validationCalled := false
+
+	dr, err := validate.WorkloadsMetadata(chk, target, resources.Notebook).
+		Run(ctx, func(_ context.Context, req *validate.WorkloadRequest[*metav1.PartialObjectMetadata]) error {
+			validationCalled = true
+			g.Expect(req.Items).To(HaveLen(1))
+			req.Result.SetCondition(check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionTrue,
+				check.WithReason(check.ReasonVersionCompatible),
+				check.WithMessage("No component check"),
+			))
+
+			return nil
+		})
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(dr).ToNot(BeNil())
+	g.Expect(validationCalled).To(BeTrue())
+	g.Expect(dr.Status.Conditions).To(HaveLen(1))
 }

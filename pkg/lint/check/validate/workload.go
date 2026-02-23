@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"strconv"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
 )
 
@@ -40,11 +43,12 @@ type WorkloadConditionFn[T any] func(ctx context.Context, req *WorkloadRequest[T
 // It handles resource listing, CRD-not-found handling, filtering, annotation population,
 // and auto-populating ImpactedObjects.
 type WorkloadBuilder[T kube.NamespacedNamer] struct {
-	check        check.Check
-	target       check.Target
-	resourceType resources.ResourceType
-	listFn       func(ctx context.Context) ([]T, error)
-	filterFn     func(T) (bool, error)
+	check          check.Check
+	target         check.Target
+	resourceType   resources.ResourceType
+	listFn         func(ctx context.Context) ([]T, error)
+	filterFn       func(T) (bool, error)
+	componentNames []string
 }
 
 // Workloads creates a WorkloadBuilder that lists full unstructured objects.
@@ -90,6 +94,17 @@ func (b *WorkloadBuilder[T]) Filter(fn func(T) (bool, error)) *WorkloadBuilder[T
 	return b
 }
 
+// ForComponent specifies the DSC component(s) this workload check requires.
+// If set, Run() verifies at least one component is not in "Removed" state
+// before listing resources. If all components are Removed (or DSC is not found),
+// a passing result is returned indicating no validation is needed.
+// Multiple names use OR semantics (at least one must be active).
+func (b *WorkloadBuilder[T]) ForComponent(names ...string) *WorkloadBuilder[T] {
+	b.componentNames = names
+
+	return b
+}
+
 // Run lists resources, applies the filter, populates annotations, calls the validation function,
 // and auto-populates ImpactedObjects if the mapper did not set them.
 func (b *WorkloadBuilder[T]) Run(
@@ -105,6 +120,18 @@ func (b *WorkloadBuilder[T]) Run(
 
 	if b.target.TargetVersion != nil {
 		dr.Annotations[check.AnnotationCheckTargetVersion] = b.target.TargetVersion.String()
+	}
+
+	// Check component state precondition if ForComponent was called.
+	if len(b.componentNames) > 0 {
+		earlyResult, err := b.checkComponentState(ctx, dr)
+		if err != nil {
+			return nil, err
+		}
+
+		if earlyResult != nil {
+			return earlyResult, nil
+		}
 	}
 
 	// List resources; treat CRD-not-found as empty list.
@@ -148,6 +175,44 @@ func (b *WorkloadBuilder[T]) Run(
 	if dr.ImpactedObjects == nil && len(items) > 0 {
 		dr.SetImpactedObjects(b.resourceType, kube.ToNamespacedNames(items))
 	}
+
+	return dr, nil
+}
+
+// checkComponentState verifies at least one component is not in Removed state.
+// Returns (result, nil) if validation should short-circuit, or (nil, nil) to continue.
+func (b *WorkloadBuilder[T]) checkComponentState(
+	ctx context.Context,
+	dr *result.DiagnosticResult,
+) (*result.DiagnosticResult, error) {
+	dsc, err := client.GetDataScienceCluster(ctx, b.target.Client)
+	switch {
+	case apierrors.IsNotFound(err):
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeAvailable,
+			metav1.ConditionFalse,
+			check.WithReason(check.ReasonResourceNotFound),
+			check.WithMessage("No DataScienceCluster found"),
+		))
+
+		return dr, nil
+	case err != nil:
+		return nil, fmt.Errorf("getting DataScienceCluster: %w", err)
+	}
+
+	// Check if at least one component is active (not Removed).
+	for _, name := range b.componentNames {
+		if !components.HasManagementState(dsc, name, constants.ManagementStateRemoved) {
+			return nil, nil
+		}
+	}
+
+	// All components are Removed - skip workload validation.
+	dr.SetCondition(check.NewCondition(
+		check.ConditionTypeConfigured,
+		metav1.ConditionTrue,
+		check.WithReason(check.ReasonRequirementsMet),
+	))
 
 	return dr, nil
 }
