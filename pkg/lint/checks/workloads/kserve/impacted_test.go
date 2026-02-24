@@ -1,6 +1,7 @@
 package kserve_test
 
 import (
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1252,4 +1253,76 @@ func TestImpactedWorkloadsCheck_AcceleratorSR_MixedAnnotations(t *testing.T) {
 
 	// 2 SRs + 1 ISVC = 3 impacted objects
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "3"))
+}
+
+func TestImpactedWorkloadsCheck_FormatVerboseOutput(t *testing.T) {
+	g := NewWithT(t)
+
+	// Create a diagnostic result with multiple InferenceServices
+	dr := resultpkg.New("workload", "kserve", "impacted-workloads", "Test description")
+	dr.ImpactedObjects = []metav1.PartialObjectMetadata{
+		{
+			TypeMeta: resources.InferenceService.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ns-b",
+				Name:      "isvc-modelmesh",
+				Annotations: map[string]string{
+					annotationDeploymentMode: "ModelMesh",
+				},
+			},
+		},
+		{
+			TypeMeta: resources.InferenceService.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ns-a",
+				Name:      "isvc-serverless",
+				Annotations: map[string]string{
+					annotationDeploymentMode: "Serverless",
+				},
+			},
+		},
+		{
+			TypeMeta: resources.ServingRuntime.TypeMeta(),
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ns-a",
+				Name:      "some-runtime",
+			},
+		},
+	}
+
+	chk := kserve.NewImpactedWorkloadsCheck()
+	var buf strings.Builder
+	chk.FormatVerboseOutput(&buf, dr)
+
+	output := buf.String()
+
+	// Verify table headers are present
+	g.Expect(output).To(ContainSubstring("NAME"))
+	g.Expect(output).To(ContainSubstring("NAMESPACE"))
+	g.Expect(output).To(ContainSubstring("DEPLOYMENT MODE"))
+
+	// Verify InferenceServices are present (sorted by namespace then name)
+	g.Expect(output).To(ContainSubstring("isvc-serverless"))
+	g.Expect(output).To(ContainSubstring("ns-a"))
+	g.Expect(output).To(ContainSubstring("Serverless"))
+
+	g.Expect(output).To(ContainSubstring("isvc-modelmesh"))
+	g.Expect(output).To(ContainSubstring("ns-b"))
+	g.Expect(output).To(ContainSubstring("ModelMesh"))
+
+	// Verify ServingRuntime is NOT included (only InferenceServices)
+	g.Expect(output).ToNot(ContainSubstring("some-runtime"))
+}
+
+func TestImpactedWorkloadsCheck_FormatVerboseOutput_EmptyResult(t *testing.T) {
+	g := NewWithT(t)
+
+	dr := resultpkg.New("workload", "kserve", "impacted-workloads", "Test description")
+
+	chk := kserve.NewImpactedWorkloadsCheck()
+	var buf strings.Builder
+	chk.FormatVerboseOutput(&buf, dr)
+
+	// Empty result should produce no output
+	g.Expect(buf.String()).To(BeEmpty())
 }
