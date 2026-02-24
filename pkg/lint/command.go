@@ -120,8 +120,9 @@ func NewCommand(
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 
 	c := &Command{
-		SharedOptions: shared,
-		registry:      registry,
+		SharedOptions:      shared,
+		registry:           registry,
+		ISVCDeploymentMode: "all",
 	}
 
 	// Apply functional options
