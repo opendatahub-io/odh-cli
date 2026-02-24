@@ -3,6 +3,7 @@ package lint
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/blang/semver/v4"
 	"github.com/spf13/pflag"
@@ -46,6 +47,10 @@ type Command struct {
 	// If empty, runs in lint mode (validates current state).
 	// If set, runs in upgrade mode (assesses upgrade readiness to target version).
 	TargetVersion string
+
+	// ISVCDeploymentMode filters InferenceService display by deployment mode.
+	// Valid values: "all" (default), "serverless", "modelmesh".
+	ISVCDeploymentMode string
 
 	// parsedTargetVersion is the parsed semver version (upgrade mode only)
 	parsedTargetVersion *semver.Version
@@ -135,6 +140,7 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVarP(&c.Verbose, "verbose", "v", false, flagDescVerbose)
 	fs.BoolVar(&c.Debug, "debug", false, flagDescDebug)
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, flagDescTimeout)
+	fs.StringVar(&c.ISVCDeploymentMode, "isvc-deployment-mode", "all", flagDescISVCDeploymentMode)
 
 	// Throttling settings
 	fs.Float32Var(&c.QPS, "qps", c.QPS, flagDescQPS)
@@ -172,6 +178,12 @@ func (c *Command) Validate() error {
 	// Validate shared options
 	if err := c.SharedOptions.Validate(); err != nil {
 		return fmt.Errorf("validating shared options: %w", err)
+	}
+
+	// Validate ISVC deployment mode filter
+	validModes := []string{"all", "serverless", "modelmesh"}
+	if !slices.Contains(validModes, c.ISVCDeploymentMode) {
+		return fmt.Errorf("invalid isvc-deployment-mode: %s (must be one of: all, serverless, modelmesh)", c.ISVCDeploymentMode)
 	}
 
 	return nil
@@ -222,6 +234,16 @@ func (c *Command) Run(ctx context.Context) error {
 	return c.runUpgradeMode(ctx, currentVersion)
 }
 
+// configureCheckSettings applies command-level settings to specific checks.
+func (c *Command) configureCheckSettings() {
+	// Apply ISVC deployment mode filter to the KServe impacted workloads check
+	for _, chk := range c.registry.ListAll() {
+		if isvcCheck, ok := chk.(*kserveworkloads.ImpactedWorkloadsCheck); ok {
+			isvcCheck.SetDeploymentModeFilter(c.ISVCDeploymentMode)
+		}
+	}
+}
+
 // runLintMode validates current cluster state.
 //
 //nolint:unparam // keep explicit error return value
@@ -242,6 +264,9 @@ func (c *Command) runLintMode(_ context.Context, currentVersion *semver.Version)
 // runUpgradeMode assesses upgrade readiness for a target version.
 func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Version) error {
 	c.IO.Errorf("Assessing upgrade readiness: %s → %s\n", currentVersion.String(), c.TargetVersion)
+
+	// Configure check-specific settings
+	c.configureCheckSettings()
 
 	// Execute checks using target version for applicability filtering
 	c.IO.Errorf("Running upgrade compatibility checks...")

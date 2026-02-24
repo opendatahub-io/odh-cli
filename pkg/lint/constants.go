@@ -2,13 +2,14 @@ package lint
 
 // Flag descriptions for the lint command.
 const (
-	flagDescTargetVersion = "target version for upgrade readiness checks (e.g., 2.25.0, 3.0.0)"
-	flagDescOutput        = "output format (table|json|yaml)"
-	flagDescVerbose       = "show impacted objects and summary information"
-	flagDescDebug         = "show detailed diagnostic logs for troubleshooting"
-	flagDescTimeout       = "operation timeout (e.g., 10m, 30m)"
-	flagDescQPS           = "Kubernetes API QPS limit (queries per second)"
-	flagDescBurst         = "Kubernetes API burst capacity"
+	flagDescTargetVersion      = "target version for upgrade readiness checks (e.g., 2.25.0, 3.0.0)"
+	flagDescOutput             = "output format (table|json|yaml)"
+	flagDescVerbose            = "show impacted objects and summary information"
+	flagDescDebug              = "show detailed diagnostic logs for troubleshooting"
+	flagDescTimeout            = "operation timeout (e.g., 10m, 30m)"
+	flagDescQPS                = "Kubernetes API QPS limit (queries per second)"
+	flagDescBurst              = "Kubernetes API burst capacity"
+	flagDescISVCDeploymentMode = "filter InferenceService display by deployment mode (all|serverless|modelmesh)"
 )
 
 const flagDescChecks = `check selector patterns (glob patterns or categories):

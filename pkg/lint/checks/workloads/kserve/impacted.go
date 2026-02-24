@@ -51,6 +51,10 @@ const (
 // ImpactedWorkloadsCheck lists InferenceServices and ServingRuntimes using deprecated deployment modes.
 type ImpactedWorkloadsCheck struct {
 	check.BaseCheck
+
+	// deploymentModeFilter filters InferenceServices by deployment mode in verbose output.
+	// Valid values: "all" (default), "serverless", "modelmesh".
+	deploymentModeFilter string
 }
 
 func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
@@ -64,7 +68,14 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 			CheckDescription: "Lists InferenceServices and ServingRuntimes using deprecated deployment modes (ModelMesh, Serverless), removed ServingRuntimes, or ServingRuntimes referencing deprecated AcceleratorProfiles that will be impacted in RHOAI 3.x",
 			CheckRemediation: "Migrate InferenceServices from Serverless/ModelMesh to RawDeployment mode, update ServingRuntimes to supported versions, and review AcceleratorProfile references before upgrading",
 		},
+		deploymentModeFilter: "all", // Default to showing all deployment modes
 	}
+}
+
+// SetDeploymentModeFilter sets the filter for InferenceService display by deployment mode.
+// Valid values: "all", "serverless", "modelmesh".
+func (c *ImpactedWorkloadsCheck) SetDeploymentModeFilter(filter string) {
+	c.deploymentModeFilter = filter
 }
 
 // CanApply returns whether this check should run for the given target.
@@ -177,6 +188,7 @@ type inferenceServiceRow struct {
 
 // FormatVerboseOutput provides custom formatting for InferenceServices in verbose mode.
 // Displays a detailed table showing Name, Namespace, and DeploymentMode for each InferenceService.
+// Filters InferenceServices based on the deploymentModeFilter setting.
 func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out io.Writer, dr *result.DiagnosticResult) {
 	// Collect InferenceServices from impacted objects
 	var isvcs []inferenceServiceRow
@@ -193,6 +205,21 @@ func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out io.Writer, dr *result.D
 				deploymentMode = "RawDeployment"
 			} else {
 				deploymentMode = "Unknown"
+			}
+		}
+
+		// Apply deployment mode filter
+		if c.deploymentModeFilter != "all" {
+			filterMode := ""
+			switch c.deploymentModeFilter {
+			case "serverless":
+				filterMode = deploymentModeServerless
+			case "modelmesh":
+				filterMode = deploymentModeModelMesh
+			}
+
+			if deploymentMode != filterMode {
+				continue
 			}
 		}
 
