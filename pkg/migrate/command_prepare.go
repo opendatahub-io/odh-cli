@@ -14,7 +14,6 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
-	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
@@ -36,17 +35,16 @@ type PrepareCommand struct {
 	registry *action.ActionRegistry
 }
 
-func NewPrepareCommand(streams genericiooptions.IOStreams) *PrepareCommand {
-	shared := NewSharedOptions(streams)
-	registry := action.NewActionRegistry()
-
-	// Explicitly register all actions (no global state, full test isolation)
-	registry.MustRegister(&rhbok.RHBOKMigrationAction{})
+func NewPrepareCommand(streams genericiooptions.IOStreams) (*PrepareCommand, error) {
+	registry, err := newDefaultActionRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("registering actions: %w", err)
+	}
 
 	return &PrepareCommand{
-		SharedOptions: shared,
+		SharedOptions: NewSharedOptions(streams),
 		registry:      registry,
-	}
+	}, nil
 }
 
 func (c *PrepareCommand) AddFlags(fs *pflag.FlagSet) {

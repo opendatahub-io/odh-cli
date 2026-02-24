@@ -82,43 +82,43 @@ func NewCommand(
     streams genericiooptions.IOStreams,
     configFlags *genericclioptions.ConfigFlags,
     options ...CommandOption,
-) *Command {
-    registry := check.NewRegistry()
-
-    // Explicitly register all checks (no global state, full test isolation)
-    // Components (13)
-    registry.MustRegister(codeflare.NewRemovalCheck())
-    registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
-    registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
-    registry.MustRegister(datasciencepipelines.NewInstructLabRemovalCheck())
-    registry.MustRegister(datasciencepipelines.NewRenamingCheck())
-    registry.MustRegister(kserve.NewServerlessRemovalCheck())
-    registry.MustRegister(kserve.NewInferenceServiceConfigCheck())
-    registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
-    registry.MustRegister(kserve.NewServiceMeshRemovalCheck())
-    registry.MustRegister(kueue.NewManagementStateCheck())
-    registry.MustRegister(kueue.NewOperatorInstalledCheck())
-    registry.MustRegister(modelmesh.NewRemovalCheck())
-    registry.MustRegister(trainingoperator.NewDeprecationCheck())
-
-    // Dependencies (2)
-    registry.MustRegister(certmanager.NewCheck())
-    registry.MustRegister(openshift.NewCheck())
-
-    // Workloads (8)
-    registry.MustRegister(guardrails.NewImpactedWorkloadsCheck())
-    registry.MustRegister(guardrails.NewOtelMigrationCheck())
-    registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
-    registry.MustRegister(kserveworkloads.NewImpactedWorkloadsCheck())
-    registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
-    registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
-    registry.MustRegister(ray.NewImpactedWorkloadsCheck())
-    registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
+) (*Command, error) {
+    registry, err := check.NewRegistry(
+        // Components (13)
+        codeflare.NewRemovalCheck(),
+        dashboard.NewAcceleratorProfileMigrationCheck(),
+        dashboard.NewHardwareProfileMigrationCheck(),
+        datasciencepipelines.NewInstructLabRemovalCheck(),
+        datasciencepipelines.NewRenamingCheck(),
+        kserve.NewServerlessRemovalCheck(),
+        kserve.NewInferenceServiceConfigCheck(),
+        kserve.NewServiceMeshOperatorCheck(),
+        kserve.NewServiceMeshRemovalCheck(),
+        kueue.NewManagementStateCheck(),
+        kueue.NewOperatorInstalledCheck(),
+        modelmesh.NewRemovalCheck(),
+        trainingoperator.NewDeprecationCheck(),
+        // Dependencies (2)
+        certmanager.NewCheck(),
+        openshift.NewCheck(),
+        // Workloads (8)
+        guardrails.NewImpactedWorkloadsCheck(),
+        guardrails.NewOtelMigrationCheck(),
+        kserveworkloads.NewAcceleratorMigrationCheck(),
+        kserveworkloads.NewImpactedWorkloadsCheck(),
+        notebook.NewAcceleratorMigrationCheck(),
+        notebook.NewImpactedWorkloadsCheck(),
+        ray.NewImpactedWorkloadsCheck(),
+        trainingoperatorworkloads.NewImpactedWorkloadsCheck(),
+    )
+    if err != nil {
+        return nil, fmt.Errorf("registering checks: %w", err)
+    }
 
     return &Command{
         SharedOptions: shared,
         registry:      registry,
-    }
+    }, nil
 }
 ```
 
@@ -344,15 +344,27 @@ The lint command uses a `Command` struct (not `Options`) with constructor `NewCo
 
 ```go
 type Command struct {
-    shared        *SharedOptions
-    targetVersion string
+    *SharedOptions
+    TargetVersion version.SemVersion  // implements pflag.Value
+    registry      *check.CheckRegistry
 }
 
-func NewCommand(opts CommandOptions) *Command {
-    return &Command{
-        shared:        opts.Shared,
-        targetVersion: opts.TargetVersion,
+func NewCommand(
+    streams genericiooptions.IOStreams,
+    configFlags *genericclioptions.ConfigFlags,
+    options ...CommandOption,
+) (*Command, error) {
+    registry, err := check.NewRegistry(/* checks... */)
+    if err != nil {
+        return nil, fmt.Errorf("registering checks: %w", err)
     }
+
+    c := &Command{
+        SharedOptions: NewSharedOptions(streams, configFlags),
+        registry:      registry,
+    }
+    // ... apply options ...
+    return c, nil
 }
 ```
 

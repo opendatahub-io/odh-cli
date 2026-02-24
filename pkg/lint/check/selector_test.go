@@ -49,7 +49,8 @@ func TestMatchesPattern_Wildcard(t *testing.T) {
 			mockCheck.On("Group").Return(tt.group)
 
 			// matchesPattern is not exported, so we test through ListByPattern
-			registry := check.NewRegistry()
+			registry, err := check.NewRegistry()
+			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
 
 			results, err := registry.ListByPattern(tt.pattern, "")
@@ -139,7 +140,8 @@ func TestMatchesPattern_GroupShortcuts(t *testing.T) {
 			mockCheck.On("ID").Return(tt.checkID)
 			mockCheck.On("Group").Return(tt.group)
 
-			registry := check.NewRegistry()
+			registry, err := check.NewRegistry()
+			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
 
 			results, err := registry.ListByPattern(tt.pattern, "")
@@ -187,7 +189,8 @@ func TestMatchesPattern_ExactMatch(t *testing.T) {
 			mockCheck.On("ID").Return(tt.checkID)
 			mockCheck.On("Group").Return(tt.group)
 
-			registry := check.NewRegistry()
+			registry, err := check.NewRegistry()
+			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
 
 			results, err := registry.ListByPattern(tt.pattern, "")
@@ -263,7 +266,8 @@ func TestMatchesPattern_GlobPatterns(t *testing.T) {
 			mockCheck.On("ID").Return(tt.checkID)
 			mockCheck.On("Group").Return(tt.group)
 
-			registry := check.NewRegistry()
+			registry, err := check.NewRegistry()
+			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(registry.Register(mockCheck)).To(Succeed())
 
 			results, err := registry.ListByPattern(tt.pattern, "")
@@ -286,11 +290,12 @@ func TestMatchesPattern_InvalidPattern(t *testing.T) {
 	mockCheck.On("ID").Return("components.dashboard")
 	mockCheck.On("Group").Return(check.GroupComponent)
 
-	registry := check.NewRegistry()
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(registry.Register(mockCheck)).To(Succeed())
 
 	// Invalid glob pattern should return error
-	_, err := registry.ListByPattern("[", "")
+	_, err = registry.ListByPattern("[", "")
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("invalid pattern"))
 }

@@ -44,12 +44,9 @@ type Command struct {
 	*SharedOptions
 
 	// TargetVersion is the optional target version for upgrade assessment.
-	// If empty, runs in lint mode (validates current state).
+	// If not set, runs in lint mode (validates current state).
 	// If set, runs in upgrade mode (assesses upgrade readiness to target version).
-	TargetVersion string
-
-	// parsedTargetVersion is the parsed semver version (upgrade mode only)
-	parsedTargetVersion *semver.Version
+	TargetVersion version.SemVersion
 
 	// currentClusterVersion stores the detected OpenShift AI version (populated during Run)
 	currentClusterVersion string
@@ -70,67 +67,67 @@ func NewCommand(
 	streams genericiooptions.IOStreams,
 	configFlags *genericclioptions.ConfigFlags,
 	options ...CommandOption,
-) *Command {
-	shared := NewSharedOptions(streams, configFlags)
-	registry := check.NewRegistry()
-
-	// Explicitly register all checks (no global state, full test isolation)
-	// Components (13)
-	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
-	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
-	registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
-	registry.MustRegister(datasciencepipelines.NewRenamingCheck())
-	registry.MustRegister(kserve.NewServerlessRemovalCheck())
-	registry.MustRegister(kserve.NewKuadrantReadinessCheck())
-	registry.MustRegister(kserve.NewAuthorinoTLSReadinessCheck())
-	registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
-	registry.MustRegister(kserve.NewServiceMeshRemovalCheck())
-	registry.MustRegister(kueue.NewManagementStateCheck())
-	registry.MustRegister(kueue.NewOperatorInstalledCheck())
-	registry.MustRegister(modelmesh.NewRemovalCheck())
-	registry.MustRegister(trainingoperator.NewDeprecationCheck())
-
-	// Dependencies (2)
-	registry.MustRegister(certmanager.NewCheck())
-	registry.MustRegister(openshift.NewCheck())
-
-	// Workloads (16)
-	registry.MustRegister(ray.NewAppWrapperCleanupCheck())
-	registry.MustRegister(datasciencepipelinesworkloads.NewInstructLabRemovalCheck())
-	registry.MustRegister(datasciencepipelinesworkloads.NewStoredVersionRemovalCheck())
-	registry.MustRegister(guardrails.NewImpactedWorkloadsCheck())
-	registry.MustRegister(guardrails.NewOtelMigrationCheck())
-	registry.MustRegister(kserveworkloads.NewInferenceServiceConfigCheck())
-	registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
-	registry.MustRegister(kserveworkloads.NewHardwareProfileMigrationCheck())
-	registry.MustRegister(kserveworkloads.NewImpactedWorkloadsCheck())
-	registry.MustRegister(llamastackworkloads.NewConfigCheck())
-	registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
-	registry.MustRegister(notebook.NewContainerNameCheck())
-	registry.MustRegister(notebook.NewHardwareProfileMigrationCheck())
-	registry.MustRegister(notebook.NewConnectionIntegrityCheck())
-	registry.MustRegister(notebook.NewHardwareProfileIntegrityCheck())
-	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
-	registry.MustRegister(notebook.NewRunningWorkloadsCheck())
-	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
-	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
+) (*Command, error) {
+	registry, err := check.NewRegistry(
+		// Components (13)
+		raycomponent.NewCodeFlareRemovalCheck(),
+		dashboard.NewAcceleratorProfileMigrationCheck(),
+		dashboard.NewHardwareProfileMigrationCheck(),
+		datasciencepipelines.NewRenamingCheck(),
+		kserve.NewServerlessRemovalCheck(),
+		kserve.NewKuadrantReadinessCheck(),
+		kserve.NewAuthorinoTLSReadinessCheck(),
+		kserve.NewServiceMeshOperatorCheck(),
+		kserve.NewServiceMeshRemovalCheck(),
+		kueue.NewManagementStateCheck(),
+		kueue.NewOperatorInstalledCheck(),
+		modelmesh.NewRemovalCheck(),
+		trainingoperator.NewDeprecationCheck(),
+		// Dependencies (2)
+		certmanager.NewCheck(),
+		openshift.NewCheck(),
+		// Workloads (19)
+		ray.NewAppWrapperCleanupCheck(),
+		datasciencepipelinesworkloads.NewInstructLabRemovalCheck(),
+		datasciencepipelinesworkloads.NewStoredVersionRemovalCheck(),
+		guardrails.NewImpactedWorkloadsCheck(),
+		guardrails.NewOtelMigrationCheck(),
+		kserveworkloads.NewInferenceServiceConfigCheck(),
+		kserveworkloads.NewAcceleratorMigrationCheck(),
+		kserveworkloads.NewHardwareProfileMigrationCheck(),
+		kserveworkloads.NewImpactedWorkloadsCheck(),
+		llamastackworkloads.NewConfigCheck(),
+		notebook.NewAcceleratorMigrationCheck(),
+		notebook.NewContainerNameCheck(),
+		notebook.NewHardwareProfileMigrationCheck(),
+		notebook.NewConnectionIntegrityCheck(),
+		notebook.NewHardwareProfileIntegrityCheck(),
+		notebook.NewImpactedWorkloadsCheck(),
+		notebook.NewRunningWorkloadsCheck(),
+		ray.NewImpactedWorkloadsCheck(),
+		trainingoperatorworkloads.NewImpactedWorkloadsCheck(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("registering checks: %w", err)
+	}
 
 	c := &Command{
-		SharedOptions: shared,
+		SharedOptions: NewSharedOptions(streams, configFlags),
 		registry:      registry,
 	}
 
-	// Apply functional options
 	for _, opt := range options {
-		opt(c)
+		if err := opt(c); err != nil {
+			return nil, fmt.Errorf("applying command option: %w", err)
+		}
 	}
 
-	return c
+	return c, nil
 }
 
 // AddFlags registers command-specific flags with the provided FlagSet.
 func (c *Command) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&c.TargetVersion, "target-version", "", flagDescTargetVersion)
+	fs.Var(&c.TargetVersion, "target-version", flagDescTargetVersion)
 	fs.StringVarP((*string)(&c.OutputFormat), "output", "o", string(OutputFormatTable), flagDescOutput)
 	fs.StringArrayVar(&c.CheckSelectors, "checks", []string{"*"}, flagDescChecks)
 	fs.BoolVarP(&c.Verbose, "verbose", "v", false, flagDescVerbose)
@@ -153,17 +150,6 @@ func (c *Command) Complete() error {
 	if !c.Verbose && !c.Debug {
 		c.IO = iostreams.NewQuietWrapper(c.IO)
 	}
-
-	// Parse target version if provided (upgrade mode)
-	if c.TargetVersion != "" {
-		// Use ParseTolerant to accept partial versions (e.g., "3.0" → "3.0.0")
-		targetVer, err := semver.ParseTolerant(c.TargetVersion)
-		if err != nil {
-			return fmt.Errorf("invalid target version %q: %w", c.TargetVersion, err)
-		}
-		c.parsedTargetVersion = &targetVer
-	}
-	// If no target version provided, we're in lint mode (will use current version)
 
 	return nil
 }
@@ -202,7 +188,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Determine mode: upgrade (with --target-version) or lint (without --target-version)
-	if c.TargetVersion != "" {
+	if c.TargetVersion.IsSet() {
 		return c.runUpgradeMode(ctx, currentVersion)
 	}
 
@@ -320,12 +306,12 @@ func (c *Command) runLintMode(ctx context.Context, clusterVersion *semver.Versio
 // runUpgradeMode assesses upgrade readiness for a target version.
 func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Version) error {
 	c.IO.Errorf("Current OpenShift AI version: %s", currentVersion.String())
-	c.IO.Errorf("Target OpenShift AI version: %s\n", c.TargetVersion)
+	c.IO.Errorf("Target OpenShift AI version: %s\n", c.TargetVersion.String())
 
 	// Same major.minor means no upgrade checks are needed (checked before
 	// the downgrade guard so that e.g. --target-version 2.25 with current
 	// 2.25.2 is treated as "same version", not as a downgrade).
-	if version.SameMajorMinor(currentVersion, c.parsedTargetVersion) {
+	if version.SameMajorMinor(currentVersion, c.TargetVersion.Version()) {
 		c.IO.Fprintln()
 		c.IO.Fprintln("Environment:")
 		c.IO.Fprintf("  OpenShift AI version: %s", currentVersion.String())
@@ -342,12 +328,12 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 	}
 
 	// Check if target version is older than current
-	if c.parsedTargetVersion.LT(*currentVersion) {
+	if c.TargetVersion.Version().LT(*currentVersion) {
 		return fmt.Errorf("target version %s is older than current version %s (downgrades not supported)",
-			c.TargetVersion, currentVersion.String())
+			c.TargetVersion.String(), currentVersion.String())
 	}
 
-	c.IO.Errorf("Assessing upgrade readiness: %s → %s\n", currentVersion.String(), c.TargetVersion)
+	c.IO.Errorf("Assessing upgrade readiness: %s → %s\n", currentVersion.String(), c.TargetVersion.String())
 
 	// Execute checks using target version for applicability filtering
 	c.IO.Errorf("Running upgrade compatibility checks...")
@@ -356,8 +342,8 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 	// Create check target with BOTH current and target versions for upgrade checks
 	checkTarget := check.Target{
 		Client:         c.Client,
-		CurrentVersion: currentVersion,        // The version we're upgrading FROM
-		TargetVersion:  c.parsedTargetVersion, // The version we're upgrading TO
+		CurrentVersion: currentVersion,            // The version we're upgrading FROM
+		TargetVersion:  c.TargetVersion.Version(), // The version we're upgrading TO
 		Resource:       nil,
 		IO:             c.IO,
 		Debug:          c.Debug,
@@ -427,11 +413,7 @@ func (c *Command) formatAndOutputResults(
 	resultsByGroup map[check.CheckGroup][]check.CheckExecution,
 ) error {
 	clusterVer := &c.currentClusterVersion
-	var targetVer *string
-	if c.TargetVersion != "" {
-		targetVer = &c.TargetVersion
-	}
-
+	var targetVer *string // always nil in lint mode
 	ocpVer := c.openShiftVersionPtr()
 
 	// Flatten results to sorted array
@@ -487,7 +469,8 @@ func (c *Command) formatAndOutputUpgradeResults(
 	resultsByGroup map[check.CheckGroup][]check.CheckExecution,
 ) error {
 	clusterVer := &c.currentClusterVersion
-	targetVer := &c.TargetVersion
+	targetVerStr := c.TargetVersion.String()
+	targetVer := &targetVerStr
 	ocpVer := c.openShiftVersionPtr()
 
 	// Flatten results to sorted array
@@ -521,7 +504,7 @@ func (c *Command) outputUpgradeTable(ctx context.Context, _ string, results []ch
 		ShowImpactedObjects: c.Verbose,
 		VersionInfo: &VersionInfo{
 			RHOAICurrentVersion: c.currentClusterVersion,
-			RHOAITargetVersion:  c.TargetVersion,
+			RHOAITargetVersion:  c.TargetVersion.String(),
 			OpenShiftVersion:    c.currentOpenShiftVersion,
 		},
 	}

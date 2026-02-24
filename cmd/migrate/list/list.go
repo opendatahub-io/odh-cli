@@ -1,6 +1,8 @@
 package list
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -40,8 +42,12 @@ func AddCommand(
 	parent *cobra.Command,
 	flags *genericclioptions.ConfigFlags,
 	streams genericiooptions.IOStreams,
-) {
-	command := migrate.NewListCommand(streams)
+) error {
+	command, err := migrate.NewListCommand(streams)
+	if err != nil {
+		return fmt.Errorf("initializing list command: %w", err)
+	}
+
 	command.ConfigFlags = flags
 
 	cmd := &cobra.Command{
@@ -67,4 +73,6 @@ func AddCommand(
 
 	command.AddFlags(cmd.Flags())
 	parent.AddCommand(cmd)
+
+	return nil
 }

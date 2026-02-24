@@ -1,6 +1,7 @@
 package dependencies
 
 import (
+	"errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -11,25 +12,33 @@ type Registry struct {
 	resolvers []Resolver
 }
 
-// NewRegistry creates a new resolver registry.
-func NewRegistry() *Registry {
-	return &Registry{
-		resolvers: make([]Resolver, 0),
+// NewRegistry creates a new resolver registry, optionally registering the provided resolvers.
+// Returns an error if any resolver is nil.
+func NewRegistry(resolvers ...Resolver) (*Registry, error) {
+	r := &Registry{
+		resolvers: make([]Resolver, 0, len(resolvers)),
 	}
+
+	if err := r.Register(resolvers...); err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
-// Register adds a resolver to the registry.
-func (r *Registry) Register(resolver Resolver) {
-	r.resolvers = append(r.resolvers, resolver)
-}
-
-// MustRegister registers a resolver and panics if the resolver is nil.
-// Use this for explicit registration in command construction.
-func (r *Registry) MustRegister(resolver Resolver) {
-	if resolver == nil {
-		panic("cannot register nil resolver")
+// Register adds one or more resolvers to the registry.
+// The operation is atomic: either all resolvers are registered or none are.
+// Returns an error if any resolver is nil.
+func (r *Registry) Register(resolvers ...Resolver) error {
+	for _, resolver := range resolvers {
+		if resolver == nil {
+			return errors.New("cannot register nil resolver")
+		}
 	}
-	r.Register(resolver)
+
+	r.resolvers = append(r.resolvers, resolvers...)
+
+	return nil
 }
 
 // GetResolver finds the appropriate resolver for the given GVR.

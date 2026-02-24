@@ -8,6 +8,8 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 )
@@ -83,4 +85,17 @@ func (o *SharedOptions) Validate() error {
 	}
 
 	return nil
+}
+
+// newDefaultActionRegistry creates an action registry with all known migration actions.
+// Centralizes the action list so additions are made in one place.
+func newDefaultActionRegistry() (*action.ActionRegistry, error) {
+	r, err := action.NewActionRegistry(
+		&rhbok.RHBOKMigrationAction{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create action registry: %w", err)
+	}
+
+	return r, nil
 }

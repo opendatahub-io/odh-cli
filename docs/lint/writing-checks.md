@@ -79,11 +79,14 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 }
 ```
 
-**Registration:** Checks are explicitly registered in `pkg/lint/command.go`:
+**Registration:** Checks are explicitly registered in `pkg/lint/command.go` via `check.NewRegistry(...)`:
 
 ```go
 // In NewCommand()
-registry.MustRegister(dashboard.NewCheck())
+registry, err := check.NewRegistry(
+    dashboard.NewCheck(),
+    // ... other checks
+)
 ```
 
 ### Using BaseCheck
@@ -129,31 +132,31 @@ func NewCommand(
     streams genericiooptions.IOStreams,
     configFlags *genericclioptions.ConfigFlags,
     options ...CommandOption,
-) *Command {
-    registry := check.NewRegistry()
-
-    // Explicitly register all checks
-    // Components (11)
-    registry.MustRegister(codeflare.NewRemovalCheck())
-    registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
-    registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
-    registry.MustRegister(datasciencepipelines.NewInstructLabRemovalCheck())
-    // ... additional component checks
-
-    // Dependencies (2)
-    registry.MustRegister(certmanager.NewCheck())
-    // ... additional dependency checks
-
-    // Workloads (7)
-    registry.MustRegister(guardrails.NewOtelMigrationCheck())
-    registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
-    registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
-    // ... additional workload checks
+) (*Command, error) {
+    registry, err := check.NewRegistry(
+        // Components (13)
+        codeflare.NewRemovalCheck(),
+        dashboard.NewAcceleratorProfileMigrationCheck(),
+        dashboard.NewHardwareProfileMigrationCheck(),
+        datasciencepipelines.NewInstructLabRemovalCheck(),
+        // ... additional component checks
+        // Dependencies (2)
+        certmanager.NewCheck(),
+        // ... additional dependency checks
+        // Workloads (13)
+        guardrails.NewOtelMigrationCheck(),
+        kserveworkloads.NewAcceleratorMigrationCheck(),
+        notebook.NewImpactedWorkloadsCheck(),
+        // ... additional workload checks
+    )
+    if err != nil {
+        return nil, fmt.Errorf("registering checks: %w", err)
+    }
 
     return &Command{
         SharedOptions: shared,
         registry:      registry,
-    }
+    }, nil
 }
 ```
 
@@ -849,8 +852,8 @@ func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*resu
         Run(ctx, validate.Removal("CodeFlare is enabled (state: %s) but will be removed in RHOAI 3.x"))
 }
 
-// Registration is done explicitly in pkg/lint/command.go:
-// registry.MustRegister(codeflare.NewRemovalCheck())
+// Registration is done explicitly in pkg/lint/command.go via check.NewRegistry(...)
+// e.g. codeflare.NewRemovalCheck() is passed to check.NewRegistry()
 ```
 
 **Note:** For complex checks that don't fit the builder pattern, you can still write checks without builders using `c.NewResult()` and manually fetching resources via `client.GetDataScienceCluster(ctx, target.Client)`.

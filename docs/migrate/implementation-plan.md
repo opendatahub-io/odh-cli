@@ -67,8 +67,8 @@ type ActionRegistry struct {
 ```
 Pattern matching via `ListByPattern()`, similar to CheckRegistry
 
-**File:** `pkg/migrate/action/global.go`
-Global registry with `MustRegisterAction()` for auto-registration
+**File:** `pkg/migrate/action/registry.go`
+Variadic `NewActionRegistry(actions ...Action) (*ActionRegistry, error)` constructor with error-returning `Register(actions ...Action) error`
 
 #### 1.3 Action Executor
 **File:** `pkg/migrate/action/executor.go`
@@ -116,7 +116,7 @@ type ActionStep struct {
 **File:** `cmd/migrate/migrate.go`
 
 Cobra command wrapper with:
-- Blank imports for action auto-registration (e.g., `_ "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"`)
+- Explicit action registration via `action.NewActionRegistry(...)` (see Explicit Registration Pattern below)
 - Three-phase execution: Complete → Validate → Run
 - Pattern from `cmd/lint/lint.go:83-140`
 
@@ -389,16 +389,11 @@ if step1.Status == result.StepFailed {
 }
 ```
 
-### Auto-Registration Pattern
+### Explicit Registration Pattern
 ```go
-// In rhbok.go
-func init() {
-    action.MustRegisterAction(&RHBOKMigrationAction{})
-}
-
-// In cmd/migrate/migrate.go
-import (
-    _ "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
+// Actions are registered explicitly in each command constructor:
+registry, err := action.NewActionRegistry(
+    &rhbok.RHBOKMigrationAction{},
 )
 ```
 

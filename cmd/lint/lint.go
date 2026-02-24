@@ -67,15 +67,17 @@ const cmdExample = `
 `
 
 // AddCommand adds the lint command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) error {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
 		ErrOut: root.ErrOrStderr(),
 	}
 
-	// Create command with ConfigFlags from parent to ensure CLI auth flags are used
-	command := lintpkg.NewCommand(streams, flags)
+	command, err := lintpkg.NewCommand(streams, flags)
+	if err != nil {
+		return fmt.Errorf("initializing lint command: %w", err)
+	}
 
 	cmd := &cobra.Command{
 		Use:           cmdName,
@@ -83,9 +85,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 		Long:          cmdLong,
 		Example:       cmdExample,
 		SilenceUsage:  true,
-		SilenceErrors: true, // We'll handle error output manually based on --quiet flag
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Complete phase
 			if err := command.Complete(); err != nil {
 				if command.Verbose {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
@@ -94,7 +95,6 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 				return fmt.Errorf("completing command: %w", err)
 			}
 
-			// Validate phase
 			if err := command.Validate(); err != nil {
 				if command.Verbose {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
@@ -103,7 +103,6 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 				return fmt.Errorf("validating command: %w", err)
 			}
 
-			// Run phase
 			err := command.Run(cmd.Context())
 			if err != nil {
 				if command.Verbose {
@@ -117,8 +116,9 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 		},
 	}
 
-	// Register flags using AddFlags method
 	command.AddFlags(cmd.Flags())
 
 	root.AddCommand(cmd)
+
+	return nil
 }

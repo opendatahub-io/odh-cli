@@ -12,30 +12,36 @@ type ActionRegistry struct {
 	actions map[string]Action
 }
 
-func NewActionRegistry() *ActionRegistry {
-	return &ActionRegistry{
+func NewActionRegistry(actions ...Action) (*ActionRegistry, error) {
+	r := &ActionRegistry{
 		actions: make(map[string]Action),
 	}
+
+	if err := r.Register(actions...); err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
-func (r *ActionRegistry) Register(action Action) error {
+// Register adds one or more actions to the registry.
+// The operation is atomic: either all actions are registered or none are.
+// Returns an error if an action with the same ID already exists.
+func (r *ActionRegistry) Register(actions ...Action) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	id := action.ID()
-	if _, exists := r.actions[id]; exists {
-		return fmt.Errorf("action with ID %q already registered", id)
+	for _, a := range actions {
+		if _, exists := r.actions[a.ID()]; exists {
+			return fmt.Errorf("action with ID %q already registered", a.ID())
+		}
 	}
 
-	r.actions[id] = action
+	for _, a := range actions {
+		r.actions[a.ID()] = a
+	}
 
 	return nil
-}
-
-func (r *ActionRegistry) MustRegister(action Action) {
-	if err := r.Register(action); err != nil {
-		panic(err)
-	}
 }
 
 func (r *ActionRegistry) Get(id string) (Action, bool) {

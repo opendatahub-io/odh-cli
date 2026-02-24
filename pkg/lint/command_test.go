@@ -32,13 +32,14 @@ func TestLintMode_NoVersionFlag(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		cmd := lint.NewCommand(streams, testConfigFlags())
+		cmd, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
-		g.Expect(cmd.TargetVersion).To(BeEmpty())
+		g.Expect(cmd.TargetVersion.IsSet()).To(BeFalse())
 
 		// Without --target-version, Run() will short-circuit when
 		// current and target versions share the same major.minor
-		err := cmd.Complete()
+		err = cmd.Complete()
 		g.Expect(err).ToNot(HaveOccurred())
 	})
 }
@@ -55,15 +56,15 @@ func TestUpgradeMode_WithVersionFlag(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		// Use current non-deprecated constructor
-		cmd := lint.NewCommand(streams, testConfigFlags())
+		cmd, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Set --target-version flag (upgrade mode)
-		cmd.TargetVersion = "3.0.0"
-		g.Expect(cmd.TargetVersion).To(Equal("3.0.0"))
+		g.Expect(cmd.TargetVersion.Set("3.0.0")).To(Succeed())
+		g.Expect(cmd.TargetVersion.String()).To(Equal("3.0.0"))
 
 		// Upgrade mode should accept target version
-		err := cmd.Validate()
+		err = cmd.Validate()
 		g.Expect(err).ToNot(HaveOccurred())
 	})
 }
@@ -80,11 +81,11 @@ func TestLintMode_CheckTargetVersionMatches(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams, testConfigFlags())
-		g.Expect(command).ToNot(BeNil())
+		command, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Verify no --target-version flag set (lint mode)
-		g.Expect(command.TargetVersion).To(BeEmpty())
+		g.Expect(command.TargetVersion.IsSet()).To(BeFalse())
 
 		// In lint mode, Run() detects that current == target (same major.minor)
 		// and short-circuits with a "no checks will be executed" message
@@ -103,15 +104,15 @@ func TestUpgradeMode_CheckTargetVersionDiffers(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams, testConfigFlags())
-		g.Expect(command).ToNot(BeNil())
+		command, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Set --target-version flag (upgrade mode)
-		command.TargetVersion = "3.0.0"
-		g.Expect(command.TargetVersion).To(Equal("3.0.0"))
+		g.Expect(command.TargetVersion.Set("3.0.0")).To(Succeed())
+		g.Expect(command.TargetVersion.String()).To(Equal("3.0.0"))
 
-		// Verify version parses correctly in Complete
-		err := command.Complete()
+		// Verify upgrade mode is configured
+		err = command.Complete()
 		g.Expect(err).ToNot(HaveOccurred())
 
 		// In upgrade mode, Run() delegates to runUpgradeMode() when
@@ -132,17 +133,18 @@ func TestIntegration_LintAndUpgradeModes(t *testing.T) {
 		}
 
 		// Test lint mode configuration
-		lintCmd := lint.NewCommand(streams, testConfigFlags())
-		g.Expect(lintCmd).ToNot(BeNil())
-		g.Expect(lintCmd.TargetVersion).To(BeEmpty())
+		lintCmd, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(lintCmd.TargetVersion.IsSet()).To(BeFalse())
 
 		// Test upgrade mode configuration
-		upgradeCmd := lint.NewCommand(streams, testConfigFlags())
-		upgradeCmd.TargetVersion = "3.0.0"
-		g.Expect(upgradeCmd.TargetVersion).To(Equal("3.0.0"))
+		upgradeCmd, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(upgradeCmd.TargetVersion.Set("3.0.0")).To(Succeed())
+		g.Expect(upgradeCmd.TargetVersion.String()).To(Equal("3.0.0"))
 
 		// Verify both modes complete successfully
-		err := lintCmd.Complete()
+		err = lintCmd.Complete()
 		g.Expect(err).ToNot(HaveOccurred())
 
 		err = upgradeCmd.Complete()
@@ -176,8 +178,8 @@ func TestCommand_AddFlags(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams, testConfigFlags())
-		g.Expect(command).ToNot(BeNil())
+		command, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Create a FlagSet and call AddFlags
 		fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -203,8 +205,8 @@ func TestCommand_ImplementsInterface(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams, testConfigFlags())
-		g.Expect(command).ToNot(BeNil())
+		command, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Verify interface implementation at compile time
 		var _ cmd.Command = command
@@ -223,8 +225,8 @@ func TestCommand_NewCommand(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams, testConfigFlags())
-		g.Expect(command).ToNot(BeNil())
+		command, err := lint.NewCommand(streams, testConfigFlags())
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Per FR-014, SharedOptions should be initialized internally
 		g.Expect(command.SharedOptions).ToNot(BeNil())
@@ -246,12 +248,11 @@ func TestCommand_FunctionalOptions(t *testing.T) {
 			ErrOut: &errOut,
 		}
 
-		command := lint.NewCommand(streams, testConfigFlags(),
+		command, err := lint.NewCommand(streams, testConfigFlags(),
 			lint.WithTargetVersion("3.0.0"),
 		)
-
-		g.Expect(command).ToNot(BeNil())
-		g.Expect(command.TargetVersion).To(Equal("3.0.0"))
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.TargetVersion.String()).To(Equal("3.0.0"))
 		g.Expect(command.IO).ToNot(BeNil())
 	})
 }

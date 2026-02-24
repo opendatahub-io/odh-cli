@@ -20,7 +20,8 @@ func TestResolverStage(t *testing.T) {
 
 	t.Run("should process workloads without resolver", func(t *testing.T) {
 		io := iostreams.NewIOStreams(nil, nil, nil)
-		registry := dependencies.NewRegistry()
+		registry, err := dependencies.NewRegistry()
+		g.Expect(err).ToNot(HaveOccurred())
 
 		resolver := &pipeline.ResolverStage{
 			Client:      nil,
@@ -61,7 +62,8 @@ func TestResolverStage(t *testing.T) {
 
 	t.Run("should handle context cancellation", func(t *testing.T) {
 		io := iostreams.NewIOStreams(nil, nil, nil)
-		registry := dependencies.NewRegistry()
+		registry, err := dependencies.NewRegistry()
+		g.Expect(err).ToNot(HaveOccurred())
 
 		resolver := &pipeline.ResolverStage{
 			Client:      nil,
@@ -76,14 +78,15 @@ func TestResolverStage(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel() // Cancel immediately
 
-		err := resolver.Run(cancelCtx, 1, input, output)
+		err = resolver.Run(cancelCtx, 1, input, output)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("resolver"))
 	})
 
 	t.Run("should process multiple workloads with multiple workers", func(t *testing.T) {
 		io := iostreams.NewIOStreams(nil, nil, nil)
-		registry := dependencies.NewRegistry()
+		registry, err := dependencies.NewRegistry()
+		g.Expect(err).ToNot(HaveOccurred())
 
 		resolver := &pipeline.ResolverStage{
 			Client:      nil,
@@ -122,7 +125,8 @@ func TestResolverStage(t *testing.T) {
 
 	t.Run("should handle worker timeout", func(t *testing.T) {
 		io := iostreams.NewIOStreams(nil, nil, nil)
-		registry := dependencies.NewRegistry()
+		registry, err := dependencies.NewRegistry()
+		g.Expect(err).ToNot(HaveOccurred())
 
 		resolver := &pipeline.ResolverStage{
 			Client:      nil,
@@ -141,7 +145,7 @@ func TestResolverStage(t *testing.T) {
 		// Wait for timeout
 		time.Sleep(10 * time.Millisecond)
 
-		err := resolver.Run(timeoutCtx, 1, input, output)
+		err = resolver.Run(timeoutCtx, 1, input, output)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("resolver"))
 	})

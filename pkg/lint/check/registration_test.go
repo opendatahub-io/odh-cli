@@ -11,10 +11,11 @@ import (
 )
 
 // Test 1: Duplicate Registration Error.
-func TestRegistry_Register_DuplicateCheckPanic(t *testing.T) {
+func TestRegistry_Register_DuplicateCheckError(t *testing.T) {
 	g := NewWithT(t)
 
-	registry := check.NewRegistry() // Isolated registry for testing
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// Create mock check with specific ID
 	mockCheck := mocks.NewMockCheck()
@@ -23,7 +24,7 @@ func TestRegistry_Register_DuplicateCheckPanic(t *testing.T) {
 	mockCheck.On("Group").Return(check.GroupComponent)
 
 	// First registration should succeed
-	err := registry.Register(mockCheck)
+	err = registry.Register(mockCheck)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// Second registration with same ID should fail
@@ -37,8 +38,8 @@ func TestRegistry_Register_DuplicateCheckPanic(t *testing.T) {
 func TestRegistry_Register_Success(t *testing.T) {
 	g := NewWithT(t)
 
-	// Create new registry for isolation
-	registry := check.NewRegistry()
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// Create mock check
 	mockCheck := mocks.NewMockCheck()
@@ -46,8 +47,7 @@ func TestRegistry_Register_Success(t *testing.T) {
 	mockCheck.On("Name").Return("Test Success")
 	mockCheck.On("Group").Return(check.GroupComponent)
 
-	// Register via registry method
-	err := registry.Register(mockCheck)
+	err = registry.Register(mockCheck)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// Verify registration
@@ -56,41 +56,41 @@ func TestRegistry_Register_Success(t *testing.T) {
 	g.Expect(retrieved.ID()).To(Equal("test.success"))
 }
 
-// Test 3: MustRegisterCheck Panic on Duplicate.
-func TestMustRegisterCheck_PanicOnDuplicate(t *testing.T) {
+// Test 3: Duplicate Registration via Register returns error.
+func TestRegistry_Register_DuplicateReturnsError(t *testing.T) {
 	g := NewWithT(t)
 
-	// Create isolated registry for testing
-	registry := check.NewRegistry()
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// Create first mock check
 	mockCheck1 := mocks.NewMockCheck()
-	mockCheck1.On("ID").Return("test.panic")
-	mockCheck1.On("Name").Return("Test Panic 1")
+	mockCheck1.On("ID").Return("test.dup")
+	mockCheck1.On("Name").Return("Test Dup 1")
 	mockCheck1.On("Group").Return(check.GroupComponent)
 
-	// Register first check
-	err := registry.Register(mockCheck1)
+	err = registry.Register(mockCheck1)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// Create second mock with same ID
 	mockCheck2 := mocks.NewMockCheck()
-	mockCheck2.On("ID").Return("test.panic")
-	mockCheck2.On("Name").Return("Test Panic 2")
+	mockCheck2.On("ID").Return("test.dup")
+	mockCheck2.On("Name").Return("Test Dup 2")
 	mockCheck2.On("Group").Return(check.GroupComponent)
 
 	// Attempt to register duplicate should return error
 	err = registry.Register(mockCheck2)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("already registered"))
-	g.Expect(err.Error()).To(ContainSubstring("test.panic"))
+	g.Expect(err.Error()).To(ContainSubstring("test.dup"))
 }
 
 // Test 4: Concurrent Registration Safety.
 func TestRegistry_ConcurrentRegistration(t *testing.T) {
 	g := NewWithT(t)
 
-	registry := check.NewRegistry()
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// Launch 10 goroutines trying to register checks concurrently
 	const numGoroutines = 10
@@ -132,7 +132,8 @@ func TestRegistry_ConcurrentRegistration(t *testing.T) {
 func TestRegistry_ListByGroup(t *testing.T) {
 	g := NewWithT(t)
 
-	registry := check.NewRegistry()
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// Register checks in different groups
 	componentCheck := mocks.NewMockCheck()
@@ -147,7 +148,7 @@ func TestRegistry_ListByGroup(t *testing.T) {
 	workloadCheck.On("ID").Return("workload.test")
 	workloadCheck.On("Group").Return(check.GroupWorkload)
 
-	err := registry.Register(componentCheck)
+	err = registry.Register(componentCheck)
 	g.Expect(err).ToNot(HaveOccurred())
 	err = registry.Register(dependencyCheck)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -174,7 +175,8 @@ func TestRegistry_ListByGroup(t *testing.T) {
 func TestRegistry_ListBySelector(t *testing.T) {
 	g := NewWithT(t)
 
-	registry := check.NewRegistry()
+	registry, err := check.NewRegistry()
+	g.Expect(err).ToNot(HaveOccurred())
 
 	// Register checks in different groups
 	componentCheck := mocks.NewMockCheck()
@@ -185,7 +187,7 @@ func TestRegistry_ListBySelector(t *testing.T) {
 	dependencyCheck.On("ID").Return("dependency.test")
 	dependencyCheck.On("Group").Return(check.GroupDependency)
 
-	err := registry.Register(componentCheck)
+	err = registry.Register(componentCheck)
 	g.Expect(err).ToNot(HaveOccurred())
 	err = registry.Register(dependencyCheck)
 	g.Expect(err).ToNot(HaveOccurred())

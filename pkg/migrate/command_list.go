@@ -14,7 +14,6 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
-	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
 	"github.com/opendatahub-io/odh-cli/pkg/printer/table"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
@@ -42,17 +41,16 @@ type ListCommand struct {
 	registry *action.ActionRegistry
 }
 
-func NewListCommand(streams genericiooptions.IOStreams) *ListCommand {
-	shared := NewSharedOptions(streams)
-	registry := action.NewActionRegistry()
-
-	// Explicitly register all actions (no global state, full test isolation)
-	registry.MustRegister(&rhbok.RHBOKMigrationAction{})
+func NewListCommand(streams genericiooptions.IOStreams) (*ListCommand, error) {
+	registry, err := newDefaultActionRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("registering actions: %w", err)
+	}
 
 	return &ListCommand{
-		SharedOptions: shared,
+		SharedOptions: NewSharedOptions(streams),
 		registry:      registry,
-	}
+	}, nil
 }
 
 func (c *ListCommand) AddFlags(fs *pflag.FlagSet) {

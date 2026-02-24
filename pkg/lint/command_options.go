@@ -210,15 +210,19 @@ func ValidateCheckSelector(selector string) error {
 //
 // Example:
 //
-//	cmd := lint.NewCommand(streams, configFlags,
+//	cmd, err := lint.NewCommand(streams, configFlags,
 //	    lint.WithTargetVersion("3.0"),
 //	)
-type CommandOption func(*Command)
+type CommandOption func(*Command) error
 
 // WithTargetVersion returns a CommandOption that sets the target version.
-func WithTargetVersion(version string) CommandOption {
-	return func(c *Command) {
-		c.TargetVersion = version
+func WithTargetVersion(v string) CommandOption {
+	return func(c *Command) error {
+		if err := c.TargetVersion.Set(v); err != nil {
+			return fmt.Errorf("setting target version: %w", err)
+		}
+
+		return nil
 	}
 }
 

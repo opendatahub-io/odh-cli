@@ -96,14 +96,17 @@ func (c *Command) Complete() error {
 		}
 	}
 
-	// Create registry - always needed even if empty
-	c.depRegistry = dependencies.NewRegistry()
-
-	// Only register resolvers if dependency resolution is enabled
+	var resolvers []dependencies.Resolver
 	if c.Dependencies {
-		c.depRegistry.MustRegister(notebooks.NewResolver())
-		c.depRegistry.MustRegister(dspa.NewResolver())
+		resolvers = append(resolvers, notebooks.NewResolver(), dspa.NewResolver())
 	}
+
+	registry, err := dependencies.NewRegistry(resolvers...)
+	if err != nil {
+		return fmt.Errorf("creating dependency registry: %w", err)
+	}
+
+	c.depRegistry = registry
 
 	return nil
 }

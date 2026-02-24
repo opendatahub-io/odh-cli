@@ -11,34 +11,38 @@ type CheckRegistry struct {
 	checks map[string]Check
 }
 
-// NewRegistry creates a new check registry.
-func NewRegistry() *CheckRegistry {
-	return &CheckRegistry{
+// NewRegistry creates a new check registry, optionally registering the provided checks.
+// Returns an error if any check has a duplicate ID.
+func NewRegistry(checks ...Check) (*CheckRegistry, error) {
+	r := &CheckRegistry{
 		checks: make(map[string]Check),
 	}
+
+	if err := r.Register(checks...); err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
-// Register adds a check to the registry
-// Returns error if a check with the same ID already exists.
-func (r *CheckRegistry) Register(check Check) error {
+// Register adds one or more checks to the registry.
+// The operation is atomic: either all checks are registered or none are.
+// Returns an error if a check with the same ID already exists.
+func (r *CheckRegistry) Register(checks ...Check) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.checks[check.ID()]; exists {
-		return fmt.Errorf("check with ID %s already registered", check.ID())
+	for _, c := range checks {
+		if _, exists := r.checks[c.ID()]; exists {
+			return fmt.Errorf("check with ID %s already registered", c.ID())
+		}
 	}
 
-	r.checks[check.ID()] = check
+	for _, c := range checks {
+		r.checks[c.ID()] = c
+	}
 
 	return nil
-}
-
-// MustRegister registers a check and panics if registration fails.
-// Use this for check registration in command construction where failure is unrecoverable.
-func (r *CheckRegistry) MustRegister(check Check) {
-	if err := r.Register(check); err != nil {
-		panic(fmt.Sprintf("failed to register check %s: %v", check.ID(), err))
-	}
 }
 
 // Get looks up a check by ID, returning the check and whether it exists.

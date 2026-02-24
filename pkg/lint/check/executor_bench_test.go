@@ -101,22 +101,23 @@ func BenchmarkExecuteSelective_SingleCheck(b *testing.B) {
 
 // setupBenchmarkRegistry creates a registry with representative checks.
 func setupBenchmarkRegistry() *check.CheckRegistry {
-	registry := check.NewRegistry()
+	checks := make([]check.Check, 0, 15)
 
-	// Register multiple checks across categories to simulate realistic load
-	// Components (5 checks)
 	for i := range 5 {
-		_ = registry.Register(newBenchmarkCheck("components", i))
+		checks = append(checks, newBenchmarkCheck("components", i))
 	}
 
-	// Services (5 checks)
 	for i := range 5 {
-		_ = registry.Register(newBenchmarkCheck("services", i))
+		checks = append(checks, newBenchmarkCheck("services", i))
 	}
 
-	// Workloads (5 checks)
 	for i := range 5 {
-		_ = registry.Register(newBenchmarkCheck("workloads", i))
+		checks = append(checks, newBenchmarkCheck("workloads", i))
+	}
+
+	registry, err := check.NewRegistry(checks...)
+	if err != nil {
+		panic(err)
 	}
 
 	return registry

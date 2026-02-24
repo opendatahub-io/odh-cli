@@ -26,7 +26,14 @@ func main() {
 	flags.AddFlags(cmd.PersistentFlags())
 
 	version.AddCommand(cmd, flags)
-	lint.AddCommand(cmd, flags)
+
+	if err := lint.AddCommand(cmd, flags); err != nil {
+		if _, writeErr := os.Stderr.WriteString(err.Error() + "\n"); writeErr != nil {
+			os.Exit(1)
+		}
+
+		os.Exit(1)
+	}
 
 	if err := cmd.Execute(); err != nil {
 		if _, writeErr := os.Stderr.WriteString(err.Error() + "\n"); writeErr != nil {

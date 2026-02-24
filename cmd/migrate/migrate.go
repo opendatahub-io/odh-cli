@@ -1,6 +1,8 @@
 package migrate
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -54,7 +56,7 @@ const cmdExample = `
 `
 
 // AddCommand adds the migrate command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) error {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -70,9 +72,19 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 		SilenceErrors: true,
 	}
 
-	list.AddCommand(cmd, flags, streams)
-	prepare.AddCommand(cmd, flags, streams)
-	run.AddCommand(cmd, flags, streams)
+	if err := list.AddCommand(cmd, flags, streams); err != nil {
+		return fmt.Errorf("adding list subcommand: %w", err)
+	}
+
+	if err := prepare.AddCommand(cmd, flags, streams); err != nil {
+		return fmt.Errorf("adding prepare subcommand: %w", err)
+	}
+
+	if err := run.AddCommand(cmd, flags, streams); err != nil {
+		return fmt.Errorf("adding run subcommand: %w", err)
+	}
 
 	root.AddCommand(cmd)
+
+	return nil
 }

@@ -47,8 +47,7 @@ func TestDiagnosticCR_EndToEndExecution(t *testing.T) {
 
 	// Create a test check that validates CR structure
 	testCheck := &testDiagnosticCheck{}
-	registry := check.NewRegistry()
-	err := registry.Register(testCheck)
+	registry, err := check.NewRegistry(testCheck)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	// Create executor and target
