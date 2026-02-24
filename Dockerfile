@@ -121,7 +121,8 @@ ENV PATH="/opt/rhai-cli/bin:${PATH}"
 # Copy upgrade helpers from builder
 COPY --from=builder /opt/rhai-upgrade-helpers /opt/rhai-upgrade-helpers
 
-RUN oc completion bash > /etc/bash_completion.d/oc-completion
+RUN echo $'source /etc/profile.d/bash_completion.sh\n\
+source <(oc completion bash)' > ~/.bashrc
 
 # Set entrypoint to rhai-cli binary
 # Users can override with --entrypoint /bin/bash for interactive debugging
