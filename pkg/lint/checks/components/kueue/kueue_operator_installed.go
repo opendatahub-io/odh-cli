@@ -21,10 +21,10 @@ const (
 	annotationInstalledVersion = "operator.opendatahub.io/installed-version"
 )
 
-// OperatorInstalledCheck validates the RHBoK operator installation status against the Kueue
+// OperatorInstalledCheck validates the Red Hat build of Kueue operator installation status against the Kueue
 // component management state:
 //   - Managed + operator present: blocking — the two cannot coexist
-//   - Unmanaged + operator absent: blocking — Unmanaged requires the RHBoK operator
+//   - Unmanaged + operator absent: blocking — Unmanaged requires the Red Hat build of Kueue operator
 type OperatorInstalledCheck struct {
 	check.BaseCheck
 }
@@ -37,7 +37,7 @@ func NewOperatorInstalledCheck() *OperatorInstalledCheck {
 			Type:             checkTypeOperatorInstalled,
 			CheckID:          "components.kueue.operator-installed",
 			CheckName:        "Components :: Kueue :: Operator Installed",
-			CheckDescription: "Validates RHBoK operator installation is consistent with Kueue management state",
+			CheckDescription: "Validates Red Hat build of Kueue operator installation is consistent with Kueue management state",
 		},
 	}
 }
@@ -61,7 +61,7 @@ func (c *OperatorInstalledCheck) Validate(ctx context.Context, target check.Targ
 				return sub.Name == subscriptionName
 			})
 			if err != nil {
-				return fmt.Errorf("checking RHBoK operator presence: %w", err)
+				return fmt.Errorf("checking Red Hat build of Kueue operator presence: %w", err)
 			}
 
 			if info.GetVersion() != "" {
@@ -79,7 +79,7 @@ func (c *OperatorInstalledCheck) Validate(ctx context.Context, target check.Targ
 		})
 }
 
-// validateManaged checks that the RHBoK operator is NOT installed when Kueue is Managed.
+// validateManaged checks that the Red Hat build of Kueue operator is NOT installed when Kueue is Managed.
 func (c *OperatorInstalledCheck) validateManaged(
 	req *validate.ComponentRequest,
 	info *olm.SubscriptionInfo,
@@ -90,7 +90,7 @@ func (c *OperatorInstalledCheck) validateManaged(
 			check.ConditionTypeCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
-			check.WithMessage("RHBoK operator (%s) is installed but Kueue managementState is Managed — the two cannot coexist", info.GetVersion()),
+			check.WithMessage("Red Hat build of Kueue operator (%s) is installed but Kueue managementState is Managed — the two cannot coexist", info.GetVersion()),
 			check.WithImpact(result.ImpactBlocking),
 		))
 	default:
@@ -98,12 +98,12 @@ func (c *OperatorInstalledCheck) validateManaged(
 			check.ConditionTypeCompatible,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonVersionCompatible),
-			check.WithMessage("RHBoK operator is not installed — consistent with Managed state"),
+			check.WithMessage("Red Hat build of Kueue operator is not installed — consistent with Managed state"),
 		))
 	}
 }
 
-// validateUnmanaged checks that the RHBoK operator IS installed when Kueue is Unmanaged.
+// validateUnmanaged checks that the Red Hat build of Kueue operator IS installed when Kueue is Unmanaged.
 func (c *OperatorInstalledCheck) validateUnmanaged(
 	req *validate.ComponentRequest,
 	info *olm.SubscriptionInfo,
@@ -114,7 +114,7 @@ func (c *OperatorInstalledCheck) validateUnmanaged(
 			check.ConditionTypeCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonVersionIncompatible),
-			check.WithMessage("RHBoK operator is not installed but Kueue managementState is Unmanaged — RHBoK operator is required"),
+			check.WithMessage("Red Hat build of Kueue operator is not installed but Kueue managementState is Unmanaged — Red Hat build of Kueue operator is required"),
 			check.WithImpact(result.ImpactBlocking),
 		))
 	default:
@@ -122,7 +122,7 @@ func (c *OperatorInstalledCheck) validateUnmanaged(
 			check.ConditionTypeCompatible,
 			metav1.ConditionTrue,
 			check.WithReason(check.ReasonVersionCompatible),
-			check.WithMessage("RHBoK operator installed: %s", info.GetVersion()),
+			check.WithMessage("Red Hat build of Kueue operator installed: %s", info.GetVersion()),
 		))
 	}
 }

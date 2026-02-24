@@ -159,7 +159,7 @@ func TestModelmeshRemovalCheck_Metadata(t *testing.T) {
 	modelmeshCheck := modelmesh.NewRemovalCheck()
 
 	g.Expect(modelmeshCheck.ID()).To(Equal("components.modelmesh.removal"))
-	g.Expect(modelmeshCheck.Name()).To(Equal("Components :: ModelMesh :: Removal (3.x)"))
+	g.Expect(modelmeshCheck.Name()).To(Equal("Components :: ModelMesh Serving :: Removal (3.x)"))
 	g.Expect(modelmeshCheck.Group()).To(Equal(check.GroupComponent))
 	g.Expect(modelmeshCheck.Description()).ToNot(BeEmpty())
 }

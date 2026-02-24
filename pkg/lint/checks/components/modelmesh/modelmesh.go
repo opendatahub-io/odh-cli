@@ -15,7 +15,7 @@ import (
 
 const kind = "modelmeshserving"
 
-// RemovalCheck validates that ModelMesh is disabled before upgrading to 3.x.
+// RemovalCheck validates that ModelMesh Serving is disabled before upgrading to 3.x.
 type RemovalCheck struct {
 	check.BaseCheck
 }
@@ -27,15 +27,15 @@ func NewRemovalCheck() *RemovalCheck {
 			Kind:             kind,
 			Type:             check.CheckTypeRemoval,
 			CheckID:          "components.modelmesh.removal",
-			CheckName:        "Components :: ModelMesh :: Removal (3.x)",
-			CheckDescription: "Validates that ModelMesh is disabled before upgrading from RHOAI 2.x to 3.x (component will be removed)",
-			CheckRemediation: "Disable ModelMesh by setting managementState to 'Removed' in DataScienceCluster before upgrading",
+			CheckName:        "Components :: ModelMesh Serving :: Removal (3.x)",
+			CheckDescription: "Validates that ModelMesh Serving is disabled before upgrading from RHOAI 2.x to 3.x (component will be removed)",
+			CheckRemediation: "Disable ModelMesh Serving by setting managementState to 'Removed' in DataScienceCluster before upgrading",
 		},
 	}
 }
 
 // CanApply returns whether this check should run for the given target.
-// This check only applies when upgrading FROM 2.x TO 3.x and ModelMesh is Managed.
+// This check only applies when upgrading FROM 2.x TO 3.x and ModelMesh Serving is Managed.
 func (c *RemovalCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
 	if !version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion) {
 		return false, nil
@@ -51,7 +51,7 @@ func (c *RemovalCheck) CanApply(ctx context.Context, target check.Target) (bool,
 
 func (c *RemovalCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	return validate.Component(c, target).
-		Run(ctx, validate.Removal("ModelMesh is enabled (state: %s) but will be removed in RHOAI %s",
+		Run(ctx, validate.Removal("ModelMesh Serving is enabled (state: %s) but will be removed in RHOAI %s",
 			check.WithImpact(result.ImpactBlocking),
 			check.WithRemediation(c.CheckRemediation)))
 }

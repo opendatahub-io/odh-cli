@@ -112,7 +112,7 @@ func TestCertManagerCheck_Metadata(t *testing.T) {
 	certManagerCheck := certmanager.NewCheck()
 
 	g.Expect(certManagerCheck.ID()).To(Equal("dependencies.certmanager.installed"))
-	g.Expect(certManagerCheck.Name()).To(Equal("Dependencies :: CertManager :: Installed"))
+	g.Expect(certManagerCheck.Name()).To(Equal("Dependencies :: cert-manager :: Installed"))
 	g.Expect(certManagerCheck.Group()).To(Equal(check.GroupDependency))
 	g.Expect(certManagerCheck.Description()).ToNot(BeEmpty())
 }

@@ -21,7 +21,7 @@ import (
 
 const (
 	actionID          = "kueue.rhbok.migrate"
-	actionName        = "Migrate Kueue to RHBOK"
+	actionName        = "Migrate Kueue to Red Hat build of Kueue"
 	actionDescription = "Migrates from OpenShift AI built-in Kueue to Red Hat Build of Kueue operator"
 
 	// Operator constants.
@@ -250,9 +250,9 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 	if target.DryRun {
 		step.Complete(result.StepSkipped, "Operator installation checks completed")
 	} else if subscriptionExists {
-		step.Complete(result.StepCompleted, "RHBOK operator already installed and ready")
+		step.Complete(result.StepCompleted, "Red Hat build of Kueue operator already installed and ready")
 	} else {
-		step.Complete(result.StepCompleted, "RHBOK operator installed successfully")
+		step.Complete(result.StepCompleted, "Red Hat build of Kueue operator installed successfully")
 	}
 }
 

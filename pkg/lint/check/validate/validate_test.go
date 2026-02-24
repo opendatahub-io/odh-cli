@@ -394,7 +394,7 @@ func newTestOperatorCheck() *testCheck {
 	return &testCheck{
 		BaseCheck: check.BaseCheck{
 			CheckGroup:       check.GroupDependency,
-			Kind:             "certmanager",
+			Kind:             "cert-manager",
 			Type:             check.CheckTypeInstalled,
 			CheckID:          "test.operator.check",
 			CheckName:        "Test Operator Check",
@@ -454,7 +454,7 @@ func TestOperatorBuilder(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(dr).ToNot(BeNil())
 		g.Expect(dr.Group).To(Equal("dependency"))
-		g.Expect(dr.Kind).To(Equal("certmanager"))
+		g.Expect(dr.Kind).To(Equal("cert-manager"))
 		g.Expect(dr.Name).To(Equal(string(check.CheckTypeInstalled)))
 		g.Expect(dr.Status.Conditions).To(HaveLen(1))
 		g.Expect(dr.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
@@ -468,7 +468,7 @@ func TestOperatorBuilder(t *testing.T) {
 	t.Run("should return found when operator is installed", func(t *testing.T) {
 		sub := &operatorsv1alpha1.Subscription{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "certmanager",
+				Name:      "cert-manager",
 				Namespace: "cert-manager",
 			},
 			Status: operatorsv1alpha1.SubscriptionStatus{

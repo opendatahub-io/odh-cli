@@ -57,7 +57,7 @@ func (a *RHBOKMigrationAction) checkNoRHBOKConflicts(
 ) {
 	step := target.Recorder.Child(
 		"check-rhbok-conflicts",
-		"Check for RHBOK operator conflicts",
+		"Check for Red Hat build of Kueue operator conflicts",
 	)
 
 	subscription, err := target.Client.Dynamic().Resource(resources.Subscription.GVR()).
@@ -65,18 +65,18 @@ func (a *RHBOKMigrationAction) checkNoRHBOKConflicts(
 		Get(ctx, "kueue-operator", metav1.GetOptions{})
 
 	if err == nil && subscription != nil {
-		step.Complete(result.StepCompleted, "RHBOK operator already installed - migration may be partially complete")
+		step.Complete(result.StepCompleted, "Red Hat build of Kueue operator already installed - migration may be partially complete")
 
 		return
 	}
 
 	if !apierrors.IsNotFound(err) {
-		step.Complete(result.StepFailed, "Failed to check RHBOK subscription: %v", err)
+		step.Complete(result.StepFailed, "Failed to check Red Hat build of Kueue subscription: %v", err)
 
 		return
 	}
 
-	step.Complete(result.StepCompleted, "No RHBOK conflicts detected")
+	step.Complete(result.StepCompleted, "No Red Hat build of Kueue conflicts detected")
 }
 
 func (a *RHBOKMigrationAction) verifyKueueResources(

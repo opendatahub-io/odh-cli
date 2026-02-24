@@ -10,7 +10,9 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
 )
 
-const kind = "certmanager"
+const kind = "cert-manager"
+
+const displayName = "cert-manager Operator for Red Hat OpenShift"
 
 // Check validates cert-manager operator installation.
 type Check struct {
@@ -24,7 +26,7 @@ func NewCheck() *Check {
 			Kind:             kind,
 			Type:             check.CheckTypeInstalled,
 			CheckID:          "dependencies.certmanager.installed",
-			CheckName:        "Dependencies :: CertManager :: Installed",
+			CheckName:        "Dependencies :: cert-manager :: Installed",
 			CheckDescription: "Reports the cert-manager operator installation status and version",
 		},
 	}
@@ -43,7 +45,7 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 					check.ConditionTypeAvailable,
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonResourceNotFound),
-					check.WithMessage("%s operator is not installed", kind),
+					check.WithMessage("%s is not installed", displayName),
 					check.WithImpact(result.ImpactBlocking),
 				)
 			}
@@ -52,7 +54,7 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 				check.ConditionTypeAvailable,
 				metav1.ConditionTrue,
 				check.WithReason(check.ReasonResourceFound),
-				check.WithMessage("%s operator installed: %s", kind, version),
+				check.WithMessage("%s installed: %s", displayName, version),
 			)
 		}).
 		Run(ctx)

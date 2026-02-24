@@ -496,7 +496,7 @@ func TestOutputTable_SortsByGroupKindImpactCheck(t *testing.T) {
 		mkExec("component", "kserve", "config-check", mkCondition(result.ImpactNone, "kserve-comp-info")),
 		mkExec("workload", "dashboard", "wl-check", mkCondition(result.ImpactAdvisory, "dashboard-wl-warn")),
 		mkExec("dependency", "openshift-platform", "dep-check", mkCondition(result.ImpactBlocking, "ocp-dep-crit")),
-		mkExec("dependency", "certmanager", "installed", mkCondition(result.ImpactNone, "cert-dep-info")),
+		mkExec("dependency", "cert-manager", "installed", mkCondition(result.ImpactNone, "cert-dep-info")),
 		mkExec("component", "dashboard", "removal", mkCondition(result.ImpactBlocking, "dashboard-comp-crit")),
 		mkExec("service", "dashboard", "svc-check", mkCondition(result.ImpactAdvisory, "dashboard-svc-warn")),
 		mkExec("component", "dashboard", "config-migration", mkCondition(result.ImpactAdvisory, "dashboard-comp-warn")),
@@ -510,7 +510,7 @@ func TestOutputTable_SortsByGroupKindImpactCheck(t *testing.T) {
 	output := buf.String()
 
 	// Expected order (Group canonical -> Kind alpha -> Impact severity -> Check alpha):
-	//   dependency:  certmanager         info      installed
+	//   dependency:  cert-manager        info      installed
 	//   dependency:  openshift-platform  critical  dep-check
 	//   service:     dashboard           warning   svc-check
 	//   service:     kserve              critical  svc-check

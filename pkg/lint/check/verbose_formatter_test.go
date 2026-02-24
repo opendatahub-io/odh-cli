@@ -52,7 +52,7 @@ func TestDefaultVerboseFormatter_NamespacedObjects(t *testing.T) {
 func TestDefaultVerboseFormatter_ClusterScopedObjects(t *testing.T) {
 	g := NewWithT(t)
 
-	dr := result.New("dependency", "certmanager", "installed", "test description")
+	dr := result.New("dependency", "cert-manager", "installed", "test description")
 	dr.ImpactedObjects = []metav1.PartialObjectMetadata{
 		{
 			TypeMeta:   metav1.TypeMeta{Kind: "ClusterRole"},

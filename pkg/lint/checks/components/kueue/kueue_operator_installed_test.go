@@ -128,7 +128,7 @@ func TestOperatorInstalledCheck_ManagedInstalled(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("RHBoK operator"), ContainSubstring("cannot coexist")),
+		"Message": And(ContainSubstring("Red Hat build of Kueue operator"), ContainSubstring("cannot coexist")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "kueue-operator.v0.6.0"))

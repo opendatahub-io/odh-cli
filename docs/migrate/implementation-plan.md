@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implement a `migrate` subcommand for odh-cli that performs cluster migrations, specifically migrating from OpenShift AI's built-in Kueue to the Red Hat Build of Kueue (RHBOK) operator. The command will mirror the `lint` command architecture but add capabilities for cluster modification, dry-run mode, preparation, and user confirmations.
+Implement a `migrate` subcommand for odh-cli that performs cluster migrations, specifically migrating from OpenShift AI's built-in Kueue to the Red Hat build of Kueue operator. The command will mirror the `lint` command architecture but add capabilities for cluster modification, dry-run mode, preparation, and user confirmations.
 
 ## Requirements Summary
 
@@ -12,7 +12,7 @@ Implement a `migrate` subcommand for odh-cli that performs cluster migrations, s
 - `-y` / `--yes`: Skip confirmation prompts (default: ask for each step)
 - Standard flags: `--output`, `--timeout`, `--verbose` (reuse from lint)
 
-### RHBOK Migration Steps
+### Red Hat build of Kueue Migration Steps
 1. Install Red Hat Build of Kueue Operator from OperatorHub
 2. Update DataScienceCluster: set `spec.components.kueue.managementState` to `Unmanaged`
 3. Verify ClusterQueue and LocalQueue resources are preserved
@@ -181,7 +181,7 @@ if !target.SkipConfirm {
 }
 ```
 
-### Phase 4: RHBOK Migration Action
+### Phase 4: Red Hat build of Kueue Migration Action
 
 #### 4.1 Main Action Implementation
 **File:** `pkg/migrate/actions/kueue/rhbok/rhbok.go`
@@ -203,15 +203,15 @@ func (a *RHBOKMigrationAction) CanApply(currentVersion, targetVersion *semver.Ve
 func (a *RHBOKMigrationAction) Validate(ctx, target) (*result.ActionResult, error) {
     // Pre-flight checks:
     // 1. Verify current Kueue state
-    // 2. Check for RHBOK conflicts
+    // 2. Check for Red Hat build of Kueue conflicts
     // 3. Verify Kueue resources exist
     // 4. Verify RBAC permissions
 }
 
 func (a *RHBOKMigrationAction) Execute(ctx, target) (*result.ActionResult, error) {
-    result := result.New("migration", "rhbok", "execute", "Execute RHBOK migration")
+    result := result.New("migration", "rhbok", "execute", "Execute Red Hat build of Kueue migration")
 
-    // Step 1: Install RHBOK Operator
+    // Step 1: Install Red Hat build of Kueue Operator
     step1 := a.installRHBOKOperator(ctx, target)
     result.Status.Steps = append(result.Status.Steps, step1)
     if step1.Status == result.StepFailed {
@@ -234,7 +234,7 @@ func (a *RHBOKMigrationAction) Execute(ctx, target) (*result.ActionResult, error
 }
 ```
 
-#### 4.2 Install RHBOK Operator
+#### 4.2 Install Red Hat build of Kueue Operator
 **Method:** `installRHBOKOperator(ctx, target) ActionStep`
 
 1. Check if dry-run: return skipped step with message
@@ -409,7 +409,7 @@ import (
 $ kubectl odh migrate list --target-version 3.0.0
 
 ID                      NAME                          APPLICABLE  DESCRIPTION
-kueue.rhbok.migrate     Migrate Kueue to RHBOK        Yes         Migrates from OpenShift AI built-in Kueue...
+kueue.rhbok.migrate     Migrate Kueue to Red Hat build of Kueue        Yes         Migrates from OpenShift AI built-in Kueue...
 ```
 
 ### Default (with confirmations)
@@ -425,10 +425,10 @@ Migration Steps:
 2. Update DataScienceCluster Kueue managementState to Unmanaged
 3. Verify ClusterQueue and LocalQueue resources preserved
 
-[Step 1/3] Installing RHBOK Operator...
-About to install Red Hat Build of Kueue Operator
+[Step 1/3] Installing Red Hat build of Kueue Operator...
+About to install Red Hat build of Kueue Operator
 Proceed with operator installation? [y/N]: y
-✓ RHBOK operator installed successfully
+✓ Red Hat build of Kueue operator installed successfully
 
 [Step 2/3] Updating DataScienceCluster...
 About to update DataScienceCluster Kueue managementState to Unmanaged
@@ -450,8 +450,8 @@ Current OpenShift AI version: 2.25.0
 Target OpenShift AI version: 3.0.0
 Running migration: kueue.rhbok.migrate (confirmations skipped)
 
-[Step 1/3] Installing RHBOK Operator...
-✓ RHBOK operator installed successfully
+[Step 1/3] Installing Red Hat build of Kueue Operator...
+✓ Red Hat build of Kueue operator installed successfully
 
 [Step 2/3] Updating DataScienceCluster...
 ✓ DataScienceCluster updated successfully
@@ -468,7 +468,7 @@ $ kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0
 
 DRY RUN MODE: No changes will be made to the cluster
 
-[Step 1/3] Install RHBOK Operator
+[Step 1/3] Install Red Hat build of Kueue Operator
   → Would create Subscription kueue-operator in openshift-kueue-operator
   → Would wait for CSV kueue-operator.v1.x.x to be ready
 
@@ -490,7 +490,7 @@ Running pre-flight checks for migration: kueue.rhbok.migrate
 
 Pre-flight Validation:
 ✓ Current Kueue state verified
-✓ No RHBOK conflicts detected
+✓ No Red Hat build of Kueue conflicts detected
 ✓ Kueue resources found: 3 ClusterQueues, 5 LocalQueues
 ✓ Sufficient permissions verified
 
@@ -512,8 +512,8 @@ Target OpenShift AI version: 3.0.0
 === Migration 1/2: kueue.rhbok.migrate ===
 Running migration: kueue.rhbok.migrate (confirmations skipped)
 
-[Step 1/3] Installing RHBOK Operator...
-✓ RHBOK operator installed successfully
+[Step 1/3] Installing Red Hat build of Kueue Operator...
+✓ Red Hat build of Kueue operator installed successfully
 
 [Step 2/3] Updating DataScienceCluster...
 ✓ DataScienceCluster updated successfully
@@ -545,7 +545,7 @@ All migrations completed successfully!
 6. `pkg/migrate/action/global.go` - Global registry
 7. `pkg/migrate/action/executor.go` - Sequential executor
 8. `pkg/migrate/action/result/result.go` - Result types
-9. `pkg/migrate/actions/kueue/rhbok/rhbok.go` - RHBOK action
+9. `pkg/migrate/actions/kueue/rhbok/rhbok.go` - Red Hat build of Kueue action
 10. `pkg/migrate/actions/kueue/rhbok/backup.go` - Backup logic
 11. `pkg/migrate/actions/kueue/rhbok/preflight.go` - Pre-flight checks
 12. `pkg/util/confirmation/confirmation.go` - User confirmation
@@ -585,4 +585,4 @@ All migrations completed successfully!
 - Lint command: `cmd/lint/lint.go`, `pkg/cmd/lint/lint.go`
 - Check executor: `pkg/lint/check/executor.go`
 - Existing Kueue checks: `pkg/lint/checks/components/kueue/kueue.go`
-- RHBOK migration docs: Red Hat OpenShift AI 2.25 documentation
+- Red Hat build of Kueue migration docs: Red Hat OpenShift AI 2.25 documentation
