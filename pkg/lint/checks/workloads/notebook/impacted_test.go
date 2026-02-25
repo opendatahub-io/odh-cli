@@ -83,6 +83,11 @@ const (
 	jupyterExternalCompatible      = externalRegistry + "/odh-" + isJupyterDatascience + "@" + shaCompatible
 	codeserverExternalIncompatible = externalRegistry + "/odh-" + isCodeserverDatascience + "@" + shaIncompatible
 
+	// Strategy 4: Spec from.name exact match (disconnected cluster).
+	// These are the source references stored in .spec.tags[*].from.name.
+	specRefJupyterCompatible      = externalRegistry + "/odh-" + isJupyterDatascience + "@" + shaCompatible
+	specRefCodeserverIncompatible = externalRegistry + "/odh-" + isCodeserverDatascience + "@" + shaIncompatible
+
 	// Custom images - should NOT match any OOTB ImageStream.
 	customImageTag = "quay.io/myorg/custom-image:v1.0"
 	customImageSHA = "quay.io/myorg/custom-image@" + shaCustom
@@ -159,6 +164,21 @@ func newImageStream(name string, nbType string) *unstructured.Unstructured {
 				"tags": []any{
 					map[string]any{
 						"name": tagCurrent,
+						"from": map[string]any{
+							"kind": "DockerImage",
+							"name": externalImageBase + "@" + shaCompatible,
+						},
+						"annotations": map[string]any{
+							"opendatahub.io/notebook-python-dependencies": pythonDeps,
+							"opendatahub.io/notebook-software":            software,
+						},
+					},
+					map[string]any{
+						"name": tagPrevious,
+						"from": map[string]any{
+							"kind": "DockerImage",
+							"name": externalImageBase + "@" + shaIncompatible,
+						},
 						"annotations": map[string]any{
 							"opendatahub.io/notebook-python-dependencies": pythonDeps,
 							"opendatahub.io/notebook-software":            software,
@@ -224,6 +244,82 @@ func newUserContributedImageStream(name string) *unstructured.Unstructured {
 								"dockerImageReference": "quay.io/user/" + name + "@" + shaUserContributed,
 							},
 						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// newDisconnectedImageStream creates an ImageStream simulating a disconnected cluster.
+// - Has OOTB metadata (labels, platform.opendatahub.io/version annotation)
+// - Has spec.tags with from: {kind: "DockerImage", name: "<full-ref>"} entries
+// - Has status.dockerImageRepository: "" (empty - internal registry disabled)
+// - Has status.tags with items: null (import failed on disconnected cluster).
+func newDisconnectedImageStream(name string, nbType string) *unstructured.Unstructured {
+	var pythonDeps, software string
+
+	switch nbType {
+	case "jupyter":
+		pythonDeps = `[{"name":"jupyterlab","version":"4.0"}]`
+	case "codeserver":
+		software = `[{"name":"code-server","version":"4.0"}]`
+	case "rstudio":
+		software = `[{"name":"R","version":"4.0"}]`
+	}
+
+	externalImageBase := externalRegistry + "/odh-" + name
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.ImageStream.APIVersion(),
+			"kind":       resources.ImageStream.Kind,
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": "redhat-ods-applications",
+				"labels": map[string]any{
+					"app.kubernetes.io/part-of": "workbenches",
+				},
+				"annotations": map[string]any{
+					"platform.opendatahub.io/version": "2.25.1",
+				},
+			},
+			"spec": map[string]any{
+				"tags": []any{
+					map[string]any{
+						"name": tagCurrent,
+						"from": map[string]any{
+							"kind": "DockerImage",
+							"name": externalImageBase + "@" + shaCompatible,
+						},
+						"annotations": map[string]any{
+							"opendatahub.io/notebook-python-dependencies": pythonDeps,
+							"opendatahub.io/notebook-software":            software,
+						},
+					},
+					map[string]any{
+						"name": tagPrevious,
+						"from": map[string]any{
+							"kind": "DockerImage",
+							"name": externalImageBase + "@" + shaIncompatible,
+						},
+						"annotations": map[string]any{
+							"opendatahub.io/notebook-python-dependencies": pythonDeps,
+							"opendatahub.io/notebook-software":            software,
+						},
+					},
+				},
+			},
+			"status": map[string]any{
+				"dockerImageRepository": "",
+				"tags": []any{
+					map[string]any{
+						"tag":   tagCurrent,
+						"items": nil,
+					},
+					map[string]any{
+						"tag":   tagPrevious,
+						"items": nil,
 					},
 				},
 			},
@@ -636,10 +732,11 @@ func TestImpactedWorkloadsCheck_AnnotationTargetVersion(t *testing.T) {
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationCheckTargetVersion, "3.0.0"))
 }
 
-// TestImpactedWorkloadsCheck_LookupStrategies tests all three image lookup strategies:
+// TestImpactedWorkloadsCheck_LookupStrategies tests all five image lookup strategies:
 // 1. dockerImageReference - exact match against .status.tags[*].items[*].dockerImageReference
 // 2. SHA lookup - match SHA against .status.tags[*].items[*].image
-// 3. dockerImageRepository - match path against .status.dockerImageRepository.
+// 3. dockerImageRepository - match path against .status.dockerImageRepository
+// 4. spec from.name - exact match against .spec.tags[*].from.name (disconnected clusters).
 func TestImpactedWorkloadsCheck_LookupStrategies(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -732,6 +829,47 @@ func TestImpactedWorkloadsCheck_LookupStrategies(t *testing.T) {
 			expectedStatus: metav1.ConditionFalse,
 			expectedReason: check.ReasonWorkloadsImpacted,
 			expectedImpact: resultpkg.ImpactBlocking,
+		},
+
+		// Strategy 4: spec from.name - exact match against .spec.tags[*].from.name (disconnected clusters)
+		{
+			name:        "Strategy4_SpecRef_Compliant",
+			description: "Disconnected cluster: spec from.name match (Jupyter compatible)",
+			image:       specRefJupyterCompatible,
+			objects: func() []*unstructured.Unstructured {
+				return []*unstructured.Unstructured{
+					newDisconnectedImageStream(isJupyterDatascience, "jupyter"),
+				}
+			},
+			expectedStatus: metav1.ConditionTrue,
+			expectedReason: check.ReasonVersionCompatible,
+			expectedImpact: resultpkg.ImpactNone,
+		},
+		{
+			name:        "Strategy4_SpecRef_NonCompliant",
+			description: "Disconnected cluster: spec from.name match (CodeServer old tag)",
+			image:       specRefCodeserverIncompatible,
+			objects: func() []*unstructured.Unstructured {
+				return []*unstructured.Unstructured{
+					newDisconnectedImageStream(isCodeserverDatascience, "codeserver"),
+				}
+			},
+			expectedStatus: metav1.ConditionFalse,
+			expectedReason: check.ReasonWorkloadsImpacted,
+			expectedImpact: resultpkg.ImpactBlocking,
+		},
+		{
+			name:        "Strategy4_SpecRef_NoMatch",
+			description: "Disconnected cluster: image not in spec from.name - falls through to CUSTOM",
+			image:       externalRegistry + "/odh-" + isJupyterDatascience + "@" + shaUnknown,
+			objects: func() []*unstructured.Unstructured {
+				return []*unstructured.Unstructured{
+					newDisconnectedImageStream(isJupyterDatascience, "jupyter"),
+				}
+			},
+			expectedStatus: metav1.ConditionFalse,
+			expectedReason: check.ReasonWorkloadsImpacted,
+			expectedImpact: resultpkg.ImpactAdvisory, // Falls through to CUSTOM
 		},
 
 		// Non-OOTB images - should be classified as CUSTOM

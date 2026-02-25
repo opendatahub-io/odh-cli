@@ -424,6 +424,7 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 // 1. dockerImageReference: Exact match against .status.tags[*].items[*].dockerImageReference
 // 2. SHA lookup: Match SHA against .status.tags[*].items[*].image
 // 3. dockerImageRepository: Match path against .status.dockerImageRepository (internal registry)
+// 4. spec from.name: Exact match against .spec.tags[*].from.name (disconnected clusters)
 // If none match, the image is classified as CUSTOM (user-provided image requiring manual verification).
 func (c *ImpactedWorkloadsCheck) analyzeImage(
 	ctx context.Context,
@@ -499,6 +500,29 @@ func (c *ImpactedWorkloadsCheck) analyzeImage(
 	}
 
 	log.logf("[notebook]     Strategy 3 (dockerImageRepo): no match for path=%s", ref.FullPath)
+
+	// Strategy 4: spec from.name lookup - exact match against source image references.
+	// Handles disconnected clusters where .status.tags[*].items is null (import failed)
+	// but .spec.tags[*].from.name still contains the operator-configured references.
+	lookup = c.findImageStreamBySpecRef(image, imageStreamData)
+	if lookup.Found {
+		ootbIS, isOOTB := ootbImages[lookup.ImageStreamName]
+		if isOOTB {
+			log.logf("[notebook]     Strategy 4 (specRef) matched: is=%s tag=%s type=%s",
+				lookup.ImageStreamName, lookup.Tag, ootbIS.Type)
+
+			return c.analyzeOOTBImage(ctx, reader, ootbImageInput{
+				ImageStreamName: lookup.ImageStreamName,
+				Tag:             lookup.Tag,
+				SHA:             ref.SHA,
+				Type:            ootbIS.Type,
+			}, imageStreamData, appNS, log)
+		}
+
+		log.logf("[notebook]     Strategy 4 matched is=%s but not in OOTB map", lookup.ImageStreamName)
+	}
+
+	log.logf("[notebook]     Strategy 4 (specRef): no match for image=%s", image)
 
 	// No OOTB correlation found - mark as custom image requiring user verification.
 	// We intentionally do NOT use name-based matching as a fallback because an image
@@ -667,6 +691,55 @@ func (c *ImpactedWorkloadsCheck) findImageStreamByDockerRepo(
 	}
 
 	return ootbImageStream{}, false
+}
+
+// findImageStreamBySpecRef searches all ImageStreams for an exact match of the
+// container image against .spec.tags[*].from.name (the source DockerImage reference).
+// This handles disconnected clusters where .status.tags[*].items may be null due to
+// failed imports, but .spec always contains the operator-configured source references.
+func (c *ImpactedWorkloadsCheck) findImageStreamBySpecRef(
+	imageRef string,
+	imageStreams []*unstructured.Unstructured,
+) imageLookupResult {
+	if imageRef == "" {
+		return imageLookupResult{}
+	}
+
+	for _, is := range imageStreams {
+		isName := is.GetName()
+
+		specTags, err := jq.Query[[]any](is, ".spec.tags")
+		if err != nil {
+			continue
+		}
+
+		for _, tagData := range specTags {
+			tagMap, ok := tagData.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			tagName, _ := tagMap["name"].(string)
+
+			fromMap, ok := tagMap["from"].(map[string]any)
+			if !ok {
+				continue
+			}
+
+			fromKind, _ := fromMap["kind"].(string)
+			fromName, _ := fromMap["name"].(string)
+
+			if fromKind == "DockerImage" && fromName == imageRef {
+				return imageLookupResult{
+					ImageStreamName: isName,
+					Tag:             tagName,
+					Found:           true,
+				}
+			}
+		}
+	}
+
+	return imageLookupResult{}
 }
 
 // aggregateImageAnalyses combines individual image analyses into a notebook analysis.
