@@ -22,7 +22,7 @@ func isWorkbenchesManaged(ctx context.Context, target check.Target) (bool, error
 		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	return components.HasManagementState(dsc, componentWorkbenches, constants.ManagementStateManaged), nil
+	return components.HasManagementState(dsc, constants.ComponentWorkbenches, constants.ManagementStateManaged), nil
 }
 
 // NotebookContainer holds the parsed name and image of a container from a notebook spec.

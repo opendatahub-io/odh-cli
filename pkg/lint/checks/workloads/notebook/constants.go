@@ -3,9 +3,6 @@ package notebook
 const (
 	// kind is the check kind for all notebook checks.
 	kind = "notebook"
-
-	// componentWorkbenches is the DSC component name used to check management state.
-	componentWorkbenches = "workbenches"
 )
 
 // Condition types reported by notebook checks.
@@ -17,6 +14,7 @@ const (
 	ConditionTypeHardwareProfileIntegrity     = "HardwareProfileIntegrity"
 	ConditionTypeNotebooksCompatible          = "NotebooksCompatible"
 	ConditionTypeKueueLabels                  = "KueueLabels"
+	ConditionTypeKueueMissingLabels           = "KueueMissingLabels"
 	ConditionTypeRunningWorkloads             = "RunningWorkloads"
 )
 
@@ -79,12 +77,6 @@ const (
 const (
 	MsgAllConnectionsValid = "All Notebook connections reference existing Secrets"
 	MsgConnectionsMissing  = "Found %d Notebook(s) referencing connection Secrets that do not exist on the cluster"
-)
-
-// Messages for KueueLabels check.
-const (
-	MsgAllKueueLabelsValid = "All Notebooks in kueue-enabled namespaces have the required queue label"
-	MsgKueueLabelsMissing  = "Found %d Notebook(s) in kueue-enabled namespaces missing the kueue.x-k8s.io/queue-name label"
 )
 
 // Messages for ContainerName check.

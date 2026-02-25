@@ -196,6 +196,15 @@ func TestHasAnnotation(t *testing.T) {
 			value:    "",
 			expected: true,
 		},
+		{
+			name: "key absent checking for empty value returns false",
+			annotations: map[string]string{
+				"other.key": "value",
+			},
+			key:      "test.key",
+			value:    "",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

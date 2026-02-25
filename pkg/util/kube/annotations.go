@@ -33,7 +33,28 @@ func GetAnnotation(obj client.Object, key string) string {
 	return annotations[key]
 }
 
-// HasAnnotation checks if a Kubernetes object has a specific annotation matching the given value.
+// HasAnnotation checks if a Kubernetes object has a specific annotation with the given key
+// and that its value matches the expected value.
 func HasAnnotation(obj client.Object, key string, value string) bool {
-	return GetAnnotation(obj, key) == value
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		return false
+	}
+
+	v, ok := annotations[key]
+
+	return ok && v == value
+}
+
+// ContainsAnnotation checks if a Kubernetes object has an annotation with the given key,
+// regardless of its value (including empty string).
+func ContainsAnnotation(obj client.Object, key string) bool {
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		return false
+	}
+
+	_, ok := annotations[key]
+
+	return ok
 }

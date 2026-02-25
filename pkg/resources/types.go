@@ -227,6 +227,14 @@ var (
 		Resource: "rayclusters",
 	}
 
+	// RayJob is the Ray RayJob resource.
+	RayJob = ResourceType{
+		Group:    "ray.io",
+		Version:  "v1",
+		Kind:     "RayJob",
+		Resource: "rayjobs",
+	}
+
 	// PyTorchJob is the Kubeflow Training PyTorchJob resource.
 	PyTorchJob = ResourceType{
 		Group:    "kubeflow.org",
