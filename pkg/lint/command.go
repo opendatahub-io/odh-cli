@@ -93,7 +93,7 @@ func NewCommand(
 	registry.MustRegister(certmanager.NewCheck())
 	registry.MustRegister(openshift.NewCheck())
 
-	// Workloads (16)
+	// Workloads (20)
 	registry.MustRegister(ray.NewAppWrapperCleanupCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewInstructLabRemovalCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewStoredVersionRemovalCheck())
@@ -109,6 +109,7 @@ func NewCommand(
 	registry.MustRegister(notebook.NewHardwareProfileMigrationCheck())
 	registry.MustRegister(notebook.NewConnectionIntegrityCheck())
 	registry.MustRegister(notebook.NewHardwareProfileIntegrityCheck())
+	registry.MustRegister(notebook.NewKueueLabelsCheck())
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
 	registry.MustRegister(notebook.NewRunningWorkloadsCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())

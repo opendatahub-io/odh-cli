@@ -16,6 +16,7 @@ const (
 	ConditionTypeHardwareProfileCompatible    = "HardwareProfileCompatible"
 	ConditionTypeHardwareProfileIntegrity     = "HardwareProfileIntegrity"
 	ConditionTypeNotebooksCompatible          = "NotebooksCompatible"
+	ConditionTypeKueueLabels                  = "KueueLabels"
 	ConditionTypeRunningWorkloads             = "RunningWorkloads"
 )
 
@@ -78,6 +79,12 @@ const (
 const (
 	MsgAllConnectionsValid = "All Notebook connections reference existing Secrets"
 	MsgConnectionsMissing  = "Found %d Notebook(s) referencing connection Secrets that do not exist on the cluster"
+)
+
+// Messages for KueueLabels check.
+const (
+	MsgAllKueueLabelsValid = "All Notebooks in kueue-enabled namespaces have the required queue label"
+	MsgKueueLabelsMissing  = "Found %d Notebook(s) in kueue-enabled namespaces missing the kueue.x-k8s.io/queue-name label"
 )
 
 // Messages for ContainerName check.
