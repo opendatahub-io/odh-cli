@@ -132,66 +132,7 @@ func (e *Executor) executeCheck(ctx context.Context, target Target, check Check)
 
 	// If check returned an error, create a diagnostic result with error condition
 	if err != nil {
-		var message string
-		var reason string
-
-		// Handle specific error types
-		switch {
-		case apierrors.IsForbidden(err):
-			reason = ReasonAPIAccessDenied
-			message = "Insufficient permissions to access cluster resources"
-			// Log to stderr if verbose
-			if e.io != nil {
-				e.io.Errorf("Permission denied: %s - Check: %s", message, check.Name())
-			}
-		case apierrors.IsUnauthorized(err):
-			reason = ReasonAPIAccessDenied
-			message = "Authentication required to access cluster resources"
-			// Log to stderr if verbose
-			if e.io != nil {
-				e.io.Errorf("Unauthorized: %s - Check: %s", message, check.Name())
-			}
-		case apierrors.IsTimeout(err):
-			reason = ReasonCheckExecutionFailed
-			message = "Request timed out"
-		case apierrors.IsServiceUnavailable(err) || apierrors.IsServerTimeout(err):
-			reason = ReasonCheckExecutionFailed
-			message = "API server is unavailable or overloaded"
-		default:
-			reason = ReasonCheckExecutionFailed
-		}
-
-		errorResult := result.New(
-			string(check.Group()),
-			check.CheckKind(),
-			check.CheckType(),
-			check.Description(),
-		)
-
-		var condition result.Condition
-		if reason == ReasonCheckExecutionFailed && message == "" {
-			condition = NewCondition(
-				ConditionTypeValidated,
-				metav1.ConditionUnknown,
-				WithReason(reason),
-				WithMessage("Check execution failed: %v", err),
-			)
-		} else {
-			condition = NewCondition(
-				ConditionTypeValidated,
-				metav1.ConditionUnknown,
-				WithReason(reason),
-				WithMessage("%s", message),
-			)
-		}
-
-		errorResult.Status.Conditions = []result.Condition{condition}
-
-		return CheckExecution{
-			Check:  check,
-			Result: errorResult,
-			Error:  err,
-		}
+		return e.buildValidateError(check, err)
 	}
 
 	// Validate the result
@@ -222,5 +163,70 @@ func (e *Executor) executeCheck(ctx context.Context, target Target, check Check)
 		Check:  check,
 		Result: checkResult,
 		Error:  nil,
+	}
+}
+
+// buildValidateError creates a CheckExecution for a Validate error,
+// classifying the error into an appropriate reason and message.
+func (e *Executor) buildValidateError(check Check, err error) CheckExecution {
+	var message string
+	var reason string
+
+	// Handle specific error types
+	switch {
+	case apierrors.IsForbidden(err):
+		reason = ReasonAPIAccessDenied
+		message = "Insufficient permissions to access cluster resources"
+
+		if e.io != nil {
+			e.io.Errorf("Permission denied: %s - Check: %s", message, check.Name())
+		}
+	case apierrors.IsUnauthorized(err):
+		reason = ReasonAPIAccessDenied
+		message = "Authentication required to access cluster resources"
+
+		if e.io != nil {
+			e.io.Errorf("Unauthorized: %s - Check: %s", message, check.Name())
+		}
+	case apierrors.IsTimeout(err):
+		reason = ReasonCheckExecutionFailed
+		message = "Request timed out"
+	case apierrors.IsServiceUnavailable(err) || apierrors.IsServerTimeout(err):
+		reason = ReasonCheckExecutionFailed
+		message = "API server is unavailable or overloaded"
+	default:
+		reason = ReasonCheckExecutionFailed
+	}
+
+	errorResult := result.New(
+		string(check.Group()),
+		check.CheckKind(),
+		check.CheckType(),
+		check.Description(),
+	)
+
+	var condition result.Condition
+	if reason == ReasonCheckExecutionFailed && message == "" {
+		condition = NewCondition(
+			ConditionTypeValidated,
+			metav1.ConditionUnknown,
+			WithReason(reason),
+			WithMessage("Check execution failed: %v", err),
+		)
+	} else {
+		condition = NewCondition(
+			ConditionTypeValidated,
+			metav1.ConditionUnknown,
+			WithReason(reason),
+			WithMessage("%s", message),
+		)
+	}
+
+	errorResult.Status.Conditions = []result.Condition{condition}
+
+	return CheckExecution{
+		Check:  check,
+		Result: errorResult,
+		Error:  err,
 	}
 }
