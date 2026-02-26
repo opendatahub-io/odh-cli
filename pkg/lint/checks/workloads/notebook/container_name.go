@@ -3,6 +3,7 @@ package notebook
 import (
 	"context"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
@@ -33,9 +34,9 @@ func NewContainerNameCheck() *ContainerNameCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Applies in all modes when Workbenches is Managed.
-func (c *ContainerNameCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	return isWorkbenchesManaged(ctx, target)
+// Applies regardless of version; component state is checked via ForComponent in Validate.
+func (c *ContainerNameCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil
 }
 
 // Validate executes the check against the provided target.
@@ -44,6 +45,7 @@ func (c *ContainerNameCheck) Validate(
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
 	return validate.Workloads(c, target, resources.Notebook).
+		ForComponent(constants.ComponentWorkbenches).
 		Filter(hasDashboardAnnotationAndNameMismatch).
 		Complete(ctx, c.newContainerNameCondition)
 }

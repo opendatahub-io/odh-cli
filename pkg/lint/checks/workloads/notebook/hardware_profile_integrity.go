@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
@@ -39,9 +40,9 @@ func NewHardwareProfileIntegrityCheck() *HardwareProfileIntegrityCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Applies whenever Workbenches is Managed, regardless of version.
-func (c *HardwareProfileIntegrityCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	return isWorkbenchesManaged(ctx, target)
+// Applies regardless of version; component state is checked via ForComponent in Validate.
+func (c *HardwareProfileIntegrityCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil
 }
 
 // Validate lists Notebooks with hardware profile annotations and checks that each
@@ -51,6 +52,7 @@ func (c *HardwareProfileIntegrityCheck) Validate(
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
 	return validate.WorkloadsMetadata(c, target, resources.Notebook).
+		ForComponent(constants.ComponentWorkbenches).
 		Run(ctx, c.checkHardwareProfiles)
 }
 

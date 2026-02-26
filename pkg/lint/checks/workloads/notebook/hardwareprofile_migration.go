@@ -35,9 +35,9 @@ func NewHardwareProfileMigrationCheck() *HardwareProfileMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Applies whenever Workbenches is Managed.
-func (c *HardwareProfileMigrationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	return isWorkbenchesManaged(ctx, target)
+// Applies regardless of version; component state is checked via ForComponent in Validate.
+func (c *HardwareProfileMigrationCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
+	return true, nil
 }
 
 // Validate executes the check against the provided target.
@@ -46,6 +46,7 @@ func (c *HardwareProfileMigrationCheck) Validate(
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
 	return validate.WorkloadsMetadata(c, target, resources.Notebook).
+		ForComponent(constants.ComponentWorkbenches).
 		Filter(hasLegacyHardwareProfileAnnotation).
 		Complete(ctx, c.newCondition)
 }

@@ -585,7 +585,7 @@ func TestWorkloadBuilder_Complete_ErrorPropagated(t *testing.T) {
 	g.Expect(err).To(MatchError(expectedErr))
 }
 
-func TestWorkloadBuilder_ForComponent_RemovedReturnsPassingResult(t *testing.T) {
+func TestWorkloadBuilder_ForComponent_RemovedSkips(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -621,13 +621,8 @@ func TestWorkloadBuilder_ForComponent_RemovedReturnsPassingResult(t *testing.T) 
 		})
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(dr).ToNot(BeNil())
+	g.Expect(dr).To(BeNil())
 	g.Expect(validationCalled).To(BeFalse())
-	g.Expect(dr.Status.Conditions).To(HaveLen(1))
-	g.Expect(dr.Status.Conditions[0].Type).To(Equal(check.ConditionTypeConfigured))
-	g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
-	g.Expect(dr.Status.Conditions[0].Reason).To(Equal(check.ReasonRequirementsMet))
-	g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationCheckTargetVersion, "3.0.0"))
 }
 
 func TestWorkloadBuilder_ForComponent_ManagedProceedsNormally(t *testing.T) {
@@ -719,12 +714,8 @@ func TestWorkloadBuilder_ForComponent_DSCNotFound(t *testing.T) {
 		})
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(dr).ToNot(BeNil())
+	g.Expect(dr).To(BeNil())
 	g.Expect(validationCalled).To(BeFalse())
-	g.Expect(dr.Status.Conditions).To(HaveLen(1))
-	g.Expect(dr.Status.Conditions[0].Type).To(Equal(check.ConditionTypeAvailable))
-	g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionFalse))
-	g.Expect(dr.Status.Conditions[0].Reason).To(Equal(check.ReasonResourceNotFound))
 }
 
 func TestWorkloadBuilder_ForComponent_MultipleComponentsORSemantics(t *testing.T) {

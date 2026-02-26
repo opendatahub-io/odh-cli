@@ -359,6 +359,7 @@ func TestImpactedWorkloadsCheck_NoNotebooks(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -473,7 +474,7 @@ func TestImpactedWorkloadsCheck_SingleNotebook(t *testing.T) {
 			g := NewWithT(t)
 			ctx := t.Context()
 
-			objects := append(tc.objects(), testutil.NewDSCI(applicationsNS))
+			objects := append(tc.objects(), testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI(applicationsNS))
 
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
@@ -577,6 +578,7 @@ func TestImpactedWorkloadsCheck_MultiContainer(t *testing.T) {
 
 			objects := tc.objects()
 			objects = append(objects,
+				testutil.NewDSC(map[string]string{"workbenches": "Managed"}),
 				newNotebookWithContainers("multi-nb", "test-ns", tc.containers),
 				testutil.NewDSCI(applicationsNS),
 			)
@@ -622,6 +624,7 @@ func TestImpactedWorkloadsCheck_MixedNotebooks(t *testing.T) {
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds: listKinds,
 		Objects: []*unstructured.Unstructured{
+			testutil.NewDSC(map[string]string{"workbenches": "Managed"}),
 			testutil.NewDSCI(applicationsNS),
 			jupyterIS, rstudioIS, rstudioISTBad, jupyterNb, rstudioNb,
 		},
@@ -663,35 +666,24 @@ func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
 		name           string
 		currentVersion string
 		targetVersion  string
-		workbenches    string
 		expected       bool
 	}{
 		{
 			name:           "LintMode_SameVersion",
 			currentVersion: "2.17.0",
 			targetVersion:  "2.17.0",
-			workbenches:    "Managed",
 			expected:       false,
 		},
 		{
-			name:           "Upgrade2xTo3x_Managed",
+			name:           "Upgrade2xTo3x",
 			currentVersion: "2.17.0",
 			targetVersion:  "3.0.0",
-			workbenches:    "Managed",
 			expected:       true,
-		},
-		{
-			name:           "Upgrade2xTo3x_Removed",
-			currentVersion: "2.17.0",
-			targetVersion:  "3.0.0",
-			workbenches:    "Removed",
-			expected:       false,
 		},
 		{
 			name:           "Upgrade3xTo3x",
 			currentVersion: "3.0.0",
 			targetVersion:  "3.1.0",
-			workbenches:    "Managed",
 			expected:       false,
 		},
 	}
@@ -702,7 +694,6 @@ func TestImpactedWorkloadsCheck_CanApply(t *testing.T) {
 
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
-				Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": tc.workbenches})},
 				CurrentVersion: tc.currentVersion,
 				TargetVersion:  tc.targetVersion,
 			})
@@ -721,6 +712,7 @@ func TestImpactedWorkloadsCheck_AnnotationTargetVersion(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -954,6 +946,7 @@ func TestImpactedWorkloadsCheck_LookupStrategies(t *testing.T) {
 
 			objects := tc.objects()
 			objects = append(objects,
+				testutil.NewDSC(map[string]string{"workbenches": "Managed"}),
 				newNotebookWithImage("test-nb", "test-ns", tc.image),
 				testutil.NewDSCI(applicationsNS),
 			)
@@ -1038,6 +1031,7 @@ func TestImpactedWorkloadsCheck_InfrastructureContainerFiltering(t *testing.T) {
 			ctx := t.Context()
 
 			objects := []*unstructured.Unstructured{
+				testutil.NewDSC(map[string]string{"workbenches": "Managed"}),
 				testutil.NewDSCI(applicationsNS),
 				newImageStream(isJupyterDatascience, "jupyter"),
 				newNotebookWithContainers("test-nb", "test-ns", tc.containers),

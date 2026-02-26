@@ -6,6 +6,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
@@ -34,13 +35,9 @@ func NewAcceleratorMigrationCheck() *AcceleratorMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading from 2.x to 3.x and Workbenches is Managed.
-func (c *AcceleratorMigrationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	if !version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion) {
-		return false, nil
-	}
-
-	return isWorkbenchesManaged(ctx, target)
+// Only applies when upgrading from 2.x to 3.x; component state is checked via ForComponent in Validate.
+func (c *AcceleratorMigrationCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
 // Validate executes the check against the provided target.
@@ -49,6 +46,7 @@ func (c *AcceleratorMigrationCheck) Validate(
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
 	return validate.WorkloadsMetadata(c, target, resources.Notebook).
+		ForComponent(constants.ComponentWorkbenches).
 		Run(ctx, c.checkAcceleratorRefs)
 }
 

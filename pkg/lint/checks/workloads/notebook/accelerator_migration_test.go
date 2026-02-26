@@ -32,7 +32,7 @@ func TestAcceleratorMigrationCheck_NoNotebooks(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications")},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications")},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -61,7 +61,7 @@ func TestAcceleratorMigrationCheck_NotebookWithoutAcceleratorProfile(t *testing.
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications"), nb},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -106,7 +106,7 @@ func TestAcceleratorMigrationCheck_NotebookWithExistingAcceleratorProfile(t *tes
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), nb, profile},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications"), nb, profile},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -145,7 +145,7 @@ func TestAcceleratorMigrationCheck_NotebookWithMissingAcceleratorProfile(t *test
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications"), nb},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -204,7 +204,7 @@ func TestAcceleratorMigrationCheck_MixedNotebooks(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), nb1, nb2, nb3, profile},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications"), nb1, nb2, nb3, profile},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -247,12 +247,11 @@ func TestAcceleratorMigrationCheck_CanApply_NilVersions(t *testing.T) {
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestAcceleratorMigrationCheck_CanApply_LintMode2x(t *testing.T) {
+func TestAcceleratorMigrationCheck_CanApply_SameVersion(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "2.17.0",
 	})
@@ -263,12 +262,11 @@ func TestAcceleratorMigrationCheck_CanApply_LintMode2x(t *testing.T) {
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestAcceleratorMigrationCheck_CanApply_UpgradeTo3x_Managed(t *testing.T) {
+func TestAcceleratorMigrationCheck_CanApply_UpgradeTo3x(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -279,45 +277,13 @@ func TestAcceleratorMigrationCheck_CanApply_UpgradeTo3x_Managed(t *testing.T) {
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestAcceleratorMigrationCheck_CanApply_UpgradeTo3x_Removed(t *testing.T) {
-	g := NewWithT(t)
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Removed"})},
-		CurrentVersion: "2.17.0",
-		TargetVersion:  "3.0.0",
-	})
-
-	chk := notebook.NewAcceleratorMigrationCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
-}
-
-func TestAcceleratorMigrationCheck_CanApply_LintMode3x(t *testing.T) {
-	g := NewWithT(t)
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
-		CurrentVersion: "3.0.0",
-		TargetVersion:  "3.0.0",
-	})
-
-	chk := notebook.NewAcceleratorMigrationCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
-}
-
 func TestAcceleratorMigrationCheck_AnnotationTargetVersion(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications")},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications")},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -355,7 +321,7 @@ func TestAcceleratorMigrationCheck_DefaultNamespace(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      acceleratorListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSCI("redhat-ods-applications"), nb, profile},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), testutil.NewDSCI("redhat-ods-applications"), nb, profile},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})

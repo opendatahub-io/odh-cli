@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
@@ -191,13 +192,9 @@ func imageStatusLabel(status string) string {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Only applies when upgrading FROM 2.x TO 3.x and Workbenches is Managed.
-func (c *ImpactedWorkloadsCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	if !version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion) {
-		return false, nil
-	}
-
-	return isWorkbenchesManaged(ctx, target)
+// Only applies when upgrading FROM 2.x TO 3.x; component state is checked via ForComponent in Validate.
+func (c *ImpactedWorkloadsCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
 // Validate executes the check against the provided target.
@@ -206,6 +203,7 @@ func (c *ImpactedWorkloadsCheck) Validate(
 	target check.Target,
 ) (*result.DiagnosticResult, error) {
 	return validate.Workloads(c, target, resources.Notebook).
+		ForComponent(constants.ComponentWorkbenches).
 		Run(ctx, func(ctx context.Context, req *validate.WorkloadRequest[*unstructured.Unstructured]) error {
 			return c.analyzeNotebooks(ctx, req)
 		})

@@ -83,7 +83,9 @@ func (e *Executor) executeChecks(ctx context.Context, target Target, checks []Ch
 
 		// Execute check sequentially
 		exec := e.executeCheck(ctx, target, check)
-		results = append(results, exec)
+		if exec.Result != nil {
+			results = append(results, exec)
+		}
 	}
 
 	return results
@@ -122,6 +124,11 @@ func (e *Executor) executeCheck(ctx context.Context, target Target, check Check)
 	}
 
 	checkResult, err := check.Validate(ctx, target)
+
+	// Nil result signals the check should be silently skipped.
+	if err == nil && checkResult == nil {
+		return CheckExecution{Check: check}
+	}
 
 	// If check returned an error, create a diagnostic result with error condition
 	if err != nil {
