@@ -23,6 +23,7 @@ import (
 // via annotations point to HardwareProfiles that actually exist on the cluster.
 type HardwareProfileIntegrityCheck struct {
 	check.BaseCheck
+	NotebookVerboseFormatter
 }
 
 func NewHardwareProfileIntegrityCheck() *HardwareProfileIntegrityCheck {

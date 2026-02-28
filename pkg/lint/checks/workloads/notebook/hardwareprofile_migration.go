@@ -17,6 +17,7 @@ import (
 // opendatahub.io/legacy-hardware-profile-name annotation that may need attention.
 type HardwareProfileMigrationCheck struct {
 	check.BaseCheck
+	NotebookVerboseFormatter
 }
 
 // NewHardwareProfileMigrationCheck creates a new HardwareProfileMigrationCheck.

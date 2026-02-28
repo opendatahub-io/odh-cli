@@ -12,6 +12,13 @@ import (
 )
 
 const (
+	// AnnotationResourceCRDName is the annotation key for the CRD fully-qualified name
+	// (e.g., "notebooks.kubeflow.org"). Automatically set by SetImpactedObjects and
+	// AddImpactedObjects from the ResourceType.
+	AnnotationResourceCRDName = "resource.opendatahub.io/crd-name"
+)
+
+const (
 	// Validation error messages.
 	errMsgGroupEmpty              = "group must not be empty"
 	errMsgKindEmpty               = "kind must not be empty"
@@ -324,10 +331,16 @@ func (r *DiagnosticResult) SetCondition(condition Condition) {
 }
 
 // SetImpactedObjects replaces all impacted objects from a list of NamespacedNames.
+// Also stores the CRD fully-qualified name as an annotation for downstream formatters.
 func (r *DiagnosticResult) SetImpactedObjects(
 	resourceType resources.ResourceType,
 	names []types.NamespacedName,
 ) {
+	if r.Annotations == nil {
+		r.Annotations = make(map[string]string)
+	}
+
+	r.Annotations[AnnotationResourceCRDName] = resourceType.CRDFQN()
 	r.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(names))
 
 	for _, n := range names {
@@ -342,10 +355,21 @@ func (r *DiagnosticResult) SetImpactedObjects(
 }
 
 // AddImpactedObjects appends impacted objects from a list of NamespacedNames.
+// Stores the CRD fully-qualified name as an annotation only if not already set,
+// so a prior SetImpactedObjects call is preserved. Each appended object carries
+// its own TypeMeta, which downstream formatters can use for per-object type info.
 func (r *DiagnosticResult) AddImpactedObjects(
 	resourceType resources.ResourceType,
 	names []types.NamespacedName,
 ) {
+	if r.Annotations == nil {
+		r.Annotations = make(map[string]string)
+	}
+
+	if _, ok := r.Annotations[AnnotationResourceCRDName]; !ok {
+		r.Annotations[AnnotationResourceCRDName] = resourceType.CRDFQN()
+	}
+
 	for _, n := range names {
 		r.ImpactedObjects = append(r.ImpactedObjects, metav1.PartialObjectMetadata{
 			TypeMeta: resourceType.TypeMeta(),

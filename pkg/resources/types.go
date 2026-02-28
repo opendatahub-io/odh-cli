@@ -14,6 +14,16 @@ type ResourceType struct {
 	Resource string
 }
 
+// CRDFQN returns the CRD fully-qualified name for this resource type (e.g., "notebooks.kubeflow.org").
+// For core resources with no API group, returns just the resource plural (e.g., "pods").
+func (r ResourceType) CRDFQN() string {
+	if r.Group == "" {
+		return r.Resource
+	}
+
+	return r.Resource + "." + r.Group
+}
+
 // GVK returns the GroupVersionKind for this resource.
 func (r ResourceType) GVK() schema.GroupVersionKind {
 	return schema.GroupVersionKind{

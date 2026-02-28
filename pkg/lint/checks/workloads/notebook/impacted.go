@@ -5,6 +5,7 @@ import (
 	"fmt"
 	iolib "io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -120,15 +121,21 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 }
 
 // FormatVerboseOutput implements check.VerboseOutputFormatter.
-// Groups notebook impacted objects by image for better readability.
+// Groups notebook impacted objects by image, then by namespace within each image group.
 //
 // Output format:
 //
-//	image: registry/path:tag (N notebooks)
-//	  - namespace/name
-//	  - namespace/name
+//	<status-label>: registry/path:tag (N notebooks)
+//	  - namespace: <ns>
+//	       - <crd-fqn>/<name>
+//	       - <crd-fqn>/<name>
+//	  - namespace: <ns>
+//	       - <crd-fqn>/<name>
 func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out iolib.Writer, dr *result.DiagnosticResult) {
+	crdName := crdFQN(dr)
+
 	// Group notebooks by image reference, preserving insertion order.
+	// Within each image group, track notebooks per namespace.
 	var groups []imageGroup
 
 	imageIndex := make(map[string]int) // imageRef -> index in groups
@@ -141,38 +148,93 @@ func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out iolib.Writer, dr *resul
 
 		imageStatus := obj.Annotations[AnnotationCheckImageStatus]
 
+		ns := obj.Namespace
 		name := obj.Name
-		if obj.Namespace != "" {
-			name = obj.Namespace + "/" + name
-		}
 
 		if idx, ok := imageIndex[imageRef]; ok {
-			groups[idx].notebooks = append(groups[idx].notebooks, name)
+			groups[idx].namespaces[ns] = append(groups[idx].namespaces[ns], name)
+			groups[idx].count++
 		} else {
 			imageIndex[imageRef] = len(groups)
 			groups = append(groups, imageGroup{
 				imageRef:    imageRef,
 				imageStatus: imageStatus,
-				notebooks:   []string{name},
+				namespaces:  map[string][]string{ns: {name}},
+				count:       1,
 			})
 		}
 	}
 
+	// Sort image groups: problematic (incompatible) before custom, then by imageRef for determinism.
+	sort.SliceStable(groups, func(i, j int) bool {
+		oi, oj := imageStatusOrder(groups[i].imageStatus), imageStatusOrder(groups[j].imageStatus)
+		if oi != oj {
+			return oi < oj
+		}
+
+		return groups[i].imageRef < groups[j].imageRef
+	})
+
 	for _, g := range groups {
 		imageLabel := imageStatusLabel(g.imageStatus)
-		_, _ = fmt.Fprintf(out, "    %s: %s (%d notebooks)\n", imageLabel, g.imageRef, len(g.notebooks))
+		_, _ = fmt.Fprintf(out, "    %s: %s (%d notebooks)\n", imageLabel, g.imageRef, g.count)
 
-		for _, nb := range g.notebooks {
-			_, _ = fmt.Fprintf(out, "      - %s\n", nb)
+		// Sort namespaces for deterministic output.
+		namespaces := make([]string, 0, len(g.namespaces))
+		for ns := range g.namespaces {
+			namespaces = append(namespaces, ns)
 		}
+		sort.Strings(namespaces)
+
+		for _, ns := range namespaces {
+			names := g.namespaces[ns]
+			sort.Strings(names)
+
+			if ns == "" {
+				// Cluster-scoped objects listed without namespace header.
+				for _, name := range names {
+					_, _ = fmt.Fprintf(out, "      - %s/%s\n", crdName, name)
+				}
+			} else {
+				_, _ = fmt.Fprintf(out, "      - namespace: %s\n", ns)
+				for _, name := range names {
+					_, _ = fmt.Fprintf(out, "           - %s/%s\n", crdName, name)
+				}
+			}
+		}
+
+		_, _ = fmt.Fprintln(out)
 	}
 }
 
-// imageGroup holds notebooks grouped by their image reference.
+// imageGroup holds notebooks grouped by their image reference, with sub-grouping by namespace.
 type imageGroup struct {
 	imageRef    string
-	imageStatus string   // CUSTOM, PROBLEMATIC, etc.
-	notebooks   []string // namespace/name format
+	imageStatus string              // CUSTOM, PROBLEMATIC, etc.
+	namespaces  map[string][]string // namespace -> []name
+	count       int                 // total notebook count across all namespaces
+}
+
+// Image status sort priorities (lower = higher severity).
+const (
+	imageStatusOrderProblematic = iota
+	imageStatusOrderCustom
+	imageStatusOrderOther
+)
+
+// imageStatusOrder returns a sort key for image statuses.
+// Lower values sort first: problematic before custom.
+func imageStatusOrder(status string) int {
+	switch ImageStatus(status) {
+	case ImageStatusProblematic:
+		return imageStatusOrderProblematic
+	case ImageStatusCustom:
+		return imageStatusOrderCustom
+	case ImageStatusGood, ImageStatusVerifyFailed:
+		return imageStatusOrderOther
+	}
+
+	return imageStatusOrderOther
 }
 
 // imageStatusLabel returns a user-friendly label for the image status.
@@ -1194,6 +1256,11 @@ func (c *ImpactedWorkloadsCheck) setImpactedObjects(
 		})
 	}
 
+	if dr.Annotations == nil {
+		dr.Annotations = make(map[string]string)
+	}
+
+	dr.Annotations[result.AnnotationResourceCRDName] = resources.Notebook.CRDFQN()
 	dr.ImpactedObjects = impacted
 }
 

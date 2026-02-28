@@ -8,15 +8,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/fatih/color"
-
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	printerjson "github.com/opendatahub-io/odh-cli/pkg/printer/json"
-	"github.com/opendatahub-io/odh-cli/pkg/printer/table"
 	printeryaml "github.com/opendatahub-io/odh-cli/pkg/printer/yaml"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
@@ -33,40 +30,6 @@ const (
 	// DefaultTimeout is the default timeout for lint commands.
 	DefaultTimeout = 5 * time.Minute
 )
-
-//nolint:gochecknoglobals
-var (
-	// Table output symbols.
-	statusPass = color.New(color.FgGreen).Sprint("✓")
-	statusWarn = color.New(color.FgYellow).Sprint("⚠")
-	statusFail = color.New(color.FgRed).Sprint("✗")
-
-	// Severity level formatting.
-	severityCrit = color.New(color.FgRed).Sprint("critical")
-	severityWarn = color.New(color.FgYellow).Add(color.Bold).Sprint("warning") // Bold yellow (orange-ish)
-	severityInfo = color.New(color.FgCyan).Sprint("info")
-
-	// Table headers.
-	tableHeaders = []string{"STATUS", "KIND", "GROUP", "CHECK", "IMPACT", "MESSAGE"}
-)
-
-// printVerdict prints the Result section after the summary.
-func printVerdict(out io.Writer, hasBlocking bool, hasAdvisory bool) {
-	_, _ = fmt.Fprintln(out)
-	_, _ = fmt.Fprintln(out, "Result:")
-
-	switch {
-	case hasBlocking:
-		verdict := color.New(color.FgRed, color.Bold).Sprint("FAIL")
-		_, _ = fmt.Fprintf(out, "  %s - blocking findings detected\n", verdict)
-	case hasAdvisory:
-		verdict := color.New(color.FgYellow, color.Bold).Sprint("WARNING")
-		_, _ = fmt.Fprintf(out, "  %s - advisory findings detected\n", verdict)
-	default:
-		verdict := color.New(color.FgGreen, color.Bold).Sprint("PASS")
-		_, _ = fmt.Fprintf(out, "  %s - all checks passed\n", verdict)
-	}
-}
 
 // Validate checks if the output format is valid.
 func (o OutputFormat) Validate() error {
@@ -290,6 +253,20 @@ func FlattenResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) 
 	return flattened
 }
 
+// checkMaxImpact returns the highest-severity impact across all conditions
+// in a check execution. This provides a single effective impact for sorting
+// checks consistently with the table's condition-level sort order.
+func checkMaxImpact(exec check.CheckExecution) result.Impact {
+	maxImpact := result.ImpactNone
+	for _, cond := range exec.Result.Status.Conditions {
+		if impactSortPriority(cond.Impact) < impactSortPriority(maxImpact) {
+			maxImpact = cond.Impact
+		}
+	}
+
+	return maxImpact
+}
+
 // getImpactString determines the display string from a condition's impact.
 func getImpactString(
 	condition *result.Condition,
@@ -308,12 +285,6 @@ func getImpactString(
 	}
 	// Unreachable - all Impact values handled above
 	return noneStr
-}
-
-// sortableRow pairs a table row with the raw impact for sort comparisons.
-type sortableRow struct {
-	row    CheckResultTableRow
-	impact result.Impact
 }
 
 // Impact sort priorities (lower = higher severity).
@@ -368,174 +339,6 @@ type TableOutputOptions struct {
 	// NamespaceRequesters maps namespace names to their openshift.io/requester annotation value.
 	// Used when ShowImpactedObjects is true to display the requester for each namespace group.
 	NamespaceRequesters map[string]string
-}
-
-// collectSortedRows builds table rows from check executions and sorts them
-// by Group (canonical) -> Kind -> Impact (critical, warning, info) -> Check.
-func collectSortedRows(results []check.CheckExecution) []sortableRow {
-	totalConditions := 0
-	for _, exec := range results {
-		totalConditions += len(exec.Result.Status.Conditions)
-	}
-
-	rows := make([]sortableRow, 0, totalConditions)
-
-	for _, exec := range results {
-		for _, condition := range exec.Result.Status.Conditions {
-			rows = append(rows, sortableRow{
-				row: CheckResultTableRow{
-					Status:      statusSymbol(condition.Impact),
-					Kind:        exec.Result.Kind,
-					Group:       exec.Result.Group,
-					Check:       exec.Result.Name,
-					Impact:      getImpactString(&condition, severityCrit, severityWarn, severityInfo),
-					Message:     condition.Message,
-					Description: exec.Result.Spec.Description,
-				},
-				impact: condition.Impact,
-			})
-		}
-	}
-
-	sort.Slice(rows, func(i, j int) bool {
-		gi, gj := groupSortPriority(rows[i].row.Group), groupSortPriority(rows[j].row.Group)
-		if gi != gj {
-			return gi < gj
-		}
-
-		if rows[i].row.Kind != rows[j].row.Kind {
-			return rows[i].row.Kind < rows[j].row.Kind
-		}
-
-		pi, pj := impactSortPriority(rows[i].impact), impactSortPriority(rows[j].impact)
-		if pi != pj {
-			return pi < pj
-		}
-
-		return rows[i].row.Check < rows[j].row.Check
-	})
-
-	return rows
-}
-
-// statusSymbol returns the colored status symbol for the given impact level.
-func statusSymbol(impact result.Impact) string {
-	switch impact {
-	case result.ImpactBlocking:
-		return statusFail
-	case result.ImpactAdvisory:
-		return statusWarn
-	case result.ImpactNone:
-		return statusPass
-	}
-
-	return statusPass
-}
-
-// OutputTable is a shared function for outputting check results in table format.
-// When opts.ShowImpactedObjects is true, impacted objects are listed after the summary.
-func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutputOptions) error {
-	rows := collectSortedRows(results)
-
-	renderer := table.NewRenderer[CheckResultTableRow](
-		table.WithWriter[CheckResultTableRow](out),
-		table.WithHeaders[CheckResultTableRow](tableHeaders...),
-		table.WithTableOptions[CheckResultTableRow](table.DefaultTableOptions...),
-	)
-
-	totalChecks := 0
-	totalPassed := 0
-	totalWarnings := 0
-	totalFailed := 0
-
-	for _, sr := range rows {
-		totalChecks++
-
-		switch sr.impact {
-		case result.ImpactBlocking:
-			totalFailed++
-		case result.ImpactAdvisory:
-			totalWarnings++
-		case result.ImpactNone:
-			totalPassed++
-		}
-
-		if err := renderer.Append(sr.row); err != nil {
-			return fmt.Errorf("appending table row: %w", err)
-		}
-	}
-
-	if err := renderer.Render(); err != nil {
-		return fmt.Errorf("rendering table: %w", err)
-	}
-
-	if opts.VersionInfo != nil {
-		_, _ = fmt.Fprintln(out)
-		outputVersionInfo(out, opts.VersionInfo)
-	}
-
-	_, _ = fmt.Fprintln(out)
-	_, _ = fmt.Fprintln(out, "Summary:")
-	_, _ = fmt.Fprintf(out, "  Total: %d | Passed: %d | Warnings: %d | Failed: %d\n", totalChecks, totalPassed, totalWarnings, totalFailed)
-
-	if opts.ShowImpactedObjects {
-		outputImpactedObjects(out, results, opts.NamespaceRequesters)
-	}
-
-	return nil
-}
-
-// outputVersionInfo prints the Environment section with version details.
-func outputVersionInfo(out io.Writer, info *VersionInfo) {
-	_, _ = fmt.Fprintln(out, "Environment:")
-
-	if info.RHOAITargetVersion != "" {
-		_, _ = fmt.Fprintf(out, "  OpenShift AI version: %s -> %s\n", info.RHOAICurrentVersion, info.RHOAITargetVersion)
-	} else {
-		_, _ = fmt.Fprintf(out, "  OpenShift AI version: %s\n", info.RHOAICurrentVersion)
-	}
-
-	if info.OpenShiftVersion != "" {
-		_, _ = fmt.Fprintf(out, "  OpenShift version:    %s\n", info.OpenShiftVersion)
-	}
-}
-
-// outputImpactedObjects prints impacted objects for each check execution.
-// Each check's objects are rendered by the check's VerboseOutputFormatter if implemented,
-// or by the default namespace-grouped renderer otherwise.
-func outputImpactedObjects(
-	out io.Writer,
-	results []check.CheckExecution,
-	namespaceRequesters map[string]string,
-) {
-	defaultFmt := &check.DefaultVerboseFormatter{
-		NamespaceRequesters: namespaceRequesters,
-	}
-
-	printed := false
-
-	for _, exec := range results {
-		if len(exec.Result.ImpactedObjects) == 0 {
-			continue
-		}
-
-		if !printed {
-			_, _ = fmt.Fprintln(out)
-			_, _ = fmt.Fprintln(out, "Impacted Objects:")
-
-			printed = true
-		} else {
-			_, _ = fmt.Fprintln(out)
-		}
-
-		_, _ = fmt.Fprintf(out, "  %s / %s / %s:\n", exec.Result.Group, exec.Result.Kind, exec.Result.Name)
-
-		if f, ok := exec.Check.(check.VerboseOutputFormatter); ok {
-			f.FormatVerboseOutput(out, exec.Result)
-		} else {
-			defaultFmt.FormatVerboseOutput(out, exec.Result)
-		}
-	}
 }
 
 // OutputJSON outputs diagnostic results in List format.
