@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
@@ -29,7 +30,7 @@ func TestHardwareProfileMigration_NoNotebooks(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged)},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -57,7 +58,7 @@ func TestHardwareProfileMigration_NotebookWithoutAnnotation(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nb},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nb},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -88,7 +89,7 @@ func TestHardwareProfileMigration_NotebookWithEmptyAnnotation(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nb},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nb},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -119,7 +120,7 @@ func TestHardwareProfileMigration_NotebookWithAnnotation(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nb},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nb},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -166,7 +167,7 @@ func TestHardwareProfileMigration_MixedNotebooks(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      hardwareProfileListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nb1, nb2, nb3},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nb1, nb2, nb3},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -199,6 +200,39 @@ func TestHardwareProfileMigration_CanApply(t *testing.T) {
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
+}
+
+func TestHardwareProfileMigration_Validate_SkipWhenDSCMissing(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      hardwareProfileListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := notebook.NewHardwareProfileMigrationCheck()
+	result, err := chk.Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(BeNil())
+}
+
+func TestHardwareProfileMigration_Validate_SkipWhenWorkbenchesRemoved(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      hardwareProfileListKinds,
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateRemoved)},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := notebook.NewHardwareProfileMigrationCheck()
+	result, err := chk.Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(BeNil())
 }
 
 func TestHardwareProfileMigration_Metadata(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
@@ -78,13 +79,46 @@ func TestRunningWorkloadsCheck_CanApply_UpgradeTo3x(t *testing.T) {
 	g.Expect(canApply).To(BeTrue())
 }
 
+func TestRunningWorkloadsCheck_Validate_SkipWhenDSCMissing(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      runningWorkloadsListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := notebook.NewRunningWorkloadsCheck()
+	result, err := chk.Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(BeNil())
+}
+
+func TestRunningWorkloadsCheck_Validate_SkipWhenWorkbenchesRemoved(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      runningWorkloadsListKinds,
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateRemoved)},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := notebook.NewRunningWorkloadsCheck()
+	result, err := chk.Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(BeNil())
+}
+
 func TestRunningWorkloadsCheck_NoNotebooks(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      runningWorkloadsListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged)},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -123,7 +157,7 @@ func TestRunningWorkloadsCheck_AllStopped(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      runningWorkloadsListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nb1, nb2},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nb1, nb2},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -152,7 +186,7 @@ func TestRunningWorkloadsCheck_OneRunning(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      runningWorkloadsListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nbRunning},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nbRunning},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -199,7 +233,7 @@ func TestRunningWorkloadsCheck_MixedRunningAndStopped(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      runningWorkloadsListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nbStopped, nbRunning1, nbRunning2},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nbStopped, nbRunning1, nbRunning2},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -230,7 +264,7 @@ func TestRunningWorkloadsCheck_AllRunning(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      runningWorkloadsListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), nb1, nb2, nb3},
+		Objects:        []*unstructured.Unstructured{workbenchesDSC(constants.ManagementStateManaged), nb1, nb2, nb3},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})

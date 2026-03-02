@@ -218,7 +218,7 @@ func (e *Executor) buildValidateError(check Check, err error) CheckExecution {
 			ConditionTypeValidated,
 			metav1.ConditionUnknown,
 			WithReason(reason),
-			WithMessage("%s", message),
+			WithMessage("%s: %v", message, err),
 		)
 	}
 
