@@ -28,9 +28,9 @@ const (
 	// Minimum tag version that contains the nginx fix for non-Jupyter notebooks.
 	nginxFixMinTag = "2025.2"
 
-	// Minimum RHOAI version for build-based images (RStudio) that contains nginx fix.
-	// Used to parse OPENSHIFT_BUILD_REFERENCE values like "rhoai-2.25".
-	nginxFixMinRHOAIVersion = "2.25"
+	// Minimum RHOAI version for build-based images (RStudio) that are compatible with 3.x.
+	// Used to parse OPENSHIFT_BUILD_REFERENCE values like "rhoai-3.0" or "rhoai-3.0.0".
+	nginxFixMinRHOAIVersion = "3.0"
 
 	// Label used to identify OOTB notebook images.
 	ootbLabel = "app.kubernetes.io/part-of=workbenches"
@@ -44,10 +44,11 @@ const (
 type ImageStatus string
 
 const (
-	ImageStatusGood         ImageStatus = "GOOD"
-	ImageStatusProblematic  ImageStatus = "PROBLEMATIC"
-	ImageStatusCustom       ImageStatus = "CUSTOM"
-	ImageStatusVerifyFailed ImageStatus = "VERIFY_FAILED"
+	ImageStatusGood                      ImageStatus = "GOOD"
+	ImageStatusPreUpgradeActionRequired  ImageStatus = "PRE_UPGRADE_ACTION_REQUIRED"
+	ImageStatusPostUpgradeActionRequired ImageStatus = "POST_UPGRADE_ACTION_REQUIRED"
+	ImageStatusCustom                    ImageStatus = "CUSTOM"
+	ImageStatusVerifyFailed              ImageStatus = "VERIFY_FAILED"
 )
 
 // NotebookType represents the type of notebook image.
@@ -210,24 +211,27 @@ func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out iolib.Writer, dr *resul
 // imageGroup holds notebooks grouped by their image reference, with sub-grouping by namespace.
 type imageGroup struct {
 	imageRef    string
-	imageStatus string              // CUSTOM, PROBLEMATIC, etc.
+	imageStatus string              // CUSTOM, PRE_UPGRADE_ACTION_REQUIRED, etc.
 	namespaces  map[string][]string // namespace -> []name
 	count       int                 // total notebook count across all namespaces
 }
 
 // Image status sort priorities (lower = higher severity).
 const (
-	imageStatusOrderProblematic = iota
+	imageStatusOrderPreUpgrade = iota
+	imageStatusOrderPostUpgrade
 	imageStatusOrderCustom
 	imageStatusOrderOther
 )
 
 // imageStatusOrder returns a sort key for image statuses.
-// Lower values sort first: problematic before custom.
+// Lower values sort first: pre-upgrade before post-upgrade before custom.
 func imageStatusOrder(status string) int {
 	switch ImageStatus(status) {
-	case ImageStatusProblematic:
-		return imageStatusOrderProblematic
+	case ImageStatusPreUpgradeActionRequired:
+		return imageStatusOrderPreUpgrade
+	case ImageStatusPostUpgradeActionRequired:
+		return imageStatusOrderPostUpgrade
 	case ImageStatusCustom:
 		return imageStatusOrderCustom
 	case ImageStatusGood, ImageStatusVerifyFailed:
@@ -244,8 +248,10 @@ func imageStatusLabel(status string) string {
 		return "compatible image"
 	case ImageStatusCustom:
 		return "custom image"
-	case ImageStatusProblematic:
+	case ImageStatusPreUpgradeActionRequired:
 		return "incompatible image"
+	case ImageStatusPostUpgradeActionRequired:
+		return "incompatible image (post-upgrade rebuild)"
 	case ImageStatusVerifyFailed:
 		return "unverified image"
 	}
@@ -475,7 +481,7 @@ func (c *ImpactedWorkloadsCheck) analyzeNotebook(
 		imageAnalyses = append(imageAnalyses, analysis)
 	}
 
-	// Aggregate results: notebook is PROBLEMATIC if any image is PROBLEMATIC.
+	// Aggregate results: priority is PRE_UPGRADE > POST_UPGRADE > VERIFY_FAILED > CUSTOM > GOOD.
 	return c.aggregateImageAnalyses(ns, name, imageAnalyses)
 }
 
@@ -802,8 +808,43 @@ func (c *ImpactedWorkloadsCheck) findImageStreamBySpecRef(
 	return imageLookupResult{}
 }
 
+// collectReasonsForStatus collects reasons and the first image ref for analyses matching the given status.
+func collectReasonsForStatus(analyses []imageAnalysis, status ImageStatus) ([]string, string) {
+	var reasons []string
+	var imageRef string
+
+	for _, a := range analyses {
+		if a.Status != status {
+			continue
+		}
+
+		if imageRef == "" {
+			imageRef = a.ImageRef
+		}
+
+		if a.ContainerName != "" {
+			reasons = append(reasons, fmt.Sprintf("%s: %s", a.ContainerName, a.Reason))
+		} else {
+			reasons = append(reasons, a.Reason)
+		}
+	}
+
+	return reasons, imageRef
+}
+
+// findFirstWithStatus returns the first analysis matching the given status, or nil if none found.
+func findFirstWithStatus(analyses []imageAnalysis, status ImageStatus) *imageAnalysis {
+	for i := range analyses {
+		if analyses[i].Status == status {
+			return &analyses[i]
+		}
+	}
+
+	return nil
+}
+
 // aggregateImageAnalyses combines individual image analyses into a notebook analysis.
-// Returns PROBLEMATIC if any image is PROBLEMATIC, otherwise returns the "best" status.
+// Priority: PRE_UPGRADE > POST_UPGRADE > VERIFY_FAILED > CUSTOM > GOOD.
 // The ImageRef is set to the image that determines the notebook's status.
 func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 	ns, name string,
@@ -818,57 +859,47 @@ func (c *ImpactedWorkloadsCheck) aggregateImageAnalyses(
 		}
 	}
 
-	// Check for any PROBLEMATIC images - these block the upgrade.
-	var problematicReasons []string
-	var problematicImageRef string
-
-	for _, a := range analyses {
-		if a.Status == ImageStatusProblematic {
-			if problematicImageRef == "" {
-				problematicImageRef = a.ImageRef
-			}
-
-			if a.ContainerName != "" {
-				problematicReasons = append(problematicReasons, fmt.Sprintf("%s: %s", a.ContainerName, a.Reason))
-			} else {
-				problematicReasons = append(problematicReasons, a.Reason)
-			}
-		}
-	}
-
-	if len(problematicReasons) > 0 {
+	// Check for PRE_UPGRADE_ACTION_REQUIRED images - these block the upgrade.
+	if reasons, imageRef := collectReasonsForStatus(analyses, ImageStatusPreUpgradeActionRequired); len(reasons) > 0 {
 		return notebookAnalysis{
 			Namespace: ns,
 			Name:      name,
-			Status:    ImageStatusProblematic,
-			Reason:    strings.Join(problematicReasons, "; "),
-			ImageRef:  problematicImageRef,
+			Status:    ImageStatusPreUpgradeActionRequired,
+			Reason:    strings.Join(reasons, "; "),
+			ImageRef:  imageRef,
+		}
+	}
+
+	// Check for POST_UPGRADE_ACTION_REQUIRED images - advisory, fix after upgrade.
+	if reasons, imageRef := collectReasonsForStatus(analyses, ImageStatusPostUpgradeActionRequired); len(reasons) > 0 {
+		return notebookAnalysis{
+			Namespace: ns,
+			Name:      name,
+			Status:    ImageStatusPostUpgradeActionRequired,
+			Reason:    strings.Join(reasons, "; "),
+			ImageRef:  imageRef,
 		}
 	}
 
 	// Check for VERIFY_FAILED - these need attention but don't block.
-	for _, a := range analyses {
-		if a.Status == ImageStatusVerifyFailed {
-			return notebookAnalysis{
-				Namespace: ns,
-				Name:      name,
-				Status:    ImageStatusVerifyFailed,
-				Reason:    a.Reason,
-				ImageRef:  a.ImageRef,
-			}
+	if a := findFirstWithStatus(analyses, ImageStatusVerifyFailed); a != nil {
+		return notebookAnalysis{
+			Namespace: ns,
+			Name:      name,
+			Status:    ImageStatusVerifyFailed,
+			Reason:    a.Reason,
+			ImageRef:  a.ImageRef,
 		}
 	}
 
 	// Check for CUSTOM - user needs to verify manually.
-	for _, a := range analyses {
-		if a.Status == ImageStatusCustom {
-			return notebookAnalysis{
-				Namespace: ns,
-				Name:      name,
-				Status:    ImageStatusCustom,
-				Reason:    a.Reason,
-				ImageRef:  a.ImageRef,
-			}
+	if a := findFirstWithStatus(analyses, ImageStatusCustom); a != nil {
+		return notebookAnalysis{
+			Namespace: ns,
+			Name:      name,
+			Status:    ImageStatusCustom,
+			Reason:    a.Reason,
+			ImageRef:  a.ImageRef,
 		}
 	}
 
@@ -928,8 +959,8 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	if imageSHA != "" && currentSHA != "" && imageSHA != currentSHA {
 		// Notebook is using a different image than current latest.
 		return imageAnalysis{
-			Status: ImageStatusProblematic,
-			Reason: "RStudio image uses stale build (SHA mismatch), rebuild required",
+			Status: ImageStatusPostUpgradeActionRequired,
+			Reason: "RStudio image uses stale build (SHA mismatch), rebuild required after upgrade",
 		}
 	}
 
@@ -942,8 +973,8 @@ func (c *ImpactedWorkloadsCheck) analyzeRStudioImageCompat(
 	}
 
 	return imageAnalysis{
-		Status: ImageStatusProblematic,
-		Reason: fmt.Sprintf("RStudio image built from %s (< rhoai-%s, lacks nginx fix)", buildRef, nginxFixMinRHOAIVersion),
+		Status: ImageStatusPostUpgradeActionRequired,
+		Reason: fmt.Sprintf("RStudio image built from %s (< rhoai-%s, lacks nginx fix, rebuild after upgrade to 3.x)", buildRef, nginxFixMinRHOAIVersion),
 	}
 }
 
@@ -987,10 +1018,10 @@ func (c *ImpactedWorkloadsCheck) analyzeTagBasedImageCompat(
 			}
 		}
 
-		log.logf("[notebook]     tag-based: no compliant SHA cross-ref -> PROBLEMATIC")
+		log.logf("[notebook]     tag-based: no compliant SHA cross-ref -> PRE_UPGRADE_ACTION_REQUIRED")
 
 		return imageAnalysis{
-			Status: ImageStatusProblematic,
+			Status: ImageStatusPreUpgradeActionRequired,
 			Reason: fmt.Sprintf("%s image with tag %s (< %s, lacks nginx fix)", nbType, tag, nginxFixMinTag),
 		}
 	}
@@ -1133,51 +1164,55 @@ func (c *ImpactedWorkloadsCheck) findCompliantTagForSHA(sha string, imageStreams
 	return ""
 }
 
+// statusCounter tracks notebook counts and unique images for a single status.
+type statusCounter struct {
+	count  int
+	images map[string]struct{}
+}
+
+func newStatusCounter() *statusCounter {
+	return &statusCounter{images: make(map[string]struct{})}
+}
+
+func (sc *statusCounter) add(imageRef string) {
+	sc.count++
+
+	if imageRef != "" {
+		sc.images[imageRef] = struct{}{}
+	}
+}
+
+// countByStatus tallies notebooks and unique images for each status.
+func countByStatus(analyses []notebookAnalysis) map[ImageStatus]*statusCounter {
+	counters := map[ImageStatus]*statusCounter{
+		ImageStatusGood:                      newStatusCounter(),
+		ImageStatusCustom:                    newStatusCounter(),
+		ImageStatusPreUpgradeActionRequired:  newStatusCounter(),
+		ImageStatusPostUpgradeActionRequired: newStatusCounter(),
+		ImageStatusVerifyFailed:              newStatusCounter(),
+	}
+
+	for _, a := range analyses {
+		if sc, ok := counters[a.Status]; ok {
+			sc.add(a.ImageRef)
+		}
+	}
+
+	return counters
+}
+
 // setConditions sets the diagnostic condition based on analysis results.
 func (c *ImpactedWorkloadsCheck) setConditions(
 	dr *result.DiagnosticResult,
 	analyses []notebookAnalysis,
 	targetVersionLabel string,
 ) {
-	// Count notebooks and unique images by status.
-	var goodCount, customCount, problematicCount, verifyFailedCount int
+	counters := countByStatus(analyses)
 
-	goodImages := make(map[string]struct{})
-	customImages := make(map[string]struct{})
-	problematicImages := make(map[string]struct{})
-	verifyFailedImages := make(map[string]struct{})
 	allImages := make(map[string]struct{})
-
 	for _, a := range analyses {
 		if a.ImageRef != "" {
 			allImages[a.ImageRef] = struct{}{}
-		}
-
-		switch a.Status {
-		case ImageStatusGood:
-			goodCount++
-
-			if a.ImageRef != "" {
-				goodImages[a.ImageRef] = struct{}{}
-			}
-		case ImageStatusCustom:
-			customCount++
-
-			if a.ImageRef != "" {
-				customImages[a.ImageRef] = struct{}{}
-			}
-		case ImageStatusProblematic:
-			problematicCount++
-
-			if a.ImageRef != "" {
-				problematicImages[a.ImageRef] = struct{}{}
-			}
-		case ImageStatusVerifyFailed:
-			verifyFailedCount++
-
-			if a.ImageRef != "" {
-				verifyFailedImages[a.ImageRef] = struct{}{}
-			}
 		}
 	}
 
@@ -1185,17 +1220,20 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 	totalImages := len(allImages)
 
 	// Build multi-line breakdown message with image counts.
-	message := strings.Join([]string{
+	lines := []string{
 		fmt.Sprintf(MsgNotebookImageSummary, totalCount, totalImages),
-		fmt.Sprintf(MsgCompatibleCount, goodCount, len(goodImages), targetVersionLabel),
-		fmt.Sprintf(MsgCustomCount, customCount, len(customImages)),
-		fmt.Sprintf(MsgIncompatibleCount, problematicCount, len(problematicImages)),
-		fmt.Sprintf(MsgUnverifiedCount, verifyFailedCount, len(verifyFailedImages)),
-	}, "\n")
+		fmt.Sprintf(MsgCompatibleCount, counters[ImageStatusGood].count, len(counters[ImageStatusGood].images), targetVersionLabel),
+		fmt.Sprintf(MsgCustomCount, counters[ImageStatusCustom].count, len(counters[ImageStatusCustom].images)),
+		fmt.Sprintf(MsgIncompatibleCount, counters[ImageStatusPreUpgradeActionRequired].count, len(counters[ImageStatusPreUpgradeActionRequired].images)),
+		fmt.Sprintf(MsgPostUpgradeCount, counters[ImageStatusPostUpgradeActionRequired].count, len(counters[ImageStatusPostUpgradeActionRequired].images)),
+		fmt.Sprintf(MsgUnverifiedCount, counters[ImageStatusVerifyFailed].count, len(counters[ImageStatusVerifyFailed].images)),
+	}
+
+	message := strings.Join(lines, "\n")
 
 	switch {
-	case problematicCount > 0:
-		// Notebooks with problematic images block the upgrade.
+	case counters[ImageStatusPreUpgradeActionRequired].count > 0:
+		// Notebooks with pre-upgrade incompatible images block the upgrade.
 		dr.SetCondition(check.NewCondition(
 			ConditionTypeNotebooksCompatible,
 			metav1.ConditionFalse,
@@ -1205,8 +1243,10 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 			check.WithRemediation(c.CheckRemediation),
 		))
 
-	case customCount > 0 || verifyFailedCount > 0:
-		// Some notebooks need user verification but none are blocking.
+	case counters[ImageStatusPostUpgradeActionRequired].count > 0 ||
+		counters[ImageStatusCustom].count > 0 ||
+		counters[ImageStatusVerifyFailed].count > 0:
+		// Post-upgrade, custom, or unverified notebooks need attention but don't block.
 		dr.SetCondition(check.NewCondition(
 			ConditionTypeNotebooksCompatible,
 			metav1.ConditionFalse,
@@ -1227,7 +1267,7 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 	}
 }
 
-// setImpactedObjects sets the ImpactedObjects to problematic and custom notebooks.
+// setImpactedObjects sets the ImpactedObjects to incompatible and custom notebooks.
 // Custom notebooks are included because they require user verification before upgrade.
 // Uses an empty slice (not nil) to prevent validate.Workloads from auto-populating.
 func (c *ImpactedWorkloadsCheck) setImpactedObjects(
@@ -1237,8 +1277,10 @@ func (c *ImpactedWorkloadsCheck) setImpactedObjects(
 	impacted := make([]metav1.PartialObjectMetadata, 0)
 
 	for _, a := range analyses {
-		// Include both problematic (must fix) and custom (needs verification) notebooks
-		if a.Status != ImageStatusProblematic && a.Status != ImageStatusCustom {
+		// Include pre-upgrade (must fix), post-upgrade (rebuild after), and custom (needs verification) notebooks.
+		if a.Status != ImageStatusPreUpgradeActionRequired &&
+			a.Status != ImageStatusPostUpgradeActionRequired &&
+			a.Status != ImageStatusCustom {
 			continue
 		}
 
@@ -1334,8 +1376,8 @@ func isTagGTE(tag1, tag2 string) bool {
 	return year1 == year2 && minor1 >= minor2
 }
 
-// rhoaiVersionRegex matches RHOAI build references like "rhoai-2.25".
-var rhoaiVersionRegex = regexp.MustCompile(`^rhoai-(\d+)\.(\d+)$`)
+// rhoaiVersionRegex matches RHOAI build references like "rhoai-3.0" or "rhoai-2.25.3".
+var rhoaiVersionRegex = regexp.MustCompile(`^rhoai-(\d+)\.(\d+)(?:\.\d+)?$`)
 
 // Pre-computed minimum RHOAI version parts from nginxFixMinRHOAIVersion.
 // Panics at package load time if the constant has an invalid "X.Y" format.
@@ -1344,7 +1386,7 @@ var rhoaiVersionRegex = regexp.MustCompile(`^rhoai-(\d+)\.(\d+)$`)
 var nginxFixMinMajor, nginxFixMinMinor = mustParseVersionParts(nginxFixMinRHOAIVersion)
 
 // isCompliantBuildRef checks if a build reference indicates a compliant RHOAI version.
-// Parses "rhoai-X.Y" format and compares against nginxFixMinRHOAIVersion.
+// Parses "rhoai-X.Y" or "rhoai-X.Y.Z" format and compares against nginxFixMinRHOAIVersion.
 func isCompliantBuildRef(buildRef string) bool {
 	matches := rhoaiVersionRegex.FindStringSubmatch(buildRef)
 	if len(matches) != 3 {
