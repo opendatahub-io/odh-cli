@@ -7,6 +7,12 @@ const (
 	ManagementStateRemoved   = "Removed"
 )
 
+// Platform names for DSC and DSCI check kind identifiers.
+const (
+	PlatformDSCI = "dsci"
+	PlatformDSC  = "dsc"
+)
+
 // Component names used across multiple package groups.
 const (
 	ComponentDashboard        = "dashboard"

@@ -133,7 +133,11 @@ func NewCommand(
     registry := check.NewRegistry()
 
     // Explicitly register all checks
-    // Components (11)
+    // Platform (2)
+    registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
+    registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
+
+    // Components (13)
     registry.MustRegister(codeflare.NewRemovalCheck())
     registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
     registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
@@ -144,7 +148,7 @@ func NewCommand(
     registry.MustRegister(certmanager.NewCheck())
     // ... additional dependency checks
 
-    // Workloads (7)
+    // Workloads (8)
     registry.MustRegister(guardrails.NewOtelMigrationCheck())
     registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
     registry.MustRegister(notebook.NewImpactedWorkloadsCheck())

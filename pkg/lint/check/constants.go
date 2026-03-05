@@ -5,6 +5,7 @@ type CheckType string
 
 // Check type names used across multiple packages.
 const (
+	CheckTypeReadiness                   CheckType = "readiness"
 	CheckTypeRemoval                     CheckType = "removal"
 	CheckTypeInstalled                   CheckType = "installed"
 	CheckTypeImpactedWorkloads           CheckType = "impacted-workloads"

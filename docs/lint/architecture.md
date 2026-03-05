@@ -29,7 +29,7 @@ type Check interface {
 
 **Key methods:**
 - `ID()` - Unique identifier for the lint check
-- `Group()` - Returns `CheckGroup` type: `GroupComponent`, `GroupService`, `GroupWorkload`, or `GroupDependency`
+- `Group()` - Returns `CheckGroup` type: `GroupComponent`, `GroupDependency`, `GroupPlatform`, `GroupService`, or `GroupWorkload`
 - `CheckKind()` - Returns the kind of resource being checked (e.g., "kserve", "codeflare"). Used by validation builders to construct diagnostic results
 - `CheckType()` - Returns the type of check (e.g., "removal", "deprecation"). Used by validation builders to construct diagnostic results
 - `CanApply()` - Determines if lint check is applicable based on version context
@@ -86,6 +86,10 @@ func NewCommand(
     registry := check.NewRegistry()
 
     // Explicitly register all checks (no global state, full test isolation)
+    // Platform (2)
+    registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
+    registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
+
     // Components (13)
     registry.MustRegister(codeflare.NewRemovalCheck())
     registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
@@ -139,7 +143,7 @@ The DiagnosticResult uses a flattened structure (not nested Metadata):
 ```go
 type DiagnosticResult struct {
     // Flattened metadata fields (not nested in a Metadata struct)
-    Group       string            // "component", "service", "workload", "dependency"
+    Group       string            // "component", "dependency", "platform", "service", "workload"
     Kind        string            // Target: "kserve", "dashboard", etc.
     Name        string            // Check type identifier (e.g., "removal", "deprecation")
     Annotations map[string]string // Version metadata with domain-qualified keys

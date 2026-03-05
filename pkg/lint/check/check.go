@@ -6,24 +6,26 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 )
 
-// CheckGroup classifies checks into logical groups (component, service, workload, dependency).
+// CheckGroup classifies checks into logical groups (component, dependency, platform, service, workload).
 type CheckGroup string
 
 const (
 	GroupComponent  CheckGroup = "component"
+	GroupDependency CheckGroup = "dependency"
+	GroupPlatform   CheckGroup = "platform"
 	GroupService    CheckGroup = "service"
 	GroupWorkload   CheckGroup = "workload"
-	GroupDependency CheckGroup = "dependency"
 )
 
 // CanonicalGroupOrder defines the execution order for check groups.
 // Dependencies run first to validate platform prerequisites, followed by
-// services, components, and finally workloads.
+// services, the core platform CRs (DSC/DSCI), components, and finally workloads.
 //
 //nolint:gochecknoglobals // Canonical ordering must be accessible across packages
 var CanonicalGroupOrder = []CheckGroup{
 	GroupDependency,
 	GroupService,
+	GroupPlatform,
 	GroupComponent,
 	GroupWorkload,
 }
@@ -90,7 +92,7 @@ type Check interface {
 	// Description returns what this check validates
 	Description() string
 
-	// Group returns the check group (component, service, workload, dependency)
+	// Group returns the check group (component, dependency, platform, service, workload)
 	Group() CheckGroup
 
 	// CheckKind returns the kind of resource being checked (e.g., "kserve", "codeflare").

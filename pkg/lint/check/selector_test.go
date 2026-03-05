@@ -131,6 +131,20 @@ func TestMatchesPattern_GroupShortcuts(t *testing.T) {
 			pattern: "dependencies",
 			want:    false,
 		},
+		{
+			name:    "platform shortcut matches platform check",
+			checkID: "platform.dsc.readiness",
+			group:   check.GroupPlatform,
+			pattern: "platform",
+			want:    true,
+		},
+		{
+			name:    "platform shortcut does not match component check",
+			checkID: "components.dashboard",
+			group:   check.GroupComponent,
+			pattern: "platform",
+			want:    false,
+		},
 	}
 
 	for _, tt := range tests {

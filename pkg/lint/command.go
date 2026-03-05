@@ -23,6 +23,8 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/trainingoperator"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/certmanager"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/openshift"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/datasciencecluster"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/dscinitialization"
 	datasciencepipelinesworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/guardrails"
 	kserveworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kserve"
@@ -79,6 +81,10 @@ func NewCommand(
 	registry := check.NewRegistry()
 
 	// Explicitly register all checks (no global state, full test isolation)
+	// Platform (2)
+	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
+	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
+
 	// Components (13)
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
@@ -290,7 +296,7 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 		Debug:          c.Debug,
 	}
 
-	// Execute checks in canonical order: dependencies → services → components → workloads
+	// Execute checks in canonical order: dependencies → services → platform → components → workloads
 	resultsByGroup := make(map[check.CheckGroup][]check.CheckExecution)
 
 	for _, group := range check.CanonicalGroupOrder {

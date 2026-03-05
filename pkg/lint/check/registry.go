@@ -102,7 +102,7 @@ func (r *CheckRegistry) ListAll() []Check {
 // ListByPatterns returns checks matching any of the selector patterns and group.
 // Each pattern can be:
 //   - Wildcard: "*" matches all checks
-//   - Group shortcut: "components", "services", "workloads", "dependencies"
+//   - Group shortcut: "components", "dependencies", "platform", "services", "workloads"
 //   - Exact ID: "components.dashboard"
 //   - Glob pattern: "components.*", "*dashboard*", "*.dashboard"
 //

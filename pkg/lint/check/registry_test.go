@@ -24,6 +24,7 @@ func TestCheckRegistry_ListByPattern(t *testing.T) {
 		{id: "components.workbench", name: "Workbench Component", group: check.GroupComponent},
 		{id: "services.oauth", name: "OAuth Service", group: check.GroupService},
 		{id: "workloads.limits", name: "Resource Limits", group: check.GroupWorkload},
+		{id: "platform.dsc", name: "DSC Readiness", group: check.GroupPlatform},
 	}
 
 	for _, mc := range mockChecks {
@@ -44,7 +45,7 @@ func TestCheckRegistry_ListByPattern(t *testing.T) {
 			name:    "wildcard all checks",
 			pattern: "*",
 			group:   "",
-			wantIDs: []string{"components.dashboard", "components.workbench", "services.oauth", "workloads.limits"},
+			wantIDs: []string{"components.dashboard", "components.workbench", "services.oauth", "workloads.limits", "platform.dsc"},
 		},
 		{
 			name:    "group shortcut components",
@@ -63,6 +64,12 @@ func TestCheckRegistry_ListByPattern(t *testing.T) {
 			pattern: "workloads",
 			group:   "",
 			wantIDs: []string{"workloads.limits"},
+		},
+		{
+			name:    "group shortcut platform",
+			pattern: "platform",
+			group:   "",
+			wantIDs: []string{"platform.dsc"},
 		},
 		{
 			name:    "glob components.*",

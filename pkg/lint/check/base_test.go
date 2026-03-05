@@ -86,6 +86,7 @@ func TestBaseCheck(t *testing.T) {
 			{"service", check.GroupService},
 			{"workload", check.GroupWorkload},
 			{"dependency", check.GroupDependency},
+			{"platform", check.GroupPlatform},
 		}
 
 		for _, tc := range testCases {

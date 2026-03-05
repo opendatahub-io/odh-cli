@@ -179,16 +179,6 @@ func ValidateCheckSelector(selector string) error {
 		return errors.New("check selector cannot be empty")
 	}
 
-	// Allow category shortcuts
-	if selector == "components" || selector == "services" || selector == "workloads" || selector == "dependencies" {
-		return nil
-	}
-
-	// Allow wildcard (default)
-	if selector == "*" {
-		return nil
-	}
-
 	// Validate glob pattern
 	_, err := path.Match(selector, "test.check")
 	if err != nil {
@@ -243,9 +233,10 @@ type CheckResultTableRow struct {
 type LintOutput struct {
 	ClusterVersion *string             `json:"clusterVersion,omitempty" yaml:"clusterVersion,omitempty"`
 	TargetVersion  *string             `json:"targetVersion,omitempty"  yaml:"targetVersion,omitempty"`
-	Components     []CheckResultOutput `json:"components"               yaml:"components"`
-	Services       []CheckResultOutput `json:"services"                 yaml:"services"`
 	Dependencies   []CheckResultOutput `json:"dependencies"             yaml:"dependencies"`
+	Services       []CheckResultOutput `json:"services"                 yaml:"services"`
+	Platform       []CheckResultOutput `json:"platform"                 yaml:"platform"`
+	Components     []CheckResultOutput `json:"components"               yaml:"components"`
 	Workloads      []CheckResultOutput `json:"workloads"                yaml:"workloads"`
 	Summary        struct {
 		Total  int `json:"total"  yaml:"total"`
@@ -256,7 +247,7 @@ type LintOutput struct {
 
 // FlattenResults converts a map of results by group to a flat sorted array.
 // Results are sorted by:
-// 1. Group (canonical order: Dependency, Service, Component, Workload)
+// 1. Group (canonical order: Dependency, Service, Platform, Component, Workload)
 // 2. Kind (alphabetically within each group)
 // 3. Name (alphabetically within each kind).
 func FlattenResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) []check.CheckExecution {
@@ -394,7 +385,7 @@ func impactSortPriority(impact result.Impact) int {
 }
 
 // groupSortPriority returns a numeric priority that follows the canonical
-// group order: dependency -> service -> component -> workload.
+// group order: dependency -> service -> platform -> component -> workload.
 func groupSortPriority(group string) int {
 	for i, g := range check.CanonicalGroupOrder {
 		if string(g) == group {

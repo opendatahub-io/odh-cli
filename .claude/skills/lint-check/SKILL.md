@@ -12,7 +12,7 @@ This skill streamlines creating new lint checks for `kubectl odh lint`.
 Before implementing, gather the following from the user:
 
 ### 1. Check Classification
-- **Group**: component | service | workload | dependency
+- **Group**: component | service | platform | workload | dependency
 - **Kind**: The specific target (e.g., kserve, dashboard, certmanager, ray)
 - **Check Type**: Use a constant from `check.CheckType*` when applicable, or a package-level string constant for custom types
 

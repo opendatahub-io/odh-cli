@@ -16,9 +16,10 @@ const (
 const flagDescChecks = `check selector patterns (glob patterns or categories):
   - '*'             : all checks
   - 'components.*'  : all component checks
+  - 'dependencies.*': all dependency checks
+  - 'platform.*'    : all platform checks
   - 'services.*'    : all service checks
   - 'workloads.*'   : all workload checks
-  - 'dependencies.*': all dependency checks
   - '*dashboard*'   : all checks with 'dashboard' in ID
   - 'exact.id'      : exact check ID
 Can be specified multiple times`

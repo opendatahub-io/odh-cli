@@ -104,6 +104,11 @@ func TestValidateCheckSelector(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "category platform valid",
+			selector: "platform",
+			wantErr:  false,
+		},
+		{
 			name:     "glob pattern components.* valid",
 			selector: "components.*",
 			wantErr:  false,

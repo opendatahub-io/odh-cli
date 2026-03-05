@@ -119,6 +119,11 @@ func setupBenchmarkRegistry() *check.CheckRegistry {
 		_ = registry.Register(newBenchmarkCheck("workloads", i))
 	}
 
+	// Platform (5 checks)
+	for i := range 5 {
+		_ = registry.Register(newBenchmarkCheck("platform", i))
+	}
+
 	return registry
 }
 
@@ -137,6 +142,8 @@ func newBenchmarkCheck(categoryStr string, index int) *benchmarkCheck {
 		group = check.GroupService
 	case "workloads":
 		group = check.GroupWorkload
+	case "platform":
+		group = check.GroupPlatform
 	}
 
 	return &benchmarkCheck{
