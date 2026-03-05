@@ -49,7 +49,7 @@ const (
 	MsgNotebookImageSummary   = "Found %d Notebook(s) using %d unique images:"
 	MsgCompatibleCount        = "  - %d compatible (%d images, OOTB ready for %s)"
 	MsgCustomCount            = "  - %d custom (%d images, user verification needed)"
-	MsgIncompatibleCount      = "  - %d incompatible (%d images, must update before upgrade)"
+	MsgIncompatibleCount      = "  - %d incompatible (%d images, update recommended before upgrade)"
 	MsgPostUpgradeCount       = "  - %d incompatible (%d images, must rebuild after upgrade to 3.x)"
 	MsgUnverifiedCount        = "  - %d unverified (%d images, could not determine status)"
 	MsgVerifyCustomImages     = "Verify custom images are compatible with RHOAI %s before upgrading"

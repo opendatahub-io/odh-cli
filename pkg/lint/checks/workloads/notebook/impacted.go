@@ -1233,13 +1233,13 @@ func (c *ImpactedWorkloadsCheck) setConditions(
 
 	switch {
 	case counters[ImageStatusPreUpgradeActionRequired].count > 0:
-		// Notebooks with pre-upgrade incompatible images block the upgrade.
+		// Notebooks with pre-upgrade incompatible images — advisory, users may choose to update later.
 		dr.SetCondition(check.NewCondition(
 			ConditionTypeNotebooksCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonWorkloadsImpacted),
 			check.WithMessage("%s", message),
-			check.WithImpact(result.ImpactBlocking),
+			check.WithImpact(result.ImpactAdvisory),
 			check.WithRemediation(c.CheckRemediation),
 		))
 
