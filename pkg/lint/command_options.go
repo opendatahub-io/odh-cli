@@ -31,6 +31,16 @@ const (
 	DefaultTimeout = 5 * time.Minute
 )
 
+// SeverityLevel represents the minimum severity threshold for display filtering.
+// Only conditions at or above this level are shown in the output.
+type SeverityLevel string
+
+const (
+	SeverityLevelCritical SeverityLevel = "critical" // Show only blocking (critical) conditions
+	SeverityLevelWarning  SeverityLevel = "warning"  // Show blocking and advisory conditions
+	SeverityLevelInfo     SeverityLevel = "info"     // Show all conditions (default)
+)
+
 // Validate checks if the output format is valid.
 func (o OutputFormat) Validate() error {
 	switch o {
@@ -38,6 +48,16 @@ func (o OutputFormat) Validate() error {
 		return nil
 	default:
 		return fmt.Errorf("invalid output format: %s (must be one of: table, json, yaml)", o)
+	}
+}
+
+// Validate checks if the severity level is valid.
+func (s SeverityLevel) Validate() error {
+	switch s {
+	case SeverityLevelCritical, SeverityLevelWarning, SeverityLevelInfo:
+		return nil
+	default:
+		return fmt.Errorf("invalid severity level: %s (must be one of: critical, warning, info)", s)
 	}
 }
 
@@ -54,6 +74,10 @@ type SharedOptions struct {
 
 	// CheckSelectors filters which checks to run (glob patterns, repeatable)
 	CheckSelectors []string
+
+	// SeverityLevel sets the minimum severity threshold for display filtering.
+	// Conditions below this level are excluded from all output formats.
+	SeverityLevel SeverityLevel
 
 	// Verbose enables progress messages (default: false, quiet by default)
 	Verbose bool
@@ -81,8 +105,9 @@ func NewSharedOptions(
 	return &SharedOptions{
 		ConfigFlags:    configFlags,
 		OutputFormat:   OutputFormatTable,
-		CheckSelectors: []string{"*"},  // Run all checks by default
-		Timeout:        DefaultTimeout, // Default timeout to prevent hanging on slow clusters
+		CheckSelectors: []string{"*"},     // Run all checks by default
+		SeverityLevel:  SeverityLevelInfo, // Show all severity levels by default
+		Timeout:        DefaultTimeout,    // Default timeout to prevent hanging on slow clusters
 		IO:             iostreams.NewIOStreams(streams.In, streams.Out, streams.ErrOut),
 		QPS:            client.DefaultQPS,
 		Burst:          client.DefaultBurst,
@@ -112,6 +137,11 @@ func (o *SharedOptions) Complete() error {
 func (o *SharedOptions) Validate() error {
 	// Validate output format
 	if err := o.OutputFormat.Validate(); err != nil {
+		return err
+	}
+
+	// Validate severity level
+	if err := o.SeverityLevel.Validate(); err != nil {
 		return err
 	}
 
@@ -251,6 +281,60 @@ func FlattenResults(resultsByGroup map[check.CheckGroup][]check.CheckExecution) 
 	}
 
 	return flattened
+}
+
+// FilterBySeverity returns a filtered copy of results containing only conditions
+// that meet the minimum severity threshold. Results with no remaining conditions
+// are excluded entirely. The original slice is not modified.
+func FilterBySeverity(results []check.CheckExecution, minLevel SeverityLevel) []check.CheckExecution {
+	if minLevel == SeverityLevelInfo {
+		return results
+	}
+
+	filtered := make([]check.CheckExecution, 0, len(results))
+
+	for _, exec := range results {
+		if exec.Result == nil {
+			continue
+		}
+
+		var kept []result.Condition
+		for _, cond := range exec.Result.Status.Conditions {
+			if meetsMinSeverity(cond.Impact, minLevel) {
+				kept = append(kept, cond)
+			}
+		}
+
+		if len(kept) == 0 {
+			continue
+		}
+
+		filteredResult := *exec.Result
+		filteredResult.Status.Conditions = kept
+
+		filtered = append(filtered, check.CheckExecution{
+			Check:  exec.Check,
+			Result: &filteredResult,
+			Error:  exec.Error,
+		})
+	}
+
+	return filtered
+}
+
+// meetsMinSeverity returns true if the given impact level is at or above the
+// minimum severity threshold.
+func meetsMinSeverity(impact result.Impact, minLevel SeverityLevel) bool {
+	switch minLevel {
+	case SeverityLevelCritical:
+		return impact == result.ImpactBlocking
+	case SeverityLevelWarning:
+		return impact == result.ImpactBlocking || impact == result.ImpactAdvisory
+	case SeverityLevelInfo:
+		return true
+	}
+
+	return true
 }
 
 // checkMaxImpact returns the highest-severity impact across all conditions

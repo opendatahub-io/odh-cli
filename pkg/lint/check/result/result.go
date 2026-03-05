@@ -248,39 +248,22 @@ func (r *DiagnosticResult) GetMessage() string {
 }
 
 // GetImpact returns the highest impact level across all conditions.
-// Returns nil if there are no conditions.
-// Impact is always explicit (set during condition creation), never derived.
-func (r *DiagnosticResult) GetImpact() *string {
-	if len(r.Status.Conditions) == 0 {
-		return nil
-	}
-
-	var hasBlocking bool
-	var hasAdvisory bool
+// Returns ImpactNone if there are no conditions.
+func (r *DiagnosticResult) GetImpact() Impact {
+	maxImpact := ImpactNone
 
 	for _, cond := range r.Status.Conditions {
 		switch cond.Impact {
 		case ImpactBlocking:
-			hasBlocking = true
+			return ImpactBlocking
 		case ImpactAdvisory:
-			hasAdvisory = true
+			maxImpact = ImpactAdvisory
 		case ImpactNone:
 			// No impact - continue checking other conditions
 		}
 	}
 
-	var result Impact
-	if hasBlocking {
-		result = ImpactBlocking
-	} else if hasAdvisory {
-		result = ImpactAdvisory
-	} else {
-		result = ImpactNone
-	}
-
-	resultStr := string(result)
-
-	return &resultStr
+	return maxImpact
 }
 
 // GetRemediation returns remediation guidance from the first condition that has it set.
