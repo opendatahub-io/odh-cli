@@ -13,12 +13,11 @@ const (
 func NewKueueLabelsRayJobCheck() *KueueLabelCheck {
 	return NewCheck(CheckConfig{
 		Kind:                      constants.ComponentKueue,
-		Component:                 constants.ComponentKueue,
 		Resource:                  resources.RayJob,
 		ConditionType:             ConditionTypeRayJobKueueLabels,
 		MissingLabelConditionType: ConditionTypeRayJobKueueMissingLabels,
 		KindLabel:                 "RayJob",
-		CheckID:                   "workloads.ray.kueue-labels-rayjob",
-		CheckName:                 "Workloads :: Ray :: RayJob Kueue Labels",
+		CheckID:                   "workloads.kueue.rayjob-labels",
+		CheckName:                 "Workloads :: Kueue :: RayJob Labels",
 	})
 }

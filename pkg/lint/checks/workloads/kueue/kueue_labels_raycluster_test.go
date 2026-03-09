@@ -66,8 +66,8 @@ func TestKueueLabelsRayClusterCheck_Metadata(t *testing.T) {
 
 	chk := kueue.NewKueueLabelsRayClusterCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.ray.kueue-labels-raycluster"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: Ray :: RayCluster Kueue Labels"))
+	g.Expect(chk.ID()).To(Equal("workloads.kueue.raycluster-labels"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Kueue :: RayCluster Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
@@ -119,7 +119,7 @@ func TestKueueLabelsRayClusterCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	chk := kueue.NewKueueLabelsRayClusterCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestKueueLabelsRayClusterCheck_NoRayClusters(t *testing.T) {

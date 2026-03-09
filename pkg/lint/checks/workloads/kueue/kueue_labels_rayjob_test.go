@@ -50,8 +50,8 @@ func TestKueueLabelsRayJobCheck_Metadata(t *testing.T) {
 
 	chk := kueue.NewKueueLabelsRayJobCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.ray.kueue-labels-rayjob"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: Ray :: RayJob Kueue Labels"))
+	g.Expect(chk.ID()).To(Equal("workloads.kueue.rayjob-labels"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Kueue :: RayJob Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.Remediation()).To(ContainSubstring("kueue.x-k8s.io/queue-name"))
@@ -87,6 +87,22 @@ func TestKueueLabelsRayJobCheck_CanApply_KueueRemoved(t *testing.T) {
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
+}
+
+func TestKueueLabelsRayJobCheck_CanApply_KueueUnmanaged(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      kueueLabelsRayJobListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
+		CurrentVersion: "3.0.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := kueue.NewKueueLabelsRayJobCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestKueueLabelsRayJobCheck_NoRayJobs(t *testing.T) {

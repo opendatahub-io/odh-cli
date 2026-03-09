@@ -68,8 +68,8 @@ func TestKueueLabelsNotebookCheck_Metadata(t *testing.T) {
 
 	chk := kueue.NewKueueLabelsNotebookCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.notebook.kueue-labels"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: Notebook :: Kueue Labels"))
+	g.Expect(chk.ID()).To(Equal("workloads.kueue.notebook-labels"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Kueue :: Notebook Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
@@ -106,7 +106,7 @@ func TestKueueLabelsNotebookCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	chk := kueue.NewKueueLabelsNotebookCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestKueueLabelsNotebookCheck_CanApply_KueueRemoved(t *testing.T) {
@@ -131,7 +131,7 @@ func TestKueueLabelsNotebookCheck_NoNotebooks(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -166,7 +166,7 @@ func TestKueueLabelsNotebookCheck_NotebookWithoutQueueLabel(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), ns, nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -197,7 +197,7 @@ func TestKueueLabelsNotebookCheck_NotebookWithQueueLabelInKueueNamespace(t *test
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), ns, nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -226,7 +226,7 @@ func TestKueueLabelsNotebookCheck_NotebookWithoutQueueLabelInKueueNamespace(t *t
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), ns, nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -340,7 +340,7 @@ func TestKueueLabelsNotebookCheck_OpenshiftKueueNamespaceLabel(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), ns, nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -371,7 +371,7 @@ func TestKueueLabelsNotebookCheck_NotebookWithCustomQueueName(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"}), ns, nb},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -394,7 +394,7 @@ func TestKueueLabelsNotebookCheck_AnnotationTargetVersion(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsNotebookListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})

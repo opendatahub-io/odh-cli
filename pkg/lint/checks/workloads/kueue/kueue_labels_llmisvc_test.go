@@ -50,8 +50,8 @@ func TestKueueLabelsLLMCheck_Metadata(t *testing.T) {
 
 	chk := kueue.NewKueueLabelsLLMCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.kserve.kueue-labels-llm"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: KServe :: LLMInferenceService Kueue Labels"))
+	g.Expect(chk.ID()).To(Equal("workloads.kueue.llminferenceservice-labels"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Kueue :: LLMInferenceService Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
@@ -104,7 +104,7 @@ func TestKueueLabelsLLMCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	chk := kueue.NewKueueLabelsLLMCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestKueueLabelsLLMCheck_NoLLMInferenceServices(t *testing.T) {

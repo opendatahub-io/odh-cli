@@ -13,12 +13,11 @@ const (
 func NewKueueLabelsISVCCheck() *KueueLabelCheck {
 	return NewCheck(CheckConfig{
 		Kind:                      constants.ComponentKueue,
-		Component:                 constants.ComponentKueue,
 		Resource:                  resources.InferenceService,
 		ConditionType:             ConditionTypeISVCKueueLabels,
 		MissingLabelConditionType: ConditionTypeISVCKueueMissingLabels,
 		KindLabel:                 "InferenceService",
-		CheckID:                   "workloads.kserve.kueue-labels-isvc",
-		CheckName:                 "Workloads :: KServe :: InferenceService Kueue Labels",
+		CheckID:                   "workloads.kueue.inferenceservice-labels",
+		CheckName:                 "Workloads :: Kueue :: InferenceService Labels",
 	})
 }

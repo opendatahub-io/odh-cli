@@ -21,7 +21,6 @@ const (
 // CheckConfig holds the per-resource parameters that differentiate each kueue label check.
 type CheckConfig struct {
 	Kind                      string
-	Component                 string
 	Resource                  resources.ResourceType
 	ConditionType             string
 	MissingLabelConditionType string
@@ -36,7 +35,6 @@ type CheckConfig struct {
 type KueueLabelCheck struct {
 	check.BaseCheck
 
-	component                 string
 	resource                  resources.ResourceType
 	conditionType             string
 	missingLabelConditionType string
@@ -54,7 +52,6 @@ func NewCheck(cfg CheckConfig) *KueueLabelCheck {
 			CheckDescription: fmt.Sprintf("Verifies that %ss with the kueue queue label are in kueue-enabled namespaces", cfg.KindLabel),
 			CheckRemediation: remediationLabeledInNonKueueNs,
 		},
-		component:                 cfg.Component,
 		resource:                  cfg.Resource,
 		conditionType:             cfg.ConditionType,
 		missingLabelConditionType: cfg.MissingLabelConditionType,
@@ -63,9 +60,9 @@ func NewCheck(cfg CheckConfig) *KueueLabelCheck {
 }
 
 func (c *KueueLabelCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	ok, err := IsComponentAndKueueActive(ctx, target, c.component)
+	ok, err := IsKueueActive(ctx, target)
 	if err != nil {
-		return false, fmt.Errorf("checking %s and kueue state: %w", c.component, err)
+		return false, fmt.Errorf("checking kueue state: %w", err)
 	}
 
 	return ok, nil

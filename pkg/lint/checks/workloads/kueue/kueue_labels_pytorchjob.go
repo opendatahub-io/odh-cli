@@ -13,12 +13,11 @@ const (
 func NewKueueLabelsPyTorchJobCheck() *KueueLabelCheck {
 	return NewCheck(CheckConfig{
 		Kind:                      constants.ComponentKueue,
-		Component:                 constants.ComponentKueue,
 		Resource:                  resources.PyTorchJob,
 		ConditionType:             ConditionTypePyTorchJobKueueLabels,
 		MissingLabelConditionType: ConditionTypePyTorchJobKueueMissingLabels,
 		KindLabel:                 "PyTorchJob",
-		CheckID:                   "workloads.trainingoperator.kueue-labels-pytorchjob",
-		CheckName:                 "Workloads :: TrainingOperator :: PyTorchJob Kueue Labels",
+		CheckID:                   "workloads.kueue.pytorchjob-labels",
+		CheckName:                 "Workloads :: Kueue :: PyTorchJob Labels",
 	})
 }

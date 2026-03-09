@@ -68,8 +68,8 @@ func TestKueueLabelsISVCCheck_Metadata(t *testing.T) {
 
 	chk := kueue.NewKueueLabelsISVCCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.kserve.kueue-labels-isvc"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: KServe :: InferenceService Kueue Labels"))
+	g.Expect(chk.ID()).To(Equal("workloads.kueue.inferenceservice-labels"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Kueue :: InferenceService Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
@@ -106,7 +106,7 @@ func TestKueueLabelsISVCCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	chk := kueue.NewKueueLabelsISVCCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestKueueLabelsISVCCheck_CanApply_KueueRemoved(t *testing.T) {

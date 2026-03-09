@@ -34,23 +34,14 @@ const (
 	MsgMissingLabelInKueueNs = "Found %d %s(s) in kueue-enabled namespaces without the kueue.x-k8s.io/queue-name label"
 )
 
-// IsComponentAndKueueActive returns true when the given component is Managed AND Kueue is active
-// (Managed or Unmanaged) on the DSC.
-func IsComponentAndKueueActive(
+// IsKueueActive returns true when Kueue is active (Managed or Unmanaged) on the DSC.
+func IsKueueActive(
 	ctx context.Context,
 	target check.Target,
-	componentName string,
 ) (bool, error) {
 	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
 	if err != nil {
 		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
-	}
-
-	if !components.HasManagementState(
-		dsc, componentName,
-		constants.ManagementStateManaged,
-	) {
-		return false, nil
 	}
 
 	if !components.HasManagementState(

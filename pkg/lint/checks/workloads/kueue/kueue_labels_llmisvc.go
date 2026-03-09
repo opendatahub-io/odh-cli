@@ -13,12 +13,11 @@ const (
 func NewKueueLabelsLLMCheck() *KueueLabelCheck {
 	return NewCheck(CheckConfig{
 		Kind:                      constants.ComponentKueue,
-		Component:                 constants.ComponentKueue,
 		Resource:                  resources.LLMInferenceService,
 		ConditionType:             ConditionTypeLLMISVCKueueLabels,
 		MissingLabelConditionType: ConditionTypeLLMISVCKueueMissingLabels,
 		KindLabel:                 "LLMInferenceService",
-		CheckID:                   "workloads.kserve.kueue-labels-llm",
-		CheckName:                 "Workloads :: KServe :: LLMInferenceService Kueue Labels",
+		CheckID:                   "workloads.kueue.llminferenceservice-labels",
+		CheckName:                 "Workloads :: Kueue :: LLMInferenceService Labels",
 	})
 }

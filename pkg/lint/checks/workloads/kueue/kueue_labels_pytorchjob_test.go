@@ -66,8 +66,8 @@ func TestKueueLabelsPyTorchJobCheck_Metadata(t *testing.T) {
 
 	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 
-	g.Expect(chk.ID()).To(Equal("workloads.trainingoperator.kueue-labels-pytorchjob"))
-	g.Expect(chk.Name()).To(Equal("Workloads :: TrainingOperator :: PyTorchJob Kueue Labels"))
+	g.Expect(chk.ID()).To(Equal("workloads.kueue.pytorchjob-labels"))
+	g.Expect(chk.Name()).To(Equal("Workloads :: Kueue :: PyTorchJob Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
 	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
@@ -119,7 +119,7 @@ func TestKueueLabelsPyTorchJobCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+	g.Expect(canApply).To(BeTrue())
 }
 
 func TestKueueLabelsPyTorchJobCheck_NoPyTorchJobs(t *testing.T) {

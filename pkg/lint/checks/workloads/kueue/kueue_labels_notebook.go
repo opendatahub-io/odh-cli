@@ -6,19 +6,18 @@ import (
 )
 
 const (
-	ConditionTypeNotebookKueueLabels        = "KueueLabels"
-	ConditionTypeNotebookKueueMissingLabels = "KueueMissingLabels"
+	ConditionTypeNotebookKueueLabels        = "NotebookKueueLabels"
+	ConditionTypeNotebookKueueMissingLabels = "NotebookKueueMissingLabels"
 )
 
 func NewKueueLabelsNotebookCheck() *KueueLabelCheck {
 	return NewCheck(CheckConfig{
 		Kind:                      constants.ComponentKueue,
-		Component:                 constants.ComponentKueue,
 		Resource:                  resources.Notebook,
 		ConditionType:             ConditionTypeNotebookKueueLabels,
 		MissingLabelConditionType: ConditionTypeNotebookKueueMissingLabels,
 		KindLabel:                 "Notebook",
-		CheckID:                   "workloads.notebook.kueue-labels",
-		CheckName:                 "Workloads :: Notebook :: Kueue Labels",
+		CheckID:                   "workloads.kueue.notebook-labels",
+		CheckName:                 "Workloads :: Kueue :: Notebook Labels",
 	})
 }
