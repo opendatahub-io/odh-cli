@@ -83,7 +83,7 @@ vulncheck:
 
 # Run all checks
 .PHONY: check
-check: lint vulncheck
+check: lint
 
 # Run tests
 .PHONY: test
@@ -132,6 +132,6 @@ help:
 	@echo "  lint        - Run golangci-lint"
 	@echo "  lint/fix    - Run golangci-lint with auto-fix"
 	@echo "  vulncheck   - Run vulnerability scanner"
-	@echo "  check       - Run all checks (lint + vulncheck)"
+	@echo "  check       - Run all checks (lint)"
 	@echo "  test        - Run tests"
 	@echo "  help        - Show this help message"

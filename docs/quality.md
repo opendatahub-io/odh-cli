@@ -14,11 +14,10 @@ Quality verification is a mandatory part of the development workflow, not a pre-
 2. **Run `make lint-fix`** - Auto-fix formatting and simple issues
 3. **Run `make lint`** - Check for remaining linting issues
 4. **Manual fixes** - Address issues that can't be auto-fixed
-5. **Run `make check`** - Complete quality verification (lint + vulncheck + tests)
+5. **Run `make check`** - Complete quality verification (lint + tests)
 
 **make check includes:**
 - `make lint` - golangci-lint with all enabled linters
-- `make vulncheck` - Security vulnerability scanning
 - `make test` - All unit and integration tests
 
 ## Lint-Fix-First
@@ -59,11 +58,6 @@ All of these MUST pass before code is considered complete:
 **Linting:**
 ```bash
 make lint
-```
-
-**Vulnerability Check:**
-```bash
-make vulncheck
 ```
 
 **Tests:**

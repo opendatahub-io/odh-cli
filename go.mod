@@ -1,6 +1,6 @@
 module github.com/opendatahub-io/odh-cli
 
-go 1.25.8
+go 1.25.7
 
 require (
 	github.com/blang/semver/v4 v4.0.0

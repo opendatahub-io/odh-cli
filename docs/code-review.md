@@ -56,9 +56,6 @@ make lint
 # Auto-fix issues where possible (ALWAYS try this FIRST)
 make lint/fix
 
-# Run vulnerability scanner
-make vulncheck
-
 # Run all checks
 make check
 ```
@@ -152,7 +149,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 Before submitting a PR:
 * [ ] All tests pass (`make test`)
-* [ ] All checks pass (`make check` - includes lint and vulncheck)
+* [ ] All checks pass (`make check` - includes lint)
 * [ ] Code formatted (`make fmt`)
 * [ ] Dependencies tidied (`make tidy`)
 * [ ] New tests added for new features

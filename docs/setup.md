@@ -24,10 +24,7 @@ make lint
 # Run linter with auto-fix (ALWAYS try this FIRST before manual fixes)
 make lint/fix
 
-# Run vulnerability scanner
-make vulncheck
-
-# Run all checks (lint + vulncheck)
+# Run all checks (lint)
 make check
 
 # Run tests

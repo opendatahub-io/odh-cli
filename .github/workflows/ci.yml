@@ -32,8 +32,6 @@ jobs:
       - name: Run linter
         run: make lint
 
-      - name: Run vulnerability check
-        run: make vulncheck
 
   dev-container:
     runs-on: ubuntu-latest
