@@ -13,8 +13,6 @@ const (
 	ConditionTypeHardwareProfileCompatible    = "HardwareProfileCompatible"
 	ConditionTypeHardwareProfileIntegrity     = "HardwareProfileIntegrity"
 	ConditionTypeNotebooksCompatible          = "NotebooksCompatible"
-	ConditionTypeKueueLabels                  = "KueueLabels"
-	ConditionTypeKueueMissingLabels           = "KueueMissingLabels"
 	ConditionTypeRunningWorkloads             = "RunningWorkloads"
 )
 

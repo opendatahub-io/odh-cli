@@ -1,4 +1,4 @@
-package ray_test
+package kueue_test
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
@@ -65,59 +64,59 @@ func newRayCluster(name string, namespace string, labels map[string]any) *unstru
 func TestKueueLabelsRayClusterCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 
 	g.Expect(chk.ID()).To(Equal("workloads.ray.kueue-labels-raycluster"))
 	g.Expect(chk.Name()).To(Equal("Workloads :: Ray :: RayCluster Kueue Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
-	g.Expect(chk.CheckKind()).To(Equal("ray"))
+	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
 	g.Expect(chk.Remediation()).To(ContainSubstring("kueue.x-k8s.io/queue-name"))
 }
 
-func TestKueueLabelsRayClusterCheck_CanApply_RayManagedKueueManaged(t *testing.T) {
+func TestKueueLabelsRayClusterCheck_CanApply_KueueManaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsRayClusterListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"ray": "Managed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestKueueLabelsRayClusterCheck_CanApply_RayManagedKueueRemoved(t *testing.T) {
+func TestKueueLabelsRayClusterCheck_CanApply_KueueRemoved(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsRayClusterListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"ray": "Managed", "kueue": "Removed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Removed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestKueueLabelsRayClusterCheck_CanApply_RayRemoved(t *testing.T) {
+func TestKueueLabelsRayClusterCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsRayClusterListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"ray": "Removed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
@@ -133,13 +132,13 @@ func TestKueueLabelsRayClusterCheck_NoRayClusters(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(ray.ConditionTypeRayClusterKueueLabels),
+		"Type":    Equal(kueue.ConditionTypeRayClusterKueueLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonRequirementsMet),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloads, "RayCluster")),
@@ -147,7 +146,7 @@ func TestKueueLabelsRayClusterCheck_NoRayClusters(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactNone))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "0"))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(ray.ConditionTypeRayClusterKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeRayClusterKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloadsInKueueNs, "RayCluster")),
 	}))
@@ -168,7 +167,7 @@ func TestKueueLabelsRayClusterCheck_WithoutQueueLabel(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -193,7 +192,7 @@ func TestKueueLabelsRayClusterCheck_WithoutQueueLabelInKueueNamespace(t *testing
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -201,7 +200,7 @@ func TestKueueLabelsRayClusterCheck_WithoutQueueLabelInKueueNamespace(t *testing
 	g.Expect(result.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
 	g.Expect(result.Status.Conditions[0].Message).To(Equal(fmt.Sprintf(kueue.MsgNoLabeledWorkloads, "RayCluster")))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(ray.ConditionTypeRayClusterKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeRayClusterKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
 		"Message": Equal(fmt.Sprintf(kueue.MsgMissingLabelInKueueNs, 1, "RayCluster")),
@@ -226,7 +225,7 @@ func TestKueueLabelsRayClusterCheck_WithQueueLabelInKueueNamespace(t *testing.T)
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -249,7 +248,7 @@ func TestKueueLabelsRayClusterCheck_LabeledInNonKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayClusterCheck()
+	chk := kueue.NewKueueLabelsRayClusterCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

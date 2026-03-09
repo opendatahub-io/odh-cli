@@ -1,8 +1,7 @@
-package kserve
+package kueue
 
 import (
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 )
 
@@ -11,10 +10,10 @@ const (
 	ConditionTypeLLMISVCKueueMissingLabels = "LLMISVCKueueMissingLabels"
 )
 
-func NewKueueLabelsLLMCheck() *kueue.KueueLabelCheck {
-	return kueue.NewCheck(kueue.CheckConfig{
-		Kind:                      constants.ComponentKServe,
-		Component:                 constants.ComponentKServe,
+func NewKueueLabelsLLMCheck() *KueueLabelCheck {
+	return NewCheck(CheckConfig{
+		Kind:                      constants.ComponentKueue,
+		Component:                 constants.ComponentKueue,
 		Resource:                  resources.LLMInferenceService,
 		ConditionType:             ConditionTypeLLMISVCKueueLabels,
 		MissingLabelConditionType: ConditionTypeLLMISVCKueueMissingLabels,

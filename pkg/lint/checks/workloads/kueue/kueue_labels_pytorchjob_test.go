@@ -1,4 +1,4 @@
-package trainingoperator_test
+package kueue_test
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
-	trainingoperator "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainingoperator"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
@@ -27,7 +26,7 @@ var kueueLabelsPyTorchJobListKinds = map[schema.GroupVersionResource]string{
 	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
 }
 
-func newKueueNamespace(name string, labels map[string]any) *unstructured.Unstructured {
+func newPyTorchJobNamespace(name string, labels map[string]any) *unstructured.Unstructured {
 	metadata := map[string]any{"name": name}
 
 	if len(labels) > 0 {
@@ -65,59 +64,59 @@ func newPyTorchJob(name string, namespace string, labels map[string]any) *unstru
 func TestKueueLabelsPyTorchJobCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 
 	g.Expect(chk.ID()).To(Equal("workloads.trainingoperator.kueue-labels-pytorchjob"))
 	g.Expect(chk.Name()).To(Equal("Workloads :: TrainingOperator :: PyTorchJob Kueue Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
-	g.Expect(chk.CheckKind()).To(Equal("trainingoperator"))
+	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
 	g.Expect(chk.Remediation()).To(ContainSubstring("kueue.x-k8s.io/queue-name"))
 }
 
-func TestKueueLabelsPyTorchJobCheck_CanApply_TrainingOperatorManagedKueueManaged(t *testing.T) {
+func TestKueueLabelsPyTorchJobCheck_CanApply_KueueManaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsPyTorchJobListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"trainingoperator": "Managed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestKueueLabelsPyTorchJobCheck_CanApply_TrainingOperatorManagedKueueRemoved(t *testing.T) {
+func TestKueueLabelsPyTorchJobCheck_CanApply_KueueRemoved(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsPyTorchJobListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"trainingoperator": "Managed", "kueue": "Removed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Removed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestKueueLabelsPyTorchJobCheck_CanApply_TrainingOperatorRemoved(t *testing.T) {
+func TestKueueLabelsPyTorchJobCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsPyTorchJobListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"trainingoperator": "Removed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
@@ -133,20 +132,20 @@ func TestKueueLabelsPyTorchJobCheck_NoPyTorchJobs(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(trainingoperator.ConditionTypePyTorchJobKueueLabels),
+		"Type":    Equal(kueue.ConditionTypePyTorchJobKueueLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonRequirementsMet),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloads, "PyTorchJob")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactNone))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(trainingoperator.ConditionTypePyTorchJobKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypePyTorchJobKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloadsInKueueNs, "PyTorchJob")),
 	}))
@@ -158,7 +157,7 @@ func TestKueueLabelsPyTorchJobCheck_WithoutQueueLabelInKueueNamespace(t *testing
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	ns := newKueueNamespace("kueue-ns", map[string]any{constants.LabelKueueManaged: "true"})
+	ns := newPyTorchJobNamespace("kueue-ns", map[string]any{constants.LabelKueueManaged: "true"})
 	job := newPyTorchJob("unlabeled-job", "kueue-ns", nil)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
@@ -168,7 +167,7 @@ func TestKueueLabelsPyTorchJobCheck_WithoutQueueLabelInKueueNamespace(t *testing
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -176,7 +175,7 @@ func TestKueueLabelsPyTorchJobCheck_WithoutQueueLabelInKueueNamespace(t *testing
 	g.Expect(result.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
 	g.Expect(result.Status.Conditions[0].Message).To(Equal(fmt.Sprintf(kueue.MsgNoLabeledWorkloads, "PyTorchJob")))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(trainingoperator.ConditionTypePyTorchJobKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypePyTorchJobKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
 		"Message": Equal(fmt.Sprintf(kueue.MsgMissingLabelInKueueNs, 1, "PyTorchJob")),
@@ -192,7 +191,7 @@ func TestKueueLabelsPyTorchJobCheck_LabeledInNonKueueNamespace(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	ns := newKueueNamespace("plain-ns", nil)
+	ns := newPyTorchJobNamespace("plain-ns", nil)
 	job := newPyTorchJob("bad-job", "plain-ns", map[string]any{constants.LabelKueueQueueName: "default"})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
@@ -202,7 +201,7 @@ func TestKueueLabelsPyTorchJobCheck_LabeledInNonKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -220,7 +219,7 @@ func TestKueueLabelsPyTorchJobCheck_WithQueueLabelInKueueNamespace(t *testing.T)
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	ns := newKueueNamespace("kueue-ns", map[string]any{constants.LabelKueueManaged: "true"})
+	ns := newPyTorchJobNamespace("kueue-ns", map[string]any{constants.LabelKueueManaged: "true"})
 	job := newPyTorchJob("good-job", "kueue-ns", map[string]any{constants.LabelKueueQueueName: "default"})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
@@ -230,7 +229,7 @@ func TestKueueLabelsPyTorchJobCheck_WithQueueLabelInKueueNamespace(t *testing.T)
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -245,7 +244,7 @@ func TestKueueLabelsPyTorchJobCheck_WithoutQueueLabel(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	ns := newKueueNamespace("plain-ns", nil)
+	ns := newPyTorchJobNamespace("plain-ns", nil)
 	job := newPyTorchJob("my-job", "plain-ns", nil)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
@@ -255,7 +254,7 @@ func TestKueueLabelsPyTorchJobCheck_WithoutQueueLabel(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := trainingoperator.NewKueueLabelsPyTorchJobCheck()
+	chk := kueue.NewKueueLabelsPyTorchJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

@@ -1,4 +1,4 @@
-package kserve_test
+package kueue_test
 
 import (
 	"fmt"
@@ -12,7 +12,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kserve"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
@@ -49,60 +48,60 @@ func newLLMISVC(name string, namespace string, labels map[string]any) *unstructu
 func TestKueueLabelsLLMCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 
 	g.Expect(chk.ID()).To(Equal("workloads.kserve.kueue-labels-llm"))
 	g.Expect(chk.Name()).To(Equal("Workloads :: KServe :: LLMInferenceService Kueue Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
-	g.Expect(chk.CheckKind()).To(Equal("kserve"))
+	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
 	g.Expect(chk.Description()).ToNot(BeEmpty())
 	g.Expect(chk.Remediation()).To(ContainSubstring("kueue.x-k8s.io/queue-name"))
 }
 
-func TestKueueLabelsLLMCheck_CanApply_KServeManagedKueueManaged(t *testing.T) {
+func TestKueueLabelsLLMCheck_CanApply_KueueManaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsLLMListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestKueueLabelsLLMCheck_CanApply_KServeManagedKueueRemoved(t *testing.T) {
+func TestKueueLabelsLLMCheck_CanApply_KueueRemoved(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsLLMListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed", "kueue": "Removed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Removed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestKueueLabelsLLMCheck_CanApply_KServeRemoved(t *testing.T) {
+func TestKueueLabelsLLMCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsLLMListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Removed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
@@ -118,19 +117,19 @@ func TestKueueLabelsLLMCheck_NoLLMInferenceServices(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeLLMISVCKueueLabels),
+		"Type":    Equal(kueue.ConditionTypeLLMISVCKueueLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonRequirementsMet),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloads, "LLMInferenceService")),
 	}))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeLLMISVCKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeLLMISVCKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloadsInKueueNs, "LLMInferenceService")),
 	}))
@@ -156,7 +155,7 @@ func TestKueueLabelsLLMCheck_WithoutQueueLabelInKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -164,7 +163,7 @@ func TestKueueLabelsLLMCheck_WithoutQueueLabelInKueueNamespace(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
 	g.Expect(result.Status.Conditions[0].Message).To(Equal(fmt.Sprintf(kueue.MsgNoLabeledWorkloads, "LLMInferenceService")))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeLLMISVCKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeLLMISVCKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
 		"Message": Equal(fmt.Sprintf(kueue.MsgMissingLabelInKueueNs, 1, "LLMInferenceService")),
@@ -193,13 +192,13 @@ func TestKueueLabelsLLMCheck_LabeledInNonKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeLLMISVCKueueLabels),
+		"Type":    Equal(kueue.ConditionTypeLLMISVCKueueLabels),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNsNotKueueEnabled, 1, "LLMInferenceService")),
@@ -233,7 +232,7 @@ func TestKueueLabelsLLMCheck_WithQueueLabelInKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -269,7 +268,7 @@ func TestKueueLabelsLLMCheck_MixedLabeledLLMInferenceServices(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -301,7 +300,7 @@ func TestKueueLabelsLLMCheck_OpenshiftKueueLabel(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsLLMCheck()
+	chk := kueue.NewKueueLabelsLLMCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

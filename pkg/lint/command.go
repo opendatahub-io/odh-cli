@@ -28,6 +28,7 @@ import (
 	datasciencepipelinesworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/guardrails"
 	kserveworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kserve"
+	kueueworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
 	llamastackworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/llamastack"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/notebook"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
@@ -114,21 +115,21 @@ func NewCommand(
 	registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewHardwareProfileMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewImpactedWorkloadsCheck())
-	registry.MustRegister(kserveworkloads.NewKueueLabelsISVCCheck())
-	registry.MustRegister(kserveworkloads.NewKueueLabelsLLMCheck())
+	registry.MustRegister(kueueworkloads.NewKueueLabelsISVCCheck())
+	registry.MustRegister(kueueworkloads.NewKueueLabelsLLMCheck())
 	registry.MustRegister(llamastackworkloads.NewConfigCheck())
 	registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
 	registry.MustRegister(notebook.NewContainerNameCheck())
 	registry.MustRegister(notebook.NewHardwareProfileMigrationCheck())
 	registry.MustRegister(notebook.NewConnectionIntegrityCheck())
 	registry.MustRegister(notebook.NewHardwareProfileIntegrityCheck())
-	registry.MustRegister(notebook.NewKueueLabelsCheck())
+	registry.MustRegister(kueueworkloads.NewKueueLabelsNotebookCheck())
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
 	registry.MustRegister(notebook.NewRunningWorkloadsCheck())
-	registry.MustRegister(ray.NewKueueLabelsRayClusterCheck())
-	registry.MustRegister(ray.NewKueueLabelsRayJobCheck())
+	registry.MustRegister(kueueworkloads.NewKueueLabelsRayClusterCheck())
+	registry.MustRegister(kueueworkloads.NewKueueLabelsRayJobCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
-	registry.MustRegister(trainingoperatorworkloads.NewKueueLabelsPyTorchJobCheck())
+	registry.MustRegister(kueueworkloads.NewKueueLabelsPyTorchJobCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 
 	c := &Command{

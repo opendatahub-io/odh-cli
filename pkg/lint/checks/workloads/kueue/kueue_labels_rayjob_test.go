@@ -1,4 +1,4 @@
-package ray_test
+package kueue_test
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
@@ -49,42 +48,42 @@ func newRayJob(name string, namespace string, labels map[string]any) *unstructur
 func TestKueueLabelsRayJobCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 
 	g.Expect(chk.ID()).To(Equal("workloads.ray.kueue-labels-rayjob"))
 	g.Expect(chk.Name()).To(Equal("Workloads :: Ray :: RayJob Kueue Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
-	g.Expect(chk.CheckKind()).To(Equal("ray"))
+	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.Remediation()).To(ContainSubstring("kueue.x-k8s.io/queue-name"))
 }
 
-func TestKueueLabelsRayJobCheck_CanApply_RayManagedKueueManaged(t *testing.T) {
+func TestKueueLabelsRayJobCheck_CanApply_KueueManaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsRayJobListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"ray": "Managed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestKueueLabelsRayJobCheck_CanApply_RayRemoved(t *testing.T) {
+func TestKueueLabelsRayJobCheck_CanApply_KueueRemoved(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsRayJobListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"ray": "Removed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Removed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
@@ -100,18 +99,18 @@ func TestKueueLabelsRayJobCheck_NoRayJobs(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(ray.ConditionTypeRayJobKueueLabels),
+		"Type":    Equal(kueue.ConditionTypeRayJobKueueLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloads, "RayJob")),
 	}))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(ray.ConditionTypeRayJobKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeRayJobKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloadsInKueueNs, "RayJob")),
 	}))
@@ -132,7 +131,7 @@ func TestKueueLabelsRayJobCheck_WithQueueLabelInKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -157,7 +156,7 @@ func TestKueueLabelsRayJobCheck_LabeledInNonKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -184,7 +183,7 @@ func TestKueueLabelsRayJobCheck_WithoutQueueLabel(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := ray.NewKueueLabelsRayJobCheck()
+	chk := kueue.NewKueueLabelsRayJobCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())

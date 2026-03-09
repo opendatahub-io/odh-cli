@@ -1,4 +1,4 @@
-package kserve_test
+package kueue_test
 
 import (
 	"fmt"
@@ -12,7 +12,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
-	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kserve"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
@@ -67,76 +66,60 @@ func newISVC(name string, namespace string, labels map[string]any) *unstructured
 func TestKueueLabelsISVCCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 
 	g.Expect(chk.ID()).To(Equal("workloads.kserve.kueue-labels-isvc"))
 	g.Expect(chk.Name()).To(Equal("Workloads :: KServe :: InferenceService Kueue Labels"))
 	g.Expect(chk.Group()).To(Equal(check.GroupWorkload))
-	g.Expect(chk.CheckKind()).To(Equal("kserve"))
+	g.Expect(chk.CheckKind()).To(Equal("kueue"))
 	g.Expect(chk.CheckType()).To(Equal(string(check.CheckTypeDataIntegrity)))
 	g.Expect(chk.Description()).ToNot(BeEmpty())
 	g.Expect(chk.Remediation()).To(ContainSubstring("kueue.x-k8s.io/queue-name"))
 }
 
-func TestKueueLabelsISVCCheck_CanApply_KServeManagedKueueManaged(t *testing.T) {
+func TestKueueLabelsISVCCheck_CanApply_KueueManaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsISVCListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestKueueLabelsISVCCheck_CanApply_KServeManagedKueueUnmanaged(t *testing.T) {
+func TestKueueLabelsISVCCheck_CanApply_KueueUnmanaged(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsISVCListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed", "kueue": "Unmanaged"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeTrue())
-}
-
-func TestKueueLabelsISVCCheck_CanApply_KServeManagedKueueRemoved(t *testing.T) {
-	g := NewWithT(t)
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      kueueLabelsISVCListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed", "kueue": "Removed"})},
-		CurrentVersion: "3.0.0",
-		TargetVersion:  "3.0.0",
-	})
-
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestKueueLabelsISVCCheck_CanApply_KServeRemoved(t *testing.T) {
+func TestKueueLabelsISVCCheck_CanApply_KueueRemoved(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      kueueLabelsISVCListKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Removed", "kueue": "Managed"})},
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Removed"})},
 		CurrentVersion: "3.0.0",
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
@@ -152,20 +135,20 @@ func TestKueueLabelsISVCCheck_NoInferenceServices(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeISVCKueueLabels),
+		"Type":    Equal(kueue.ConditionTypeISVCKueueLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Reason":  Equal(check.ReasonRequirementsMet),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloads, "InferenceService")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactNone))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeISVCKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeISVCKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionTrue),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNoWorkloadsInKueueNs, "InferenceService")),
 	}))
@@ -187,7 +170,7 @@ func TestKueueLabelsISVCCheck_WithoutQueueLabel(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -218,7 +201,7 @@ func TestKueueLabelsISVCCheck_WithQueueLabelInKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -247,7 +230,7 @@ func TestKueueLabelsISVCCheck_WithoutQueueLabelInKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -255,7 +238,7 @@ func TestKueueLabelsISVCCheck_WithoutQueueLabelInKueueNamespace(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
 	g.Expect(result.Status.Conditions[0].Message).To(Equal(fmt.Sprintf(kueue.MsgNoLabeledWorkloads, "InferenceService")))
 	g.Expect(result.Status.Conditions[1].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeISVCKueueMissingLabels),
+		"Type":    Equal(kueue.ConditionTypeISVCKueueMissingLabels),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
 		"Message": Equal(fmt.Sprintf(kueue.MsgMissingLabelInKueueNs, 1, "InferenceService")),
@@ -284,13 +267,13 @@ func TestKueueLabelsISVCCheck_LabeledInNonKueueNamespace(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Conditions).To(HaveLen(2))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(kserve.ConditionTypeISVCKueueLabels),
+		"Type":    Equal(kueue.ConditionTypeISVCKueueLabels),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonConfigurationInvalid),
 		"Message": Equal(fmt.Sprintf(kueue.MsgNsNotKueueEnabled, 1, "InferenceService")),
@@ -329,7 +312,7 @@ func TestKueueLabelsISVCCheck_MixedLabeledInferenceServices(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -361,7 +344,7 @@ func TestKueueLabelsISVCCheck_OpenshiftKueueLabel(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -392,7 +375,7 @@ func TestKueueLabelsISVCCheck_CustomQueueName(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
@@ -414,7 +397,7 @@ func TestKueueLabelsISVCCheck_AnnotationTargetVersion(t *testing.T) {
 		TargetVersion:  "3.0.0",
 	})
 
-	chk := kserve.NewKueueLabelsISVCCheck()
+	chk := kueue.NewKueueLabelsISVCCheck()
 	result, err := chk.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
