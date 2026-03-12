@@ -119,6 +119,10 @@ ENV PATH="/opt/rhai-cli/bin:${PATH}"
 # Copy upgrade helpers from builder
 COPY --from=builder /opt/rhai-upgrade-helpers /opt/rhai-upgrade-helpers
 
+# Create backup directory for upgrade artifacts (world-writable with sticky bit
+# so arbitrary UIDs can create subdirectories without permission errors)
+RUN mkdir -p /tmp/rhoai-upgrade-backup && chmod 1777 /tmp/rhoai-upgrade-backup
+
 # Set entrypoint to rhai-cli binary
 # Users can override with --entrypoint /bin/bash for interactive debugging
 ENTRYPOINT ["/opt/rhai-cli/bin/rhai-cli"]
