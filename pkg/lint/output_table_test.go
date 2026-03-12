@@ -575,3 +575,148 @@ func TestOutputTable_VersionInfoAppearsBetweenTableAndSummary(t *testing.T) {
 	g.Expect(tableIdx).To(BeNumerically("<", envIdx))
 	g.Expect(envIdx).To(BeNumerically("<", summaryIdx))
 }
+
+func TestOutputTable_ProhibitedBannerAppearsBeforeTable(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		{
+			Result: &result.DiagnosticResult{
+				Group: "workload",
+				Kind:  "kueue",
+				Name:  "data-integrity",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{
+						{
+							Condition: metav1.Condition{
+								Type:    "KueueConsistency",
+								Status:  metav1.ConditionFalse,
+								Reason:  "ConfigurationInvalid",
+								Message: "Found 3 kueue consistency violations",
+							},
+							Impact: result.ImpactProhibited,
+						},
+					},
+				},
+			},
+		},
+		{
+			Result: &result.DiagnosticResult{
+				Group: "component",
+				Kind:  "dashboard",
+				Name:  "version-check",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{passCondition()},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := lint.OutputTable(&buf, results, lint.TableOutputOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+
+	output := buf.String()
+
+	// Banner should be present and appear before the table data.
+	g.Expect(output).To(ContainSubstring("Prohibited Violations Detected"))
+	g.Expect(output).To(ContainSubstring("Found 3 kueue consistency violations"))
+
+	bannerIdx := strings.Index(output, "Prohibited Violations Detected")
+	tableIdx := strings.Index(output, "STATUS")
+	g.Expect(bannerIdx).To(BeNumerically("<", tableIdx))
+
+	// Summary should include prohibited count.
+	g.Expect(output).To(ContainSubstring("Prohibited: 1"))
+}
+
+func TestOutputTable_ProhibitedBannerShowsMultipleProhibitedFindings(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		{
+			Result: &result.DiagnosticResult{
+				Group: "workload",
+				Kind:  "kueue",
+				Name:  "data-integrity",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{
+						{
+							Condition: metav1.Condition{
+								Type:    "KueueConsistency",
+								Status:  metav1.ConditionFalse,
+								Reason:  "ConfigurationInvalid",
+								Message: "kueue label inconsistencies found",
+							},
+							Impact: result.ImpactProhibited,
+						},
+					},
+				},
+			},
+		},
+		{
+			Result: &result.DiagnosticResult{
+				Group: "workload",
+				Kind:  "other",
+				Name:  "other-integrity",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{
+						{
+							Condition: metav1.Condition{
+								Type:    "DataConsistency",
+								Status:  metav1.ConditionFalse,
+								Reason:  "Inconsistent",
+								Message: "second prohibited violation detected",
+							},
+							Impact: result.ImpactProhibited,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := lint.OutputTable(&buf, results, lint.TableOutputOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+
+	output := buf.String()
+
+	// Both prohibited findings should appear in the banner.
+	g.Expect(output).To(ContainSubstring("kueue label inconsistencies found"))
+	g.Expect(output).To(ContainSubstring("second prohibited violation detected"))
+	g.Expect(output).To(ContainSubstring("Prohibited: 2"))
+}
+
+func TestOutputTable_NoBannerWhenNoProhibitedFindings(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		{
+			Result: &result.DiagnosticResult{
+				Group: "component",
+				Kind:  "dashboard",
+				Name:  "version-check",
+				Status: result.DiagnosticStatus{
+					Conditions: []result.Condition{
+						{
+							Condition: metav1.Condition{
+								Type:    "Compatible",
+								Status:  metav1.ConditionFalse,
+								Reason:  "Incompatible",
+								Message: "blocking but not prohibited",
+							},
+							Impact: result.ImpactBlocking,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := lint.OutputTable(&buf, results, lint.TableOutputOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(buf.String()).ToNot(ContainSubstring("Prohibited Violations Detected"))
+}

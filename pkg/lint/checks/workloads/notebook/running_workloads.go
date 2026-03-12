@@ -17,7 +17,7 @@ import (
 // A Notebook is considered running when it does not have the kubeflow-resource-stopped annotation.
 type RunningWorkloadsCheck struct {
 	check.BaseCheck
-	NotebookVerboseFormatter
+	check.EnhancedVerboseFormatter
 }
 
 func NewRunningWorkloadsCheck() *RunningWorkloadsCheck {

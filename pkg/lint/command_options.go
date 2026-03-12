@@ -36,9 +36,10 @@ const (
 type SeverityLevel string
 
 const (
-	SeverityLevelCritical SeverityLevel = "critical" // Show only blocking (critical) conditions
-	SeverityLevelWarning  SeverityLevel = "warning"  // Show blocking and advisory conditions
-	SeverityLevelInfo     SeverityLevel = "info"     // Show all conditions (default)
+	SeverityLevelProhibited SeverityLevel = "prohibited" // Show only prohibited conditions
+	SeverityLevelCritical   SeverityLevel = "critical"   // Show prohibited and blocking conditions
+	SeverityLevelWarning    SeverityLevel = "warning"    // Show prohibited, blocking, and advisory conditions
+	SeverityLevelInfo       SeverityLevel = "info"       // Show all conditions (default)
 )
 
 // Validate checks if the output format is valid.
@@ -54,10 +55,10 @@ func (o OutputFormat) Validate() error {
 // Validate checks if the severity level is valid.
 func (s SeverityLevel) Validate() error {
 	switch s {
-	case SeverityLevelCritical, SeverityLevelWarning, SeverityLevelInfo:
+	case SeverityLevelProhibited, SeverityLevelCritical, SeverityLevelWarning, SeverityLevelInfo:
 		return nil
 	default:
-		return fmt.Errorf("invalid severity level: %s (must be one of: critical, warning, info)", s)
+		return fmt.Errorf("invalid severity level: %s (must be one of: prohibited, critical, warning, info)", s)
 	}
 }
 
@@ -317,10 +318,12 @@ func FilterBySeverity(results []check.CheckExecution, minLevel SeverityLevel) []
 // minimum severity threshold.
 func meetsMinSeverity(impact result.Impact, minLevel SeverityLevel) bool {
 	switch minLevel {
+	case SeverityLevelProhibited:
+		return impact == result.ImpactProhibited
 	case SeverityLevelCritical:
-		return impact == result.ImpactBlocking
+		return impact == result.ImpactProhibited || impact == result.ImpactBlocking
 	case SeverityLevelWarning:
-		return impact == result.ImpactBlocking || impact == result.ImpactAdvisory
+		return impact == result.ImpactProhibited || impact == result.ImpactBlocking || impact == result.ImpactAdvisory
 	case SeverityLevelInfo:
 		return true
 	}
@@ -345,12 +348,15 @@ func checkMaxImpact(exec check.CheckExecution) result.Impact {
 // getImpactString determines the display string from a condition's impact.
 func getImpactString(
 	condition *result.Condition,
+	prohibitedStr string,
 	blockingStr string,
 	advisoryStr string,
 	noneStr string,
 ) string {
 	// Use Impact field directly (always set by NewCondition).
 	switch condition.Impact {
+	case result.ImpactProhibited:
+		return prohibitedStr
 	case result.ImpactBlocking:
 		return blockingStr
 	case result.ImpactAdvisory:
@@ -364,15 +370,19 @@ func getImpactString(
 
 // Impact sort priorities (lower = higher severity).
 const (
-	impactPriorityBlocking = iota
+	impactPriorityProhibited = iota
+	impactPriorityBlocking
 	impactPriorityAdvisory
 	impactPriorityNone
 )
 
-// impactSortPriority returns a numeric priority so blocking (critical) sorts
-// before advisory (warning) which sorts before none (info).
+// impactSortPriority returns a numeric priority so prohibited sorts before
+// blocking (critical) which sorts before advisory (warning) which sorts
+// before none (info).
 func impactSortPriority(impact result.Impact) int {
 	switch impact {
+	case result.ImpactProhibited:
+		return impactPriorityProhibited
 	case result.ImpactBlocking:
 		return impactPriorityBlocking
 	case result.ImpactAdvisory:

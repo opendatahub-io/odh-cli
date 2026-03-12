@@ -108,12 +108,52 @@ var (
 		Resource: "datasciencepipelinesapplications",
 	}
 
+	// StatefulSet is the Kubernetes StatefulSet resource.
+	StatefulSet = ResourceType{
+		Group:    "apps",
+		Version:  "v1",
+		Kind:     "StatefulSet",
+		Resource: "statefulsets",
+	}
+
+	// ReplicaSet is the Kubernetes ReplicaSet resource.
+	ReplicaSet = ResourceType{
+		Group:    "apps",
+		Version:  "v1",
+		Kind:     "ReplicaSet",
+		Resource: "replicasets",
+	}
+
+	// DaemonSet is the Kubernetes DaemonSet resource.
+	DaemonSet = ResourceType{
+		Group:    "apps",
+		Version:  "v1",
+		Kind:     "DaemonSet",
+		Resource: "daemonsets",
+	}
+
 	// Deployment is the Kubernetes Deployment resource.
 	Deployment = ResourceType{
 		Group:    "apps",
 		Version:  "v1",
 		Kind:     "Deployment",
 		Resource: "deployments",
+	}
+
+	// Job is the Kubernetes Job resource.
+	Job = ResourceType{
+		Group:    "batch",
+		Version:  "v1",
+		Kind:     "Job",
+		Resource: "jobs",
+	}
+
+	// CronJob is the Kubernetes CronJob resource.
+	CronJob = ResourceType{
+		Group:    "batch",
+		Version:  "v1",
+		Kind:     "CronJob",
+		Resource: "cronjobs",
 	}
 
 	// Namespace is the core Kubernetes Namespace resource.

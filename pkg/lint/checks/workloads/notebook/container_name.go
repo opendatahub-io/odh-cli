@@ -16,7 +16,7 @@ import (
 // Dashboard-managed annotations (accelerator profile or size selection) are checked.
 type ContainerNameCheck struct {
 	check.BaseCheck
-	NotebookVerboseFormatter
+	check.EnhancedVerboseFormatter
 }
 
 // NewContainerNameCheck creates a new ContainerNameCheck.

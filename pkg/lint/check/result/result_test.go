@@ -307,6 +307,53 @@ func TestDiagnosticResult_Validate_EmptyConditionReason(t *testing.T) {
 	g.Expect(err.Error()).To(ContainSubstring("has empty reason"))
 }
 
+func TestConditionValidate_ProhibitedWithStatusFalse(t *testing.T) {
+	g := NewWithT(t)
+
+	cond := result.Condition{
+		Condition: metav1.Condition{
+			Type:   "Consistency",
+			Status: metav1.ConditionFalse,
+			Reason: "Inconsistent",
+		},
+		Impact: result.ImpactProhibited,
+	}
+
+	g.Expect(cond.Validate()).ToNot(HaveOccurred())
+}
+
+func TestConditionValidate_ProhibitedWithStatusUnknown(t *testing.T) {
+	g := NewWithT(t)
+
+	cond := result.Condition{
+		Condition: metav1.Condition{
+			Type:   "Consistency",
+			Status: metav1.ConditionUnknown,
+			Reason: "CannotDetermine",
+		},
+		Impact: result.ImpactProhibited,
+	}
+
+	g.Expect(cond.Validate()).ToNot(HaveOccurred())
+}
+
+func TestConditionValidate_ProhibitedWithStatusTrue_Invalid(t *testing.T) {
+	g := NewWithT(t)
+
+	cond := result.Condition{
+		Condition: metav1.Condition{
+			Type:   "Consistency",
+			Status: metav1.ConditionTrue,
+			Reason: "Consistent",
+		},
+		Impact: result.ImpactProhibited,
+	}
+
+	err := cond.Validate()
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("Status=True must have Impact=None"))
+}
+
 // T023: Multiple conditions array tests
 
 func TestMultipleConditions_OrderedByExecutionSequence(t *testing.T) {
@@ -788,6 +835,118 @@ func TestSetCondition_MultipleConditionTypes(t *testing.T) {
 		"Type":   Equal(check.ConditionTypeAvailable),
 		"Status": Equal(metav1.ConditionTrue),
 	}))
+}
+
+// GetImpact tests
+
+func TestGetImpact_ReturnsProhibitedAsHighest(t *testing.T) {
+	g := NewWithT(t)
+
+	dr := result.New("workload", "kueue", "data-integrity", "test")
+	dr.SetCondition(check.NewCondition(
+		"Advisory",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("advisory finding"),
+		check.WithImpact(result.ImpactAdvisory),
+	))
+	dr.SetCondition(check.NewCondition(
+		"Blocking",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("blocking finding"),
+		check.WithImpact(result.ImpactBlocking),
+	))
+	dr.SetCondition(check.NewCondition(
+		"Prohibited",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("prohibited finding"),
+		check.WithImpact(result.ImpactProhibited),
+	))
+
+	g.Expect(dr.GetImpact()).To(Equal(result.ImpactProhibited))
+}
+
+func TestGetImpact_ProhibitedShortCircuits(t *testing.T) {
+	g := NewWithT(t)
+
+	// Prohibited condition first — should return immediately without checking others.
+	dr := result.New("workload", "kueue", "data-integrity", "test")
+	dr.SetCondition(check.NewCondition(
+		"Prohibited",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("prohibited finding"),
+		check.WithImpact(result.ImpactProhibited),
+	))
+	dr.SetCondition(check.NewCondition(
+		"Passing",
+		metav1.ConditionTrue,
+		check.WithReason("Reason"),
+		check.WithMessage("all good"),
+	))
+
+	g.Expect(dr.GetImpact()).To(Equal(result.ImpactProhibited))
+}
+
+func TestGetImpact_BlockingWithoutProhibited(t *testing.T) {
+	g := NewWithT(t)
+
+	dr := result.New("component", "kserve", "removal", "test")
+	dr.SetCondition(check.NewCondition(
+		"Blocking",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("blocking finding"),
+		check.WithImpact(result.ImpactBlocking),
+	))
+	dr.SetCondition(check.NewCondition(
+		"Advisory",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("advisory finding"),
+		check.WithImpact(result.ImpactAdvisory),
+	))
+
+	g.Expect(dr.GetImpact()).To(Equal(result.ImpactBlocking))
+}
+
+func TestGetImpact_AdvisoryWithoutBlockingOrProhibited(t *testing.T) {
+	g := NewWithT(t)
+
+	dr := result.New("component", "dashboard", "migration", "test")
+	dr.SetCondition(check.NewCondition(
+		"Advisory",
+		metav1.ConditionFalse,
+		check.WithReason("Reason"),
+		check.WithMessage("advisory finding"),
+		check.WithImpact(result.ImpactAdvisory),
+	))
+
+	g.Expect(dr.GetImpact()).To(Equal(result.ImpactAdvisory))
+}
+
+func TestGetImpact_NoneWhenAllPassing(t *testing.T) {
+	g := NewWithT(t)
+
+	dr := result.New("component", "dashboard", "status", "test")
+	dr.SetCondition(check.NewCondition(
+		"Available",
+		metav1.ConditionTrue,
+		check.WithReason("Ready"),
+		check.WithMessage("all good"),
+	))
+
+	g.Expect(dr.GetImpact()).To(Equal(result.ImpactNone))
+}
+
+func TestGetImpact_NoneWhenNoConditions(t *testing.T) {
+	g := NewWithT(t)
+
+	dr := result.New("component", "test", "check", "test")
+
+	g.Expect(dr.GetImpact()).To(Equal(result.ImpactNone))
 }
 
 // SetImpactedObjects and AddImpactedObjects tests

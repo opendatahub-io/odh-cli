@@ -2,6 +2,7 @@ package lint
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -105,7 +106,7 @@ func NewCommand(
 	registry.MustRegister(certmanager.NewCheck())
 	registry.MustRegister(openshift.NewCheck())
 
-	// Workloads (25)
+	// Workloads (20)
 	registry.MustRegister(ray.NewAppWrapperCleanupCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewInstructLabRemovalCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewStoredVersionRemovalCheck())
@@ -115,21 +116,16 @@ func NewCommand(
 	registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewHardwareProfileMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewImpactedWorkloadsCheck())
-	registry.MustRegister(kueueworkloads.NewKueueLabelsISVCCheck())
-	registry.MustRegister(kueueworkloads.NewKueueLabelsLLMCheck())
+	registry.MustRegister(kueueworkloads.NewDataIntegrityCheck())
 	registry.MustRegister(llamastackworkloads.NewConfigCheck())
 	registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
 	registry.MustRegister(notebook.NewContainerNameCheck())
 	registry.MustRegister(notebook.NewHardwareProfileMigrationCheck())
 	registry.MustRegister(notebook.NewConnectionIntegrityCheck())
 	registry.MustRegister(notebook.NewHardwareProfileIntegrityCheck())
-	registry.MustRegister(kueueworkloads.NewKueueLabelsNotebookCheck())
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
 	registry.MustRegister(notebook.NewRunningWorkloadsCheck())
-	registry.MustRegister(kueueworkloads.NewKueueLabelsRayClusterCheck())
-	registry.MustRegister(kueueworkloads.NewKueueLabelsRayJobCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
-	registry.MustRegister(kueueworkloads.NewKueueLabelsPyTorchJobCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 
 	c := &Command{
@@ -328,7 +324,7 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 // printVerdictAndExit prints a prominent result verdict for table output and returns
 // an error if fail-on conditions are met (to control exit code).
 func (c *Command) printVerdictAndExit(results []check.CheckExecution) error {
-	var hasBlocking, hasAdvisory bool
+	var hasProhibited, hasBlocking, hasAdvisory bool
 
 	for _, exec := range results {
 		if exec.Result == nil {
@@ -336,6 +332,8 @@ func (c *Command) printVerdictAndExit(results []check.CheckExecution) error {
 		}
 
 		switch exec.Result.GetImpact() {
+		case resultpkg.ImpactProhibited:
+			hasProhibited = true
 		case resultpkg.ImpactBlocking:
 			hasBlocking = true
 		case resultpkg.ImpactAdvisory:
@@ -346,7 +344,11 @@ func (c *Command) printVerdictAndExit(results []check.CheckExecution) error {
 	}
 
 	if c.OutputFormat == OutputFormatTable {
-		printVerdict(c.IO.Out(), hasBlocking, hasAdvisory)
+		printVerdict(c.IO.Out(), hasProhibited, hasBlocking, hasAdvisory)
+	}
+
+	if hasProhibited {
+		return errors.New("prohibited findings detected: upgrade is not possible")
 	}
 
 	return nil

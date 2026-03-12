@@ -133,7 +133,7 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 //	  - namespace: <ns>
 //	       - <crd-fqn>/<name>
 func (c *ImpactedWorkloadsCheck) FormatVerboseOutput(out iolib.Writer, dr *result.DiagnosticResult) {
-	crdName := crdFQN(dr)
+	crdName := check.CRDFullyQualifiedName(dr)
 
 	// Group notebooks by image reference, preserving insertion order.
 	// Within each image group, track notebooks per namespace.
@@ -1406,7 +1406,7 @@ func isCompliantBuildRef(buildRef string) bool {
 // mustParseVersionParts parses a "X.Y" version string into its major and minor
 // integer components. Panics if the format is invalid.
 //
-//nolint:revive // unnamed-result conflicts with nonamedreturns linter
+//nolint:revive // confusing-results: unnamed (int, int) conflicts with nonamedreturns linter.
 func mustParseVersionParts(v string) (int, int) {
 	majorStr, minorStr, ok := strings.Cut(v, ".")
 	if !ok {

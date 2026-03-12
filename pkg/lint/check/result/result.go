@@ -16,6 +16,19 @@ const (
 	// (e.g., "notebooks.kubeflow.org"). Automatically set by SetImpactedObjects and
 	// AddImpactedObjects from the ResourceType.
 	AnnotationResourceCRDName = "resource.opendatahub.io/crd-name"
+
+	// AnnotationObjectContext is an optional per-object annotation key that provides
+	// brief clarifying context about why a specific object is impacted. When set on
+	// an ImpactedObject's ObjectMeta.Annotations, the EnhancedVerboseFormatter renders
+	// it as a sub-bullet beneath the object reference.
+	AnnotationObjectContext = "result.opendatahub.io/context"
+
+	// AnnotationObjectCRDName is an optional per-object annotation key for the CRD
+	// fully-qualified name (e.g., "notebooks.kubeflow.org"). Set from ResourceType.CRDFQN()
+	// when building impacted objects. Used by buildCRDFQNByKind for authoritative plural
+	// forms, avoiding naive derivation from Kind. Especially useful for multi-kind results
+	// where the result-level AnnotationResourceCRDName cannot represent all types.
+	AnnotationObjectCRDName = "result.opendatahub.io/crd-name"
 )
 
 const (
@@ -33,11 +46,12 @@ const (
 // Impact represents the upgrade impact level of a diagnostic condition.
 type Impact string
 
-// Impact levels for diagnostic conditions.
+// Impact levels for diagnostic conditions, ordered by severity (highest first).
 const (
-	ImpactBlocking Impact = "blocking" // Upgrade CANNOT proceed
-	ImpactAdvisory Impact = "advisory" // Upgrade CAN proceed with warning
-	ImpactNone     Impact = ""         // No impact (omitted from JSON/YAML)
+	ImpactProhibited Impact = "prohibited" // Upgrade is NOT POSSIBLE
+	ImpactBlocking   Impact = "blocking"   // Upgrade CANNOT proceed
+	ImpactAdvisory   Impact = "advisory"   // Upgrade CAN proceed with warning
+	ImpactNone       Impact = ""           // No impact (omitted from JSON/YAML)
 )
 
 // Condition represents a diagnostic condition with severity level.
@@ -71,16 +85,16 @@ func (c Condition) Validate() error {
 		// False/Unknown status must have impact specified.
 		if c.Impact == ImpactNone || c.Impact == "" {
 			return fmt.Errorf(
-				"condition with Status=%q must have Impact specified (Blocking or Advisory), got Impact=%q",
+				"condition with Status=%q must have Impact specified (Prohibited, Blocking, or Advisory), got Impact=%q",
 				c.Status, c.Impact,
 			)
 		}
 
 		// Validate impact values.
-		if c.Impact != ImpactBlocking && c.Impact != ImpactAdvisory {
+		if c.Impact != ImpactProhibited && c.Impact != ImpactBlocking && c.Impact != ImpactAdvisory {
 			return fmt.Errorf(
-				"invalid Impact=%q, must be %q or %q",
-				c.Impact, ImpactBlocking, ImpactAdvisory,
+				"invalid Impact=%q, must be %q, %q, or %q",
+				c.Impact, ImpactProhibited, ImpactBlocking, ImpactAdvisory,
 			)
 		}
 
@@ -254,10 +268,14 @@ func (r *DiagnosticResult) GetImpact() Impact {
 
 	for _, cond := range r.Status.Conditions {
 		switch cond.Impact {
+		case ImpactProhibited:
+			return ImpactProhibited
 		case ImpactBlocking:
-			return ImpactBlocking
+			maxImpact = ImpactBlocking
 		case ImpactAdvisory:
-			maxImpact = ImpactAdvisory
+			if maxImpact == ImpactNone {
+				maxImpact = ImpactAdvisory
+			}
 		case ImpactNone:
 			// No impact - continue checking other conditions
 		}

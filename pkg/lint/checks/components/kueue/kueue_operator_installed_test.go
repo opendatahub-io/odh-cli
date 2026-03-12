@@ -82,7 +82,7 @@ func TestOperatorInstalledCheck_UnmanagedNotInstalled(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
-// Managed + operator NOT installed = pass.
+// Managed + operator NOT installed = prohibited.
 func TestOperatorInstalledCheck_ManagedNotInstalled(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -101,13 +101,14 @@ func TestOperatorInstalledCheck_ManagedNotInstalled(t *testing.T) {
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("Managed"),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": ContainSubstring("migration to the Red Hat build of Kueue operator is required"),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
 }
 
-// Managed + operator installed = blocking.
+// Managed + operator installed = prohibited.
 func TestOperatorInstalledCheck_ManagedInstalled(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -128,10 +129,11 @@ func TestOperatorInstalledCheck_ManagedInstalled(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("Red Hat build of Kueue operator"), ContainSubstring("cannot coexist")),
+		"Message": ContainSubstring("migration to the Red Hat build of Kueue operator is required"),
 	}))
-	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
-	g.Expect(result.Annotations).To(HaveKeyWithValue("operator.opendatahub.io/installed-version", "kueue-operator.v0.6.0"))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
+	// Managed state skips OLM lookup entirely, so no installed-version annotation is set.
+	g.Expect(result.Annotations).ToNot(HaveKey("operator.opendatahub.io/installed-version"))
 }
 
 func TestOperatorInstalledCheck_CanApply_ManagementState(t *testing.T) {

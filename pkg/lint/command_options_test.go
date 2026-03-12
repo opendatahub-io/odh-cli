@@ -171,6 +171,7 @@ func TestSeverityLevelValidate(t *testing.T) {
 		level   lint.SeverityLevel
 		wantErr bool
 	}{
+		{name: "prohibited valid", level: lint.SeverityLevelProhibited, wantErr: false},
 		{name: "critical valid", level: lint.SeverityLevelCritical, wantErr: false},
 		{name: "warning valid", level: lint.SeverityLevelWarning, wantErr: false},
 		{name: "info valid", level: lint.SeverityLevelInfo, wantErr: false},
@@ -194,6 +195,8 @@ func TestSeverityLevelValidate(t *testing.T) {
 func makeCondition(impact result.Impact, msg string) result.Condition {
 	status := metav1.ConditionTrue
 	switch impact {
+	case result.ImpactProhibited:
+		status = metav1.ConditionFalse
 	case result.ImpactBlocking:
 		status = metav1.ConditionFalse
 	case result.ImpactAdvisory:
@@ -254,6 +257,39 @@ func TestFilterBySeverity_WarningHidesInfo(t *testing.T) {
 	g.Expect(filtered).To(HaveLen(2))
 	g.Expect(filtered[0].Result.Kind).To(Equal("kserve"))
 	g.Expect(filtered[1].Result.Kind).To(Equal("dashboard"))
+}
+
+func TestFilterBySeverity_ProhibitedKeepsOnlyProhibited(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		makeExec("kueue", makeCondition(result.ImpactProhibited, "prohibited")),
+		makeExec("kserve", makeCondition(result.ImpactBlocking, "crit")),
+		makeExec("dashboard", makeCondition(result.ImpactAdvisory, "warn")),
+		makeExec("notebook", makeCondition(result.ImpactNone, "info")),
+	}
+
+	filtered := lint.FilterBySeverity(results, lint.SeverityLevelProhibited)
+
+	g.Expect(filtered).To(HaveLen(1))
+	g.Expect(filtered[0].Result.Kind).To(Equal("kueue"))
+}
+
+func TestFilterBySeverity_CriticalRetainsProhibited(t *testing.T) {
+	g := NewWithT(t)
+
+	results := []check.CheckExecution{
+		makeExec("kueue", makeCondition(result.ImpactProhibited, "prohibited")),
+		makeExec("kserve", makeCondition(result.ImpactBlocking, "crit")),
+		makeExec("dashboard", makeCondition(result.ImpactAdvisory, "warn")),
+		makeExec("notebook", makeCondition(result.ImpactNone, "info")),
+	}
+
+	filtered := lint.FilterBySeverity(results, lint.SeverityLevelCritical)
+
+	g.Expect(filtered).To(HaveLen(2))
+	g.Expect(filtered[0].Result.Kind).To(Equal("kueue"))
+	g.Expect(filtered[1].Result.Kind).To(Equal("kserve"))
 }
 
 func TestFilterBySeverity_CriticalHidesWarningAndInfo(t *testing.T) {

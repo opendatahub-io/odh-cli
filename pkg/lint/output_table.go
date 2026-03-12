@@ -19,14 +19,16 @@ import (
 //nolint:gochecknoglobals
 var (
 	// Table output symbols.
-	statusPass = color.New(color.FgGreen).Sprint("✓")
-	statusWarn = color.New(color.FgYellow).Sprint("⚠")
-	statusFail = color.New(color.FgRed).Sprint("✗")
+	statusPass       = color.New(color.FgGreen).Sprint("✓")
+	statusWarn       = color.New(color.FgYellow).Sprint("⚠")
+	statusFail       = color.New(color.FgRed).Sprint("✗")
+	statusProhibited = color.New(color.FgRed, color.Bold).Sprint("‼")
 
 	// Severity level formatting.
-	severityCrit = color.New(color.FgRed).Sprint("critical")
-	severityWarn = color.New(color.FgYellow).Add(color.Bold).Sprint("warning") // Bold yellow (orange-ish)
-	severityInfo = color.New(color.FgCyan).Sprint("info")
+	severityProhibited = color.New(color.FgRed, color.Bold).Sprint("prohibited")
+	severityCrit       = color.New(color.FgRed).Sprint("critical")
+	severityWarn       = color.New(color.FgYellow).Sprint("warning")
+	severityInfo       = color.New(color.FgCyan).Sprint("info")
 
 	// Table headers.
 	tableHeaders        = []string{"STATUS", "KIND", "GROUP", "CHECK", "IMPACT", "MESSAGE"}
@@ -37,11 +39,14 @@ var (
 )
 
 // printVerdict prints the Result section after the summary.
-func printVerdict(out io.Writer, hasBlocking bool, hasAdvisory bool) {
+func printVerdict(out io.Writer, hasProhibited bool, hasBlocking bool, hasAdvisory bool) {
 	_, _ = fmt.Fprintln(out)
 	_, _ = fmt.Fprintln(out, "Result:")
 
 	switch {
+	case hasProhibited:
+		verdict := color.New(color.FgRed, color.Bold).Sprint("PROHIBITED")
+		_, _ = fmt.Fprintf(out, "  %s - upgrade is not possible\n", verdict)
 	case hasBlocking:
 		verdict := color.New(color.FgRed, color.Bold).Sprint("FAIL")
 		_, _ = fmt.Fprintf(out, "  %s - blocking findings detected\n", verdict)
@@ -52,6 +57,29 @@ func printVerdict(out io.Writer, hasBlocking bool, hasAdvisory bool) {
 		verdict := color.New(color.FgGreen, color.Bold).Sprint("PASS")
 		_, _ = fmt.Fprintf(out, "  %s - all checks passed\n", verdict)
 	}
+}
+
+// outputProhibitedBanner renders a prominent warning banner above the summary table
+// listing all prohibited findings. Each prohibited condition is shown so that none
+// can be overlooked when multiple checks report prohibited-level impact.
+func outputProhibitedBanner(out io.Writer, findings []sortableRow) {
+	bold := color.New(color.FgRed, color.Bold)
+
+	_, _ = fmt.Fprintln(out)
+	bannerText := "  Prohibited Violations Detected: Upgrade is NOT POSSIBLE  "
+	bannerWidth := visibleLen(bannerText)
+	hLine := strings.Repeat("═", bannerWidth)
+
+	_, _ = fmt.Fprintln(out, bold.Sprintf("╔%s╗", hLine))
+	_, _ = fmt.Fprintln(out, bold.Sprintf("║%s║", bannerText))
+	_, _ = fmt.Fprintln(out, bold.Sprintf("╚%s╝", hLine))
+
+	for _, f := range findings {
+		_, _ = fmt.Fprintf(out, "  %s  [%s / %s] %s\n",
+			statusProhibited, f.row.Group, f.row.Check, f.row.Message)
+	}
+
+	_, _ = fmt.Fprintln(out)
 }
 
 // sortableRow pairs a table row with the raw impact for sort comparisons.
@@ -86,7 +114,7 @@ func collectSortedRows(results []check.CheckExecution) []sortableRow {
 					Kind:        exec.Result.Kind,
 					Group:       exec.Result.Group,
 					Check:       exec.Result.Name,
-					Impact:      getImpactString(&condition, severityCrit, severityWarn, severityInfo),
+					Impact:      getImpactString(&condition, severityProhibited, severityCrit, severityWarn, severityInfo),
 					Message:     condition.Message,
 					Description: exec.Result.Spec.Description,
 				},
@@ -119,6 +147,8 @@ func collectSortedRows(results []check.CheckExecution) []sortableRow {
 // statusSymbol returns the colored status symbol for the given impact level.
 func statusSymbol(impact result.Impact) string {
 	switch impact {
+	case result.ImpactProhibited:
+		return statusProhibited
 	case result.ImpactBlocking:
 		return statusFail
 	case result.ImpactAdvisory:
@@ -151,6 +181,18 @@ func padRight(s string, visibleWidth int) string {
 func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutputOptions) error {
 	rows := collectSortedRows(results)
 
+	// Collect prohibited findings for the warning banner before the table.
+	var prohibitedFindings []sortableRow
+	for _, sr := range rows {
+		if sr.impact == result.ImpactProhibited {
+			prohibitedFindings = append(prohibitedFindings, sr)
+		}
+	}
+
+	if len(prohibitedFindings) > 0 {
+		outputProhibitedBanner(out, prohibitedFindings)
+	}
+
 	renderer := table.NewRenderer[CheckResultTableRow](
 		table.WithWriter[CheckResultTableRow](out),
 		table.WithHeaders[CheckResultTableRow](tableHeaders...),
@@ -161,11 +203,14 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 	totalPassed := 0
 	totalWarnings := 0
 	totalFailed := 0
+	totalProhibited := 0
 
 	for _, sr := range rows {
 		totalChecks++
 
 		switch sr.impact {
+		case result.ImpactProhibited:
+			totalProhibited++
 		case result.ImpactBlocking:
 			totalFailed++
 		case result.ImpactAdvisory:
@@ -190,7 +235,7 @@ func OutputTable(out io.Writer, results []check.CheckExecution, opts TableOutput
 
 	_, _ = fmt.Fprintln(out)
 	_, _ = fmt.Fprintln(out, "Summary:")
-	_, _ = fmt.Fprintf(out, "  Total: %d | Passed: %d | Warnings: %d | Failed: %d\n", totalChecks, totalPassed, totalWarnings, totalFailed)
+	_, _ = fmt.Fprintf(out, "  Total: %d | Passed: %d | Warnings: %d | Failed: %d | Prohibited: %d\n", totalChecks, totalPassed, totalWarnings, totalFailed, totalProhibited)
 
 	if opts.ShowImpactedObjects {
 		outputImpactedObjects(out, results, opts.NamespaceRequesters)
@@ -215,7 +260,7 @@ func outputVersionInfo(out io.Writer, info *VersionInfo) {
 }
 
 // namespaceRequesterSetter is implemented by verbose formatters that need
-// namespace-to-requester mappings (e.g. NotebookVerboseFormatter).
+// namespace-to-requester mappings (e.g. EnhancedVerboseFormatter).
 type namespaceRequesterSetter interface {
 	SetNamespaceRequesters(requesters map[string]string)
 }
@@ -259,7 +304,7 @@ func buildVerboseRows(
 			check:  exec.Result.Name,
 			impact: getImpactString(
 				&result.Condition{Impact: maxImpact},
-				severityCrit, severityWarn, severityInfo,
+				severityProhibited, severityCrit, severityWarn, severityInfo,
 			),
 			exec: exec,
 		}

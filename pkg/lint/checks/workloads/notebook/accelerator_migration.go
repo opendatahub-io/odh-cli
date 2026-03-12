@@ -18,7 +18,7 @@ import (
 // that will be auto-migrated to HardwareProfiles (infrastructure.opendatahub.io) during RHOAI 3.x upgrade.
 type AcceleratorMigrationCheck struct {
 	check.BaseCheck
-	NotebookVerboseFormatter
+	check.EnhancedVerboseFormatter
 }
 
 func NewAcceleratorMigrationCheck() *AcceleratorMigrationCheck {

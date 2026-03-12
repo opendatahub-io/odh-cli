@@ -33,11 +33,13 @@ func ToPartialObjectMetadata(objs ...*unstructured.Unstructured) []runtime.Objec
 				Kind:       obj.GetKind(),
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:        obj.GetName(),
-				Namespace:   obj.GetNamespace(),
-				Labels:      obj.GetLabels(),
-				Annotations: obj.GetAnnotations(),
-				Finalizers:  obj.GetFinalizers(),
+				Name:            obj.GetName(),
+				Namespace:       obj.GetNamespace(),
+				UID:             obj.GetUID(),
+				Labels:          obj.GetLabels(),
+				Annotations:     obj.GetAnnotations(),
+				Finalizers:      obj.GetFinalizers(),
+				OwnerReferences: obj.GetOwnerReferences(),
 			},
 		}
 		result = append(result, pom)

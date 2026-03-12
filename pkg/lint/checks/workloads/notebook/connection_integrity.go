@@ -24,7 +24,7 @@ import (
 // notebook's namespace.
 type ConnectionIntegrityCheck struct {
 	check.BaseCheck
-	NotebookVerboseFormatter
+	check.EnhancedVerboseFormatter
 }
 
 func NewConnectionIntegrityCheck() *ConnectionIntegrityCheck {
