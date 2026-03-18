@@ -11,6 +11,7 @@ const (
 	flagDescQPS                = "Kubernetes API QPS limit (queries per second)"
 	flagDescBurst              = "Kubernetes API burst capacity"
 	flagDescISVCDeploymentMode = "filter InferenceService display by deployment mode (all|serverless|modelmesh)"
+	flagDescNoColor            = "disable colored output (also respects NO_COLOR env var)"
 )
 
 const flagDescChecks = `check selector patterns (glob patterns or categories):

@@ -85,6 +85,8 @@ type SharedOptions struct {
 	// Debug enables detailed diagnostic logging for troubleshooting (default: false)
 	Debug bool
 
+	// NoColor disables color output (default: false)
+	NoColor bool
 	// Timeout is the maximum duration for command execution
 	Timeout time.Duration
 
@@ -202,6 +204,20 @@ type CommandOption func(*Command)
 func WithTargetVersion(version string) CommandOption {
 	return func(c *Command) {
 		c.TargetVersion = version
+	}
+}
+
+// WithOutputFormat returns a CommandOption that sets the output format.
+func WithOutputFormat(format OutputFormat) CommandOption {
+	return func(c *Command) {
+		c.OutputFormat = format
+	}
+}
+
+// WithIO returns a CommandOption that sets the IOStreams.
+func WithIO(streams iostreams.Interface) CommandOption {
+	return func(c *Command) {
+		c.IO = streams
 	}
 }
 

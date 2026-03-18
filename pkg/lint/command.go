@@ -3,10 +3,13 @@ package lint
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 
 	"github.com/blang/semver/v4"
+	"github.com/fatih/color"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -154,6 +157,7 @@ func (c *Command) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&c.CheckSelectors, "checks", []string{"*"}, flagDescChecks)
 	fs.BoolVarP(&c.Verbose, "verbose", "v", false, flagDescVerbose)
 	fs.BoolVar(&c.Debug, "debug", false, flagDescDebug)
+	fs.BoolVar(&c.NoColor, "no-color", false, flagDescNoColor)
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, flagDescTimeout)
 	fs.StringVar(&c.ISVCDeploymentMode, "isvc-deployment-mode", "all", flagDescISVCDeploymentMode)
 
@@ -168,6 +172,16 @@ func (c *Command) Complete() error {
 	if err := c.SharedOptions.Complete(); err != nil {
 		return fmt.Errorf("completing shared options: %w", err)
 	}
+	// Set global color state with priority: --no-color flag > NO_COLOR env > TTY detection
+	//nolint:revive // Both branches set NoColor=true but for different reasons (intentional)
+	if c.OutputFormat == OutputFormatJSON || c.OutputFormat == OutputFormatYAML {
+		// Force NoColor for structured output formats (prevents data corruption)
+		c.NoColor = true
+	} else if !c.NoColor && (os.Getenv("NO_COLOR") != "" || !c.IsTerminal()) {
+		// Disable colors if NO_COLOR env var is set OR stdout is not a TTY
+		c.NoColor = true
+	}
+	color.NoColor = c.NoColor
 
 	// Wrap IO with QuietWrapper if NOT in verbose or debug mode (default is quiet)
 	if !c.Verbose && !c.Debug {
@@ -452,4 +466,15 @@ func collectNamespaceRequesters(
 	}
 
 	return requesters
+}
+
+// IsTerminal returns true if stdout is a terminal (TTY).
+// Returns false if stdout is piped, redirected, or not a file descriptor.
+func (c *Command) IsTerminal() bool {
+	// Check if IO.Out() is a *os.File with a valid file descriptor
+	if file, ok := c.IO.Out().(*os.File); ok {
+		return term.IsTerminal(int(file.Fd()))
+	}
+	// If not a file (e.g., buffer in tests), assume not a terminal
+	return false
 }

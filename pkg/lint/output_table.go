@@ -9,25 +9,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/fatih/color"
-
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/printer/table"
+	utilcolor "github.com/opendatahub-io/odh-cli/pkg/util/color"
 )
 
 //nolint:gochecknoglobals
 var (
-	// Table output symbols.
-	statusPass = color.New(color.FgGreen).Sprint("✓")
-	statusWarn = color.New(color.FgYellow).Sprint("⚠")
-	statusFail = color.New(color.FgRed).Sprint("✗")
-
-	// Severity level formatting.
-	severityCrit = color.New(color.FgRed).Sprint("critical")
-	severityWarn = color.New(color.FgYellow).Add(color.Bold).Sprint("warning") // Bold yellow (orange-ish)
-	severityInfo = color.New(color.FgCyan).Sprint("info")
-
 	// Table headers.
 	tableHeaders        = []string{"STATUS", "KIND", "GROUP", "CHECK", "IMPACT", "MESSAGE"}
 	verboseTableHeaders = []string{"STATUS", "KIND", "GROUP", "CHECK", "IMPACT"}
@@ -43,13 +32,13 @@ func printVerdict(out io.Writer, hasBlocking bool, hasAdvisory bool) {
 
 	switch {
 	case hasBlocking:
-		verdict := color.New(color.FgRed, color.Bold).Sprint("FAIL")
+		verdict := utilcolor.VerdictFail()
 		_, _ = fmt.Fprintf(out, "  %s - blocking findings detected\n", verdict)
 	case hasAdvisory:
-		verdict := color.New(color.FgYellow, color.Bold).Sprint("WARNING")
+		verdict := utilcolor.VerdictWarning()
 		_, _ = fmt.Fprintf(out, "  %s - advisory findings detected\n", verdict)
 	default:
-		verdict := color.New(color.FgGreen, color.Bold).Sprint("PASS")
+		verdict := utilcolor.VerdictPass()
 		_, _ = fmt.Fprintf(out, "  %s - all checks passed\n", verdict)
 	}
 }
@@ -86,7 +75,7 @@ func collectSortedRows(results []check.CheckExecution) []sortableRow {
 					Kind:        exec.Result.Kind,
 					Group:       exec.Result.Group,
 					Check:       exec.Result.Name,
-					Impact:      getImpactString(&condition, severityCrit, severityWarn, severityInfo),
+					Impact:      getImpactString(&condition, utilcolor.SeverityCritical(), utilcolor.SeverityWarning(), utilcolor.SeverityInfo()),
 					Message:     condition.Message,
 					Description: exec.Result.Spec.Description,
 				},
@@ -120,14 +109,14 @@ func collectSortedRows(results []check.CheckExecution) []sortableRow {
 func statusSymbol(impact result.Impact) string {
 	switch impact {
 	case result.ImpactBlocking:
-		return statusFail
+		return utilcolor.StatusFail()
 	case result.ImpactAdvisory:
-		return statusWarn
+		return utilcolor.StatusWarn()
 	case result.ImpactNone:
-		return statusPass
+		return utilcolor.StatusPass()
 	}
 
-	return statusPass
+	return utilcolor.StatusPass()
 }
 
 // visibleLen returns the display width (rune count) of a string after stripping
@@ -259,7 +248,7 @@ func buildVerboseRows(
 			check:  exec.Result.Name,
 			impact: getImpactString(
 				&result.Condition{Impact: maxImpact},
-				severityCrit, severityWarn, severityInfo,
+				utilcolor.SeverityCritical(), utilcolor.SeverityWarning(), utilcolor.SeverityInfo(),
 			),
 			exec: exec,
 		}

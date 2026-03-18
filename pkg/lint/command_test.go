@@ -255,3 +255,336 @@ func TestCommand_FunctionalOptions(t *testing.T) {
 		g.Expect(command.IO).ToNot(BeNil())
 	})
 }
+
+// TestColorDetection_DefaultBehavior tests that colors are disabled for non-TTY output.
+func TestColorDetection_DefaultBehavior(t *testing.T) {
+	t.Run("should disable colors when output is not a TTY (buffer)", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags())
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		// Buffers are not TTY, so TTY detection should disable colors
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_NoColorFlag tests --no-color flag behavior.
+func TestColorDetection_NoColorFlag(t *testing.T) {
+	t.Run("should disable colors when --no-color flag is set", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags())
+		command.NoColor = true
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_NOColorEnv tests NO_COLOR environment variable.
+func TestColorDetection_NOColorEnv(t *testing.T) {
+	t.Run("should disable colors when NO_COLOR env var is set", func(t *testing.T) {
+		g := NewWithT(t)
+
+		// Set NO_COLOR environment variable
+		t.Setenv("NO_COLOR", "1")
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags())
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_NOColorEnvValues tests NO_COLOR with various values.
+func TestColorDetection_NOColorEnvValues(t *testing.T) {
+	testCases := []struct {
+		name     string
+		value    string
+		expected bool
+	}{
+		{"value=1", "1", true},
+		{"value=true", "true", true},
+		{"value=yes", "yes", true},
+		{"value=anything", "anything", true},
+		{"empty string", "", true}, // Still true because buffer is non-TTY
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			t.Setenv("NO_COLOR", tc.value)
+
+			var out, errOut bytes.Buffer
+			streams := genericiooptions.IOStreams{
+				In:     &bytes.Buffer{},
+				Out:    &out,
+				ErrOut: &errOut,
+			}
+
+			command := lint.NewCommand(streams, testConfigFlags())
+
+			err := command.Complete()
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(command.NoColor).To(Equal(tc.expected))
+		})
+	}
+}
+
+// TestColorDetection_JSONFormat tests JSON output forces NoColor.
+func TestColorDetection_JSONFormat(t *testing.T) {
+	t.Run("should force no colors for JSON output format", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags(),
+			lint.WithOutputFormat(lint.OutputFormatJSON),
+		)
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_YAMLFormat tests YAML output forces NoColor.
+func TestColorDetection_YAMLFormat(t *testing.T) {
+	t.Run("should force no colors for YAML output format", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags(),
+			lint.WithOutputFormat(lint.OutputFormatYAML),
+		)
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_PriorityFlagOverridesDefault tests flag priority.
+func TestColorDetection_PriorityFlagOverridesDefault(t *testing.T) {
+	t.Run("priority: --no-color flag overrides default", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags())
+		command.NoColor = true
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_PriorityJSONOverridesFlag tests JSON format has highest priority.
+func TestColorDetection_PriorityJSONOverridesFlag(t *testing.T) {
+	t.Run("priority: JSON format overrides --no-color=false", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		// Even if NoColor is false, JSON should force it to true
+		command := lint.NewCommand(streams, testConfigFlags(),
+			lint.WithOutputFormat(lint.OutputFormatJSON),
+		)
+		command.NoColor = false
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_PriorityJSONOverridesEnv tests JSON format overrides NO_COLOR env.
+func TestColorDetection_PriorityJSONOverridesEnv(t *testing.T) {
+	t.Run("priority: JSON format overrides NO_COLOR unset", func(t *testing.T) {
+		g := NewWithT(t)
+
+		// NO_COLOR is not set (colors would be enabled)
+		// But JSON format should force NoColor=true
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags(),
+			lint.WithOutputFormat(lint.OutputFormatJSON),
+		)
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestIsTerminal_BufferOutput tests IsTerminal returns false for buffer output.
+func TestIsTerminal_BufferOutput(t *testing.T) {
+	t.Run("should return false for buffer (non-TTY)", func(t *testing.T) {
+		g := NewWithT(t)
+
+		// Create command with buffer output (not a real file/terminal)
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		command := lint.NewCommand(streams, testConfigFlags())
+
+		// Buffer is not a TTY
+		g.Expect(command.IsTerminal()).To(BeFalse())
+	})
+}
+
+// TestColorDetection_PriorityEnvOverridesDefault tests NO_COLOR env overrides default.
+func TestColorDetection_PriorityEnvOverridesDefault(t *testing.T) {
+	t.Run("priority: NO_COLOR env overrides default", func(t *testing.T) {
+		g := NewWithT(t)
+
+		// Set NO_COLOR env var
+		t.Setenv("NO_COLOR", "1")
+
+		var out, errOut bytes.Buffer
+		streams := genericiooptions.IOStreams{
+			In:     &bytes.Buffer{},
+			Out:    &out,
+			ErrOut: &errOut,
+		}
+
+		// NoColor flag not set (would default to false)
+		// But NO_COLOR env should force it to true
+		command := lint.NewCommand(streams, testConfigFlags())
+
+		err := command.Complete()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(command.NoColor).To(BeTrue())
+	})
+}
+
+// TestColorDetection_CompletePriorityChain tests full priority chain.
+func TestColorDetection_CompletePriorityChain(t *testing.T) {
+	t.Run("priority chain: JSON > Flag > Env > TTY > Default", func(t *testing.T) {
+		testCases := []struct {
+			name      string
+			format    lint.OutputFormat
+			flagValue bool
+			envValue  string
+			expected  bool
+			reason    string
+		}{
+			{
+				name:      "JSON forces NoColor",
+				format:    lint.OutputFormatJSON,
+				flagValue: false,
+				envValue:  "",
+				expected:  true,
+				reason:    "JSON format has highest priority",
+			},
+			{
+				name:      "Flag overrides env",
+				format:    lint.OutputFormatTable,
+				flagValue: true,
+				envValue:  "",
+				expected:  true,
+				reason:    "Flag set to true",
+			},
+			{
+				name:      "Env works when flag not set",
+				format:    lint.OutputFormatTable,
+				flagValue: false,
+				envValue:  "1",
+				expected:  true,
+				reason:    "NO_COLOR env set",
+			},
+			{
+				name:      "Default to true (TTY detection with buffer)",
+				format:    lint.OutputFormatTable,
+				flagValue: false,
+				envValue:  "",
+				expected:  true,
+				reason:    "No overrides, but buffer is non-TTY so colors disabled",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				g := NewWithT(t)
+
+				if tc.envValue != "" {
+					t.Setenv("NO_COLOR", tc.envValue)
+				}
+
+				var out, errOut bytes.Buffer
+				streams := genericiooptions.IOStreams{
+					In:     &bytes.Buffer{},
+					Out:    &out,
+					ErrOut: &errOut,
+				}
+
+				command := lint.NewCommand(streams, testConfigFlags(),
+					lint.WithOutputFormat(tc.format),
+				)
+				command.NoColor = tc.flagValue
+
+				err := command.Complete()
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(command.NoColor).To(Equal(tc.expected), tc.reason)
+			})
+		}
+	})
+}
