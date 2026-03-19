@@ -73,8 +73,9 @@ const (
 	msgInvariant3Mismatch   = "%s %s/%s has kueue.x-k8s.io/queue-name=%s but root %s %s/%s has kueue.x-k8s.io/queue-name=%s"
 )
 
-// IsKueueActive returns true when Kueue is active (Managed or Unmanaged) on the DSC.
-func IsKueueActive(
+// IsKueueUnmanaged returns true when Kueue managementState is Unmanaged on the DSC.
+// Data integrity checks only apply when the user manages Kueue themselves (Unmanaged state).
+func IsKueueUnmanaged(
 	ctx context.Context,
 	target check.Target,
 ) (bool, error) {
@@ -83,14 +84,10 @@ func IsKueueActive(
 		return false, fmt.Errorf("getting DataScienceCluster: %w", err)
 	}
 
-	if !components.HasManagementState(
+	return components.HasManagementState(
 		dsc, constants.ComponentKueue,
-		constants.ManagementStateManaged, constants.ManagementStateUnmanaged,
-	) {
-		return false, nil
-	}
-
-	return true, nil
+		constants.ManagementStateUnmanaged,
+	), nil
 }
 
 // kueueEnabledNamespaces returns the set of namespaces that have a kueue-managed label.

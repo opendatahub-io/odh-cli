@@ -87,7 +87,7 @@ func NewCommand(
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
 
-	// Components (13)
+	// Components (12)
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
 	registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
@@ -98,7 +98,8 @@ func NewCommand(
 	registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
 	registry.MustRegister(kserve.NewServiceMeshRemovalCheck())
 	registry.MustRegister(kueue.NewManagementStateCheck())
-	registry.MustRegister(kueue.NewOperatorInstalledCheck())
+	// Deferred: re-enable when a future 3.3.x release supports Unmanaged + Red Hat build of Kueue Operator.
+	// registry.MustRegister(kueue.NewOperatorInstalledCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 

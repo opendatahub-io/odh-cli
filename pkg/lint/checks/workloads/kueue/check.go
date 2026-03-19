@@ -39,7 +39,7 @@ func NewDataIntegrityCheck() *DataIntegrityCheck {
 }
 
 func (c *DataIntegrityCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	ok, err := IsKueueActive(ctx, target)
+	ok, err := IsKueueUnmanaged(ctx, target)
 	if err != nil {
 		return false, fmt.Errorf("checking kueue state: %w", err)
 	}

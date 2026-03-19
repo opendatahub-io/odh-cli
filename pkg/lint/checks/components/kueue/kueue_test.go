@@ -57,7 +57,7 @@ func TestManagementStateCheck_CanApply_NotConfigured(t *testing.T) {
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestManagementStateCheck_ManagedBlocking(t *testing.T) {
+func TestManagementStateCheck_ManagedProhibited(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -77,16 +77,16 @@ func TestManagementStateCheck_ManagedBlocking(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonVersionIncompatible),
-		"Message": And(ContainSubstring("managed by OpenShift AI"), ContainSubstring("Managed option will be removed")),
+		"Message": And(ContainSubstring("only supports the Kueue managementState of Removed"), ContainSubstring("migrated to the Red Hat build of Kueue Operator")),
 	}))
-	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
 	g.Expect(result.Annotations).To(And(
 		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
 		HaveKeyWithValue("check.opendatahub.io/target-version", "3.0.0"),
 	))
 }
 
-func TestManagementStateCheck_UnmanagedAllowed(t *testing.T) {
+func TestManagementStateCheck_UnmanagedProhibited(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -104,10 +104,11 @@ func TestManagementStateCheck_UnmanagedAllowed(t *testing.T) {
 	g.Expect(result.Status.Conditions).To(HaveLen(1))
 	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
 		"Type":    Equal(check.ConditionTypeCompatible),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonVersionCompatible),
-		"Message": ContainSubstring("compatible with RHOAI 3.1"),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("only supports the Kueue managementState of Removed"), Not(ContainSubstring("migrated to the Red Hat build of Kueue Operator"))),
 	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
 }
 
 func TestManagementStateCheck_CanApply_ManagementState(t *testing.T) {

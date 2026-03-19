@@ -138,7 +138,7 @@ func TestDataIntegrityCheck_CanApply_KueueNotActive(t *testing.T) {
 	g.Expect(applies).To(BeFalse())
 }
 
-func TestDataIntegrityCheck_CanApply_KueueActive(t *testing.T) {
+func TestDataIntegrityCheck_CanApply_KueueManaged(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
@@ -156,7 +156,7 @@ func TestDataIntegrityCheck_CanApply_KueueActive(t *testing.T) {
 	applies, err := chk.CanApply(t.Context(), target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(applies).To(BeTrue())
+	g.Expect(applies).To(BeFalse())
 }
 
 func TestDataIntegrityCheck_CanApply_KueueUnmanaged(t *testing.T) {
@@ -184,7 +184,7 @@ func TestDataIntegrityCheck_BenignWorkload_NoViolations(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	// Non-kueue namespace.
@@ -216,7 +216,7 @@ func TestDataIntegrityCheck_NoRelevantNamespaces(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
@@ -242,7 +242,7 @@ func TestDataIntegrityCheck_FullyConsistent(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -281,7 +281,7 @@ func TestDataIntegrityCheck_Invariant1_MissingLabelInKueueNamespace(t *testing.T
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -318,7 +318,7 @@ func TestDataIntegrityCheck_Invariant2_LabeledInNonKueueNamespace(t *testing.T) 
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	// Namespace WITHOUT kueue-managed label.
@@ -351,7 +351,7 @@ func TestDataIntegrityCheck_Invariant3_OwnerTreeMismatch(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -390,7 +390,7 @@ func TestDataIntegrityCheck_Invariant3_ChildHasLabelRootDoesNot(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -429,7 +429,7 @@ func TestDataIntegrityCheck_Invariant3_SingleNodeTreeConsistent(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -463,7 +463,7 @@ func TestDataIntegrityCheck_MultiLevelOwnerChain(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -505,7 +505,7 @@ func TestDataIntegrityCheck_MixedViolationsAcrossNamespaces(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	kueueNs := newNamespace("team-a", map[string]string{
@@ -546,7 +546,7 @@ func TestDataIntegrityCheck_BlockingImpact(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -574,7 +574,7 @@ func TestDataIntegrityCheck_AnnotationCheckTargetVersion(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
@@ -609,7 +609,7 @@ func TestDataIntegrityCheck_OpenshiftManagedLabel(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	// Uses the kueue.openshift.io/managed label instead of kueue-managed.
@@ -641,7 +641,7 @@ func TestDataIntegrityCheck_Invariant1_ObjectContextAnnotation(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -673,7 +673,7 @@ func TestDataIntegrityCheck_Invariant2_ObjectContextAnnotation(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-b", nil)
@@ -704,7 +704,7 @@ func TestDataIntegrityCheck_Invariant3_ObjectContextAnnotation(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{
@@ -740,7 +740,7 @@ func TestDataIntegrityCheck_MultipleWorkloadTypes(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
-		"kueue": "Managed",
+		"kueue": "Unmanaged",
 	})
 
 	ns := newNamespace("team-a", map[string]string{

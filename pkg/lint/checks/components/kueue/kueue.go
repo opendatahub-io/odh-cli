@@ -16,14 +16,17 @@ import (
 )
 
 const (
-	kind                       = "kueue"
-	checkTypeManagementState   = "management-state"
-	managementStateRemediation = "Migrate to the Red Hat build of Kueue operator following https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/2.25/html/managing_openshift_ai/managing-workloads-with-kueue#migrating-to-the-rhbok-operator_kueue before upgrading"
+	kind                     = "kueue"
+	checkTypeManagementState = "management-state"
+
+	// Deferred: parameterize hardcoded version references using ComponentRequest.TargetVersion.
+	msgManagedProhibited   = "The 3.3.1 upgrade currently only supports the Kueue managementState of Removed. A future 3.3.x release will allow an upgrade when you have migrated to the Red Hat build of Kueue Operator and the Kueue managementState is Unmanaged."
+	msgUnmanagedProhibited = "The 3.3.1 upgrade currently only supports the Kueue managementState of Removed. A future 3.3.x release will allow an upgrade when the Kueue managementState is Unmanaged."
 )
 
-// ManagementStateCheck validates that Kueue managed option is not used before upgrading to 3.x.
-// In RHOAI 3.x, the Managed option for Kueue is removed — users must migrate to the standalone
-// Red Hat build of Kueue operator and set managementState to Removed or Unmanaged.
+// ManagementStateCheck validates that Kueue managementState is Removed before upgrading to 3.x.
+// In RHOAI 3.3.1, only the Removed state is supported. A future 3.3.x release will support
+// Unmanaged with the Red Hat build of Kueue Operator.
 type ManagementStateCheck struct {
 	check.BaseCheck
 }
@@ -36,8 +39,7 @@ func NewManagementStateCheck() *ManagementStateCheck {
 			Type:             checkTypeManagementState,
 			CheckID:          "components.kueue.management-state",
 			CheckName:        "Components :: Kueue :: Management State (3.x)",
-			CheckDescription: "Validates that Kueue managementState is compatible with RHOAI 3.x (Managed option will be removed)",
-			CheckRemediation: managementStateRemediation,
+			CheckDescription: "Validates that Kueue managementState is Removed before upgrading to RHOAI 3.x",
 		},
 	}
 }
@@ -63,25 +65,25 @@ func (c *ManagementStateCheck) CanApply(ctx context.Context, target check.Target
 func (c *ManagementStateCheck) Validate(ctx context.Context, target check.Target) (*result.DiagnosticResult, error) {
 	return validate.Component(c, target).
 		Run(ctx, func(_ context.Context, req *validate.ComponentRequest) error {
-			tv := version.MajorMinorLabel(req.TargetVersion)
-
 			switch req.ManagementState {
 			case constants.ManagementStateManaged:
 				req.Result.SetCondition(check.NewCondition(
 					check.ConditionTypeCompatible,
 					metav1.ConditionFalse,
 					check.WithReason(check.ReasonVersionIncompatible),
-					check.WithMessage("Kueue is managed by OpenShift AI (state: %s) but Managed option will be removed in RHOAI %s", req.ManagementState, tv),
-					check.WithImpact(result.ImpactBlocking),
-					check.WithRemediation(c.CheckRemediation),
+					check.WithMessage(msgManagedProhibited),
+					check.WithImpact(result.ImpactProhibited),
 				))
 			case constants.ManagementStateUnmanaged:
 				req.Result.SetCondition(check.NewCondition(
 					check.ConditionTypeCompatible,
-					metav1.ConditionTrue,
-					check.WithReason(check.ReasonVersionCompatible),
-					check.WithMessage("Kueue managementState is %s — compatible with RHOAI %s", req.ManagementState, tv),
+					metav1.ConditionFalse,
+					check.WithReason(check.ReasonVersionIncompatible),
+					check.WithMessage(msgUnmanagedProhibited),
+					check.WithImpact(result.ImpactProhibited),
 				))
+			default:
+				return fmt.Errorf("unexpected management state %q for kueue", req.ManagementState)
 			}
 
 			return nil

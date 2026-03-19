@@ -16,13 +16,17 @@ import (
 )
 
 const (
-	checkTypeOperatorInstalled = "operator-installed"
-	subscriptionName           = "kueue-operator"
-	annotationInstalledVersion = "operator.opendatahub.io/installed-version"
-	msgManagedNotSupported     = "Kueue managementState is Managed — migration to the Red Hat build of Kueue operator is required before upgrading"
+	checkTypeOperatorInstalled          = "operator-installed"
+	subscriptionName                    = "kueue-operator"
+	annotationInstalledVersion          = "operator.opendatahub.io/installed-version"
+	msgManagedNotSupported              = "Kueue managementState is Managed — migration to the Red Hat build of Kueue operator is required before upgrading"
+	operatorInstalledManagedRemediation = "Migrate to the Red Hat build of Kueue operator following https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/2.25/html/managing_openshift_ai/managing-workloads-with-kueue#migrating-to-the-rhbok-operator_kueue before upgrading"
 )
 
-// OperatorInstalledCheck validates the Red Hat build of Kueue operator installation status against the Kueue
+// OperatorInstalledCheck is currently deregistered — re-enable when a future 3.3.x release
+// supports Unmanaged + Red Hat build of Kueue Operator (see command.go registration).
+//
+// It validates the Red Hat build of Kueue operator installation status against the Kueue
 // component management state:
 //   - Managed: prohibited — no supported upgrade path from embedded Kueue, must migrate to RHBoK first
 //   - Unmanaged + operator absent: blocking — Unmanaged requires the Red Hat build of Kueue operator
@@ -97,7 +101,7 @@ func (c *OperatorInstalledCheck) validateManaged(
 		check.WithReason(check.ReasonVersionIncompatible),
 		check.WithMessage(msgManagedNotSupported),
 		check.WithImpact(result.ImpactProhibited),
-		check.WithRemediation(managementStateRemediation),
+		check.WithRemediation(operatorInstalledManagedRemediation),
 	))
 }
 
