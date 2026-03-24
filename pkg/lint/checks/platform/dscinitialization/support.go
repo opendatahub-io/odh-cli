@@ -25,8 +25,12 @@ type dsciStatusCondition struct {
 // collectUnhappyDSCIConditionMessages returns messages from DSCI status conditions that
 // deviate from their expected state. Progressing and Degraded conditions are expected to
 // be False when healthy; all other condition types are expected to be True.
-// CapabilityServiceMesh and CapabilityServiceMeshAuthorization are exceptions: when False
-// with reason Removed they represent a healthy disabled state, not a problem.
+//
+// ServiceMesh capability conditions receive special handling:
+//   - CapabilityServiceMesh: False with reason Removed or Unmanaged is a healthy state.
+//   - CapabilityServiceMeshAuthorization: only False with reason NotReady is a genuine
+//     problem; all other False reasons (Removed, Unmanaged, MissingOperator) are non-blocking.
+//
 // Returns nil if no conditions field exists or no conditions are unhappy.
 func collectUnhappyDSCIConditionMessages(obj *unstructured.Unstructured) ([]string, error) {
 	conditions, err := jq.Query[[]dsciStatusCondition](obj, ".status.conditions")
@@ -47,9 +51,7 @@ func collectUnhappyDSCIConditionMessages(obj *unstructured.Unstructured) ([]stri
 		unhappy := (expectFalse && cond.Status != string(metav1.ConditionFalse)) ||
 			(!expectFalse && cond.Status != string(metav1.ConditionTrue))
 
-		// CapabilityServiceMesh and CapabilityServiceMeshAuthorization with reason Removed
-		// indicate the capability is intentionally disabled, which is a valid healthy state.
-		if isRemovedCapabilityServiceMesh(cond) {
+		if isExpectedCapabilityServiceMeshFalse(cond) || isExpectedCapabilityServiceMeshAuthFalse(cond) {
 			unhappy = false
 		}
 
@@ -61,12 +63,26 @@ func collectUnhappyDSCIConditionMessages(obj *unstructured.Unstructured) ([]stri
 	return messages, nil
 }
 
-// isRemovedCapabilityServiceMesh returns true for capability conditions that are False because the
-// capability was explicitly removed, which is an expected healthy state.
-func isRemovedCapabilityServiceMesh(cond dsciStatusCondition) bool {
-	isCapabilityServiceMesh := cond.Type == "CapabilityServiceMesh" || cond.Type == "CapabilityServiceMeshAuthorization"
+// isExpectedCapabilityServiceMeshFalse returns true when the CapabilityServiceMesh condition
+// is False because the capability was explicitly removed or set to unmanaged, both of which
+// are intentional user choices and expected healthy states.
+func isExpectedCapabilityServiceMeshFalse(cond dsciStatusCondition) bool {
+	return cond.Type == "CapabilityServiceMesh" &&
+		cond.Status == string(metav1.ConditionFalse) &&
+		(cond.Reason == "Removed" || cond.Reason == "Unmanaged")
+}
 
-	return isCapabilityServiceMesh && cond.Status == string(metav1.ConditionFalse) && cond.Reason == "Removed"
+// isExpectedCapabilityServiceMeshAuthFalse returns true when the CapabilityServiceMeshAuthorization
+// condition is False for a non-blocking reason. Only NotReady indicates a genuine problem; all
+// other False reasons (Removed, Unmanaged, MissingOperator) represent intentional or environmental
+// states that are not upgrade blockers.
+//
+// A denylist (reason != NotReady) is used intentionally over an explicit allowlist so that new
+// benign reasons added upstream are automatically treated as non-blocking without a code change.
+func isExpectedCapabilityServiceMeshAuthFalse(cond dsciStatusCondition) bool {
+	return cond.Type == "CapabilityServiceMeshAuthorization" &&
+		cond.Status == string(metav1.ConditionFalse) &&
+		cond.Reason != "NotReady"
 }
 
 // validatePhaseReady checks that the status.phase field is "Ready" on a resource and there are no unexpected conditions.

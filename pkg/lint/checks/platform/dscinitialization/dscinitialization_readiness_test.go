@@ -238,44 +238,139 @@ func TestDSCInitializationReadinessCheck_NotReadyWithUnhappyConditions(t *testin
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
-func TestDSCInitializationReadinessCheck_ReadyWithRemovedCapabilities(t *testing.T) {
-	g := NewWithT(t)
-
-	dsci := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": resources.DSCInitialization.APIVersion(),
-			"kind":       resources.DSCInitialization.Kind,
-			"metadata": map[string]any{
-				"name": "default-dsci",
-			},
-			"status": map[string]any{
-				"phase": "Ready",
-				"conditions": []any{
-					map[string]any{"type": "ReconcileComplete", "status": "True", "reason": "ReconcileCompleted", "message": "reconcile completed"},
-					map[string]any{"type": "CapabilityServiceMesh", "status": "False", "reason": "Removed", "message": "service mesh removed"},
-					map[string]any{"type": "CapabilityServiceMeshAuthorization", "status": "False", "reason": "Removed", "message": "service mesh authorization removed"},
-				},
-			},
+func TestDSCInitializationReadinessCheck_CapabilityConditions(t *testing.T) {
+	tests := []struct {
+		name            string
+		conditionType   string
+		reason          string
+		message         string
+		expectedStatus  metav1.ConditionStatus
+		expectedReason  string
+		expectedImpact  resultpkg.Impact
+		expectedMessage string
+	}{
+		{
+			name:            "ServiceMesh/Removed",
+			conditionType:   "CapabilityServiceMesh",
+			reason:          "Removed",
+			message:         "ServiceMesh removed",
+			expectedStatus:  metav1.ConditionTrue,
+			expectedReason:  check.ReasonResourceAvailable,
+			expectedImpact:  resultpkg.ImpactNone,
+			expectedMessage: "DSCInitialization is ready",
+		},
+		{
+			name:            "ServiceMesh/Unmanaged",
+			conditionType:   "CapabilityServiceMesh",
+			reason:          "Unmanaged",
+			message:         "ServiceMesh is set to Unmanaged",
+			expectedStatus:  metav1.ConditionTrue,
+			expectedReason:  check.ReasonResourceAvailable,
+			expectedImpact:  resultpkg.ImpactNone,
+			expectedMessage: "DSCInitialization is ready",
+		},
+		{
+			name:            "ServiceMesh/NotReady",
+			conditionType:   "CapabilityServiceMesh",
+			reason:          "NotReady",
+			message:         "ServiceMeshControlPlane is not ready",
+			expectedStatus:  metav1.ConditionFalse,
+			expectedReason:  check.ReasonResourceUnavailable,
+			expectedImpact:  resultpkg.ImpactBlocking,
+			expectedMessage: "CapabilityServiceMesh: ServiceMeshControlPlane is not ready",
+		},
+		{
+			name:            "ServiceMesh/MissingOperator",
+			conditionType:   "CapabilityServiceMesh",
+			reason:          "MissingOperator",
+			message:         "ServiceMesh operator not found",
+			expectedStatus:  metav1.ConditionFalse,
+			expectedReason:  check.ReasonResourceUnavailable,
+			expectedImpact:  resultpkg.ImpactBlocking,
+			expectedMessage: "CapabilityServiceMesh: ServiceMesh operator not found",
+		},
+		{
+			name:            "ServiceMeshAuth/Unmanaged",
+			conditionType:   "CapabilityServiceMeshAuthorization",
+			reason:          "Unmanaged",
+			message:         "ServiceMesh is set to Unmanaged",
+			expectedStatus:  metav1.ConditionTrue,
+			expectedReason:  check.ReasonResourceAvailable,
+			expectedImpact:  resultpkg.ImpactNone,
+			expectedMessage: "DSCInitialization is ready",
+		},
+		{
+			name:            "ServiceMeshAuth/Removed",
+			conditionType:   "CapabilityServiceMeshAuthorization",
+			reason:          "Removed",
+			message:         "ServiceMesh authorization removed",
+			expectedStatus:  metav1.ConditionTrue,
+			expectedReason:  check.ReasonResourceAvailable,
+			expectedImpact:  resultpkg.ImpactNone,
+			expectedMessage: "DSCInitialization is ready",
+		},
+		{
+			name:            "ServiceMeshAuth/MissingOperator",
+			conditionType:   "CapabilityServiceMeshAuthorization",
+			reason:          "MissingOperator",
+			message:         "Authorino operator not found",
+			expectedStatus:  metav1.ConditionTrue,
+			expectedReason:  check.ReasonResourceAvailable,
+			expectedImpact:  resultpkg.ImpactNone,
+			expectedMessage: "DSCInitialization is ready",
+		},
+		{
+			name:            "ServiceMeshAuth/NotReady",
+			conditionType:   "CapabilityServiceMeshAuthorization",
+			reason:          "NotReady",
+			message:         "Authorino resource not ready",
+			expectedStatus:  metav1.ConditionFalse,
+			expectedReason:  check.ReasonResourceUnavailable,
+			expectedImpact:  resultpkg.ImpactBlocking,
+			expectedMessage: "CapabilityServiceMeshAuthorization: Authorino resource not ready",
 		},
 	}
 
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: dsciReadinessListKinds,
-		Objects:   []*unstructured.Unstructured{dsci},
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
 
-	chk := dscinitialization.NewDSCInitializationReadinessCheck()
-	result, err := chk.Validate(t.Context(), target)
+			dsci := &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": resources.DSCInitialization.APIVersion(),
+					"kind":       resources.DSCInitialization.Kind,
+					"metadata": map[string]any{
+						"name": "default-dsci",
+					},
+					"status": map[string]any{
+						"phase": "Ready",
+						"conditions": []any{
+							map[string]any{"type": "ReconcileComplete", "status": "True", "reason": "ReconcileCompleted", "message": "reconcile completed"},
+							map[string]any{"type": tc.conditionType, "status": "False", "reason": tc.reason, "message": tc.message},
+						},
+					},
+				},
+			}
 
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions).To(HaveLen(1))
-	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
-		"Type":    Equal(check.ConditionTypeReady),
-		"Status":  Equal(metav1.ConditionTrue),
-		"Reason":  Equal(check.ReasonResourceAvailable),
-		"Message": ContainSubstring("DSCInitialization is ready"),
-	}))
-	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactNone))
+			target := testutil.NewTarget(t, testutil.TargetConfig{
+				ListKinds: dsciReadinessListKinds,
+				Objects:   []*unstructured.Unstructured{dsci},
+			})
+
+			chk := dscinitialization.NewDSCInitializationReadinessCheck()
+			result, err := chk.Validate(t.Context(), target)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(result.Status.Conditions).To(HaveLen(1))
+			g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+				"Type":    Equal(check.ConditionTypeReady),
+				"Status":  Equal(tc.expectedStatus),
+				"Reason":  Equal(tc.expectedReason),
+				"Message": ContainSubstring(tc.expectedMessage),
+			}))
+			g.Expect(result.Status.Conditions[0].Impact).To(Equal(tc.expectedImpact))
+		})
+	}
 }
 
 func TestDSCInitializationReadinessCheck_Ready(t *testing.T) {
