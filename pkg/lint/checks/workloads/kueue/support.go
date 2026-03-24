@@ -4,27 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 )
-
-// Top-level CR types that we monitor for kueue label consistency.
-// These are the only resource types that appear in ImpactedObjects.
-//
-//nolint:gochecknoglobals // Static configuration for monitored workload types.
-var monitoredWorkloadTypes = []resources.ResourceType{
-	resources.Notebook,
-	resources.InferenceService,
-	resources.LLMInferenceService,
-	resources.RayCluster,
-	resources.RayJob,
-	resources.PyTorchJob,
-}
 
 // Intermediate resource types used to build the ownership graph.
 // These appear in ownership chains between top-level CRs and Pods.
@@ -88,61 +73,4 @@ func IsKueueUnmanaged(
 		dsc, constants.ComponentKueue,
 		constants.ManagementStateUnmanaged,
 	), nil
-}
-
-// kueueEnabledNamespaces returns the set of namespaces that have a kueue-managed label.
-// Uses two ListMetadata calls with label selectors for server-side filtering,
-// giving a fixed cost regardless of how many namespaces exist.
-func kueueEnabledNamespaces(
-	ctx context.Context,
-	r client.Reader,
-) (sets.Set[string], error) {
-	enabled := sets.New[string]()
-
-	for _, selector := range []string{
-		constants.LabelKueueManaged + "=true",
-		constants.LabelKueueOpenshiftManaged + "=true",
-	} {
-		items, err := r.ListMetadata(ctx, resources.Namespace,
-			client.WithLabelSelector(selector))
-		if err != nil {
-			return nil, fmt.Errorf("listing kueue-enabled namespaces: %w", err)
-		}
-
-		for _, ns := range items {
-			enabled.Insert(ns.GetName())
-		}
-	}
-
-	return enabled, nil
-}
-
-// workloadLabeledNamespaces returns the set of namespaces that contain at least one
-// monitored workload with the kueue.x-k8s.io/queue-name label.
-func workloadLabeledNamespaces(
-	ctx context.Context,
-	r client.Reader,
-) (sets.Set[string], error) {
-	namespaces := sets.New[string]()
-	selector := constants.LabelKueueQueueName
-
-	for _, rt := range monitoredWorkloadTypes {
-		items, err := r.ListMetadata(ctx, rt, client.WithLabelSelector(selector))
-		if err != nil {
-			// A missing CRD means the resource type is not installed on this cluster,
-			// so there are zero instances. Ideally ListMetadata would handle this
-			// the same way it handles permission errors (return empty list).
-			if client.IsResourceTypeNotFound(err) {
-				continue
-			}
-
-			return nil, fmt.Errorf("listing %s with kueue label: %w", rt.Kind, err)
-		}
-
-		for _, item := range items {
-			namespaces.Insert(item.GetNamespace())
-		}
-	}
-
-	return namespaces, nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	kueuediscovery "github.com/opendatahub-io/odh-cli/pkg/lint/checks/kueue/discovery"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
@@ -63,12 +64,12 @@ func (c *DataIntegrityCheck) Validate(
 	}
 
 	// Phase 1: determine relevant namespaces.
-	kueueNamespaces, err := kueueEnabledNamespaces(ctx, target.Client)
+	kueueNamespaces, err := kueuediscovery.KueueEnabledNamespaces(ctx, target.Client)
 	if err != nil {
 		return nil, fmt.Errorf("finding kueue-enabled namespaces: %w", err)
 	}
 
-	workloadNamespaces, err := workloadLabeledNamespaces(ctx, target.Client)
+	workloadNamespaces, err := kueuediscovery.WorkloadLabeledNamespaces(ctx, target.Client)
 	if err != nil {
 		return nil, fmt.Errorf("finding workload-labeled namespaces: %w", err)
 	}
@@ -186,7 +187,7 @@ func listWorkloadsInNamespace(
 ) ([]*metav1.PartialObjectMetadata, error) {
 	var all []*metav1.PartialObjectMetadata
 
-	for _, rt := range monitoredWorkloadTypes {
+	for _, rt := range kueuediscovery.MonitoredWorkloadTypes {
 		items, err := r.ListMetadata(ctx, rt, client.WithNamespace(namespace))
 		if err != nil {
 			// A missing CRD means the resource type is not installed on this cluster,
@@ -304,11 +305,11 @@ func populateImpactedObjects(
 }
 
 // buildCRDFQNLookup builds a map from "apiVersion/kind" to CRD FQN
-// using the authoritative ResourceType definitions from monitoredWorkloadTypes.
+// using the authoritative ResourceType definitions from kueuediscovery.MonitoredWorkloadTypes.
 func buildCRDFQNLookup() map[string]string {
-	lookup := make(map[string]string, len(monitoredWorkloadTypes))
+	lookup := make(map[string]string, len(kueuediscovery.MonitoredWorkloadTypes))
 
-	for _, rt := range monitoredWorkloadTypes {
+	for _, rt := range kueuediscovery.MonitoredWorkloadTypes {
 		key := rt.APIVersion() + "/" + rt.Kind
 		lookup[key] = rt.CRDFQN()
 	}

@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
@@ -19,7 +20,63 @@ import (
 
 //nolint:gochecknoglobals // Test fixture - shared across test functions
 var listKinds = map[schema.GroupVersionResource]string{
-	resources.DataScienceCluster.GVR(): resources.DataScienceCluster.ListKind(),
+	resources.DataScienceCluster.GVR():  resources.DataScienceCluster.ListKind(),
+	resources.Namespace.GVR():           resources.Namespace.ListKind(),
+	resources.Notebook.GVR():            resources.Notebook.ListKind(),
+	resources.InferenceService.GVR():    resources.InferenceService.ListKind(),
+	resources.LLMInferenceService.GVR(): resources.LLMInferenceService.ListKind(),
+	resources.RayCluster.GVR():          resources.RayCluster.ListKind(),
+	resources.RayJob.GVR():              resources.RayJob.ListKind(),
+	resources.PyTorchJob.GVR():          resources.PyTorchJob.ListKind(),
+}
+
+func newNamespace(name string, labels map[string]string) *unstructured.Unstructured {
+	meta := map[string]any{
+		"name": name,
+	}
+	if labels != nil {
+		anyLabels := make(map[string]any, len(labels))
+		for k, v := range labels {
+			anyLabels[k] = v
+		}
+
+		meta["labels"] = anyLabels
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.Namespace.APIVersion(),
+			"kind":       resources.Namespace.Kind,
+			"metadata":   meta,
+		},
+	}
+}
+
+func newWorkload(
+	rt resources.ResourceType,
+	namespace, name string,
+	labels map[string]string,
+) *unstructured.Unstructured {
+	meta := map[string]any{
+		"name":      name,
+		"namespace": namespace,
+	}
+	if labels != nil {
+		anyLabels := make(map[string]any, len(labels))
+		for k, v := range labels {
+			anyLabels[k] = v
+		}
+
+		meta["labels"] = anyLabels
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": rt.APIVersion(),
+			"kind":       rt.Kind,
+			"metadata":   meta,
+		},
+	}
 }
 
 func TestManagementStateCheck_CanApply_NoDSC(t *testing.T) {
@@ -27,8 +84,8 @@ func TestManagementStateCheck_CanApply_NoDSC(t *testing.T) {
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
-		CurrentVersion: "2.17.0",
-		TargetVersion:  "3.0.0",
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -46,8 +103,8 @@ func TestManagementStateCheck_CanApply_NotConfigured(t *testing.T) {
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{dsc},
-		CurrentVersion: "2.17.0",
-		TargetVersion:  "3.0.0",
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -61,11 +118,16 @@ func TestManagementStateCheck_ManagedProhibited(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	// Kueue is Managed AND there is a kueue-labeled namespace with a workload.
+	ns := newNamespace("team-a", map[string]string{constants.LabelKueueManaged: "true"})
+	nb := newWorkload(resources.Notebook, "team-a", "my-notebook",
+		map[string]string{constants.LabelKueueQueueName: "default-queue"})
+
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
-		CurrentVersion: "2.17.0",
-		TargetVersion:  "3.0.0",
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -82,19 +144,51 @@ func TestManagementStateCheck_ManagedProhibited(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
 	g.Expect(result.Annotations).To(And(
 		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
-		HaveKeyWithValue("check.opendatahub.io/target-version", "3.0.0"),
+		HaveKeyWithValue("check.opendatahub.io/target-version", "3.3.1"),
 	))
+}
+
+func TestManagementStateCheck_ManagedBlocking(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	// Kueue is Managed but NO namespaces or workloads are labeled for kueue.
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
+	})
+
+	chk := kueue.NewManagementStateCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Annotations).To(
+		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
+	)
 }
 
 func TestManagementStateCheck_UnmanagedProhibited(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
+	// Kueue is Unmanaged AND there is a workload labeled for kueue.
+	nb := newWorkload(resources.Notebook, "team-b", "my-notebook",
+		map[string]string{constants.LabelKueueQueueName: "default-queue"})
+
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
-		CurrentVersion: "2.17.0",
-		TargetVersion:  "3.1.0",
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"}), nb},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -109,6 +203,31 @@ func TestManagementStateCheck_UnmanagedProhibited(t *testing.T) {
 		"Message": And(ContainSubstring("only supports the Kueue managementState of Removed"), Not(ContainSubstring("migrated to the Red Hat build of Kueue Operator"))),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
+}
+
+func TestManagementStateCheck_UnmanagedBlocking(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	// Kueue is Unmanaged but NO namespaces or workloads are labeled for kueue.
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
+	})
+
+	chk := kueue.NewManagementStateCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestManagementStateCheck_CanApply_ManagementState(t *testing.T) {
@@ -132,8 +251,8 @@ func TestManagementStateCheck_CanApply_ManagementState(t *testing.T) {
 			target := testutil.NewTarget(t, testutil.TargetConfig{
 				ListKinds:      listKinds,
 				Objects:        []*unstructured.Unstructured{dsc},
-				CurrentVersion: "2.17.0",
-				TargetVersion:  "3.0.0",
+				CurrentVersion: "2.25.0",
+				TargetVersion:  "3.3.1",
 			})
 
 			canApply, err := chk.CanApply(t.Context(), target)
@@ -152,4 +271,70 @@ func TestManagementStateCheck_Metadata(t *testing.T) {
 	g.Expect(chk.Name()).To(Equal("Components :: Kueue :: Management State (3.x)"))
 	g.Expect(chk.Group()).To(Equal(check.GroupComponent))
 	g.Expect(chk.Description()).ToNot(BeEmpty())
+}
+
+func TestManagementStateCheck_KueueUsageViaNamespaceLabel(t *testing.T) {
+	t.Run("kueue-managed label", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		// Kueue-managed namespace exists but no workloads with queue-name label — still "in use".
+		ns := newNamespace("team-a", map[string]string{constants.LabelKueueManaged: "true"})
+
+		target := testutil.NewTarget(t, testutil.TargetConfig{
+			ListKinds:      listKinds,
+			Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns},
+			CurrentVersion: "2.25.0",
+			TargetVersion:  "3.3.1",
+		})
+
+		chk := kueue.NewManagementStateCheck()
+		result, err := chk.Validate(ctx, target)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
+	})
+
+	t.Run("kueue.openshift.io/managed label", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		// Namespace with OpenShift kueue-managed label — still counts as "in use".
+		ns := newNamespace("team-a", map[string]string{constants.LabelKueueOpenshiftManaged: "true"})
+
+		target := testutil.NewTarget(t, testutil.TargetConfig{
+			ListKinds:      listKinds,
+			Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns},
+			CurrentVersion: "2.25.0",
+			TargetVersion:  "3.3.1",
+		})
+
+		chk := kueue.NewManagementStateCheck()
+		result, err := chk.Validate(ctx, target)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
+	})
+}
+
+func TestManagementStateCheck_KueueUsageViaWorkloadLabel(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	// No kueue-managed namespace, but a workload has the queue-name label — still "in use".
+	nb := newWorkload(resources.Notebook, "team-b", "my-notebook",
+		map[string]string{constants.LabelKueueQueueName: "default-queue"})
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), nb},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.3.1",
+	})
+
+	chk := kueue.NewManagementStateCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
 }
