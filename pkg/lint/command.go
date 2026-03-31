@@ -126,7 +126,7 @@ func NewCommand(
 	registry.MustRegister(notebook.NewConnectionIntegrityCheck())
 	registry.MustRegister(notebook.NewHardwareProfileIntegrityCheck())
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
-	registry.MustRegister(notebook.NewRunningWorkloadsCheck())
+	registry.MustRegister(notebook.NewNonStoppedWorkloadsCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 

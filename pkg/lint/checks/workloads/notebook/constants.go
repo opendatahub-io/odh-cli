@@ -13,7 +13,7 @@ const (
 	ConditionTypeHardwareProfileCompatible    = "HardwareProfileCompatible"
 	ConditionTypeHardwareProfileIntegrity     = "HardwareProfileIntegrity"
 	ConditionTypeNotebooksCompatible          = "NotebooksCompatible"
-	ConditionTypeRunningWorkloads             = "RunningWorkloads"
+	ConditionTypeNonStoppedWorkloads          = "NonStoppedWorkloads"
 )
 
 // Annotation keys used to detect notebook state and referenced resources.
@@ -40,6 +40,12 @@ const (
 	AnnotationCheckReason      = "check.opendatahub.io/reason"
 )
 
+// Annotation keys set on ImpactedObjects by the NonStoppedWorkloads check.
+const (
+	AnnotationCheckContainerState      = "check.opendatahub.io/container-state"
+	AnnotationCheckContainerWaitReason = "check.opendatahub.io/container-wait-reason"
+)
+
 // Messages for ImpactedWorkloads check.
 const (
 	MsgNoNotebookInstances    = "No Notebook (workbench) instances found"
@@ -60,10 +66,12 @@ const (
 	MsgAcceleratorProfilesMigrating = "Found %d Notebook(s) using deprecated AcceleratorProfiles: AcceleratorProfiles and Notebook references are automatically migrated to HardwareProfiles (infrastructure.opendatahub.io) during upgrade"
 )
 
-// Messages for RunningWorkloads check.
+// Messages for NonStoppedWorkloads check.
 const (
-	MsgAllNotebooksStopped   = "No running Notebooks found - all Notebooks are stopped"
-	MsgRunningNotebooksFound = "Found %d running Notebook(s) that should be stopped before upgrading"
+	MsgAllNotebooksStopped      = "All Notebooks are stopped"
+	MsgNonStoppedNotebooksFound = "Found %d non-stopped Notebook(s):"
+	MsgNonStoppedRunning        = "  - %d running (should be stopped before upgrade)"
+	MsgNonStoppedWaiting        = "  - %d waiting (should be stopped or deleted before upgrade)"
 )
 
 // Messages for HardwareProfileIntegrity check.

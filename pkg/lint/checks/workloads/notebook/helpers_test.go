@@ -11,6 +11,7 @@ type notebookOptions struct {
 	Labels      map[string]any
 	Annotations map[string]any
 	Containers  []any
+	Status      map[string]any
 }
 
 // newNotebook creates a minimal Notebook unstructured object for testing.
@@ -43,6 +44,10 @@ func newNotebook(name, namespace string, opts notebookOptions) *unstructured.Uns
 				},
 			},
 		}
+	}
+
+	if opts.Status != nil {
+		obj["status"] = opts.Status
 	}
 
 	return &unstructured.Unstructured{Object: obj}
