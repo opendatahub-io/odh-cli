@@ -255,6 +255,18 @@ func TestServiceMeshV3Check_PackageManifestNotFound(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonResourceNotFound),
 	}))
+	g.Expect(result.Status.Conditions[0].Message).To(And(
+		ContainSubstring("servicemeshoperator3.v3.1.0"),
+		ContainSubstring("'stable' channel"),
+		ContainSubstring("redhat-operators"),
+	))
+	g.Expect(result.Status.Conditions[0].Remediation).To(And(
+		ContainSubstring("servicemeshoperator3.v3.1.0"),
+		ContainSubstring("'stable' channel"),
+		ContainSubstring("redhat-operators"),
+		ContainSubstring("openshift-marketplace"),
+		ContainSubstring("upgrade guide"),
+	))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
@@ -286,7 +298,18 @@ func TestServiceMeshV3Check_WrongCatalogSource(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonResourceNotFound),
 	}))
-	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("redhat-operators"))
+	g.Expect(result.Status.Conditions[0].Message).To(And(
+		ContainSubstring("servicemeshoperator3.v3.1.0"),
+		ContainSubstring("'stable' channel"),
+		ContainSubstring("redhat-operators"),
+	))
+	g.Expect(result.Status.Conditions[0].Remediation).To(And(
+		ContainSubstring("servicemeshoperator3.v3.1.0"),
+		ContainSubstring("'stable' channel"),
+		ContainSubstring("redhat-operators"),
+		ContainSubstring("openshift-marketplace"),
+		ContainSubstring("upgrade guide"),
+	))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
@@ -491,6 +514,18 @@ func TestServiceMeshV3Check_MissingCatalogSource(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonResourceNotFound),
 	}))
+	g.Expect(result.Status.Conditions[0].Message).To(And(
+		ContainSubstring("servicemeshoperator3.v3.1.0"),
+		ContainSubstring("'stable' channel"),
+		ContainSubstring("redhat-operators"),
+	))
+	g.Expect(result.Status.Conditions[0].Remediation).To(And(
+		ContainSubstring("servicemeshoperator3.v3.1.0"),
+		ContainSubstring("'stable' channel"),
+		ContainSubstring("redhat-operators"),
+		ContainSubstring("openshift-marketplace"),
+		ContainSubstring("upgrade guide"),
+	))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 

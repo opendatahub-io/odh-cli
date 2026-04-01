@@ -23,6 +23,10 @@ const kind = "servicemesh-v3"
 
 const displayName = "Red Hat Service Mesh v3"
 
+// mirrorRemediationFmt is the shared remediation template for failures where the required
+// servicemeshoperator3 CSV is not available in the cluster catalog.
+const mirrorRemediationFmt = "Mirror %s into the '%s' channel of the redhat-operators catalog source in the openshift-marketplace namespace. See the pre-requisite instructions in the RHOAI 2.x to 3.x upgrade guide."
+
 // Check validates that the required Service Mesh v3 version is available in the cluster's operator catalog.
 type Check struct {
 	check.BaseCheck
@@ -158,8 +162,8 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 			check.ConditionTypeAvailable,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonResourceNotFound),
-			check.WithMessage("servicemeshoperator3 PackageManifest from redhat-operators not found in openshift-marketplace"),
-			check.WithRemediation("Mirror servicemeshoperator3 into the redhat-operators catalog source in the openshift-marketplace namespace."),
+			check.WithMessage("servicemeshoperator3 PackageManifest not found in redhat-operators catalog (required: %s in '%s' channel)", requiredCSV, requiredChannel),
+			check.WithRemediation(fmt.Sprintf(mirrorRemediationFmt, requiredCSV, requiredChannel)),
 			check.WithImpact(result.ImpactBlocking),
 		))
 
@@ -189,7 +193,7 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonDependencyUnavailable),
 			check.WithMessage("%s version %s is not available in the '%s' channel of the cluster catalog", displayName, displayVersion, requiredChannel),
-			check.WithRemediation(fmt.Sprintf("Mirror %s into the '%s' channel of the redhat-operators catalog source in the openshift-marketplace namespace. See the pre-requisite instructions in the RHOAI 2.x to 3.x upgrade guide.", requiredCSV, requiredChannel)),
+			check.WithRemediation(fmt.Sprintf(mirrorRemediationFmt, requiredCSV, requiredChannel)),
 			check.WithImpact(result.ImpactBlocking),
 		))
 	}
