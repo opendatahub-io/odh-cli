@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/blang/semver/v4"
 	"github.com/fatih/color"
@@ -289,6 +290,24 @@ func (c *Command) runUpgradeMode(ctx context.Context, currentVersion *semver.Ver
 	// Configure check-specific settings
 	c.configureCheckSettings()
 
+	// Validate selectors match at least one registered check (skip for default wildcard)
+	if !isDefaultSelector(c.CheckSelectors) {
+		matched, err := c.registry.MatchesAnyCheck(c.CheckSelectors)
+		if err != nil {
+			return fmt.Errorf("validating check selectors: %w", err)
+		}
+
+		if !matched {
+			noun := "selector"
+			if len(c.CheckSelectors) > 1 {
+				noun = "selectors"
+			}
+
+			return fmt.Errorf("no registered checks match %s: %v\n\nAvailable check IDs:\n  %s",
+				noun, c.CheckSelectors, strings.Join(c.registry.AllCheckIDs(), "\n  "))
+		}
+	}
+
 	// Execute checks using target version for applicability filtering
 	c.IO.Errorf("Running upgrade compatibility checks...")
 	executor := check.NewExecutor(c.registry, c.IO)
@@ -426,6 +445,11 @@ func (c *Command) outputUpgradeTable(ctx context.Context, _ string, results []ch
 	}
 
 	return nil
+}
+
+// isDefaultSelector returns true if the selectors are the default wildcard ["*"].
+func isDefaultSelector(selectors []string) bool {
+	return len(selectors) == 1 && selectors[0] == "*"
 }
 
 // collectNamespaceRequesters fetches the openshift.io/requester annotation for each

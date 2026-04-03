@@ -240,6 +240,137 @@ func TestCheckRegistry_ListByPatterns_InvalidPattern(t *testing.T) {
 	g.Expect(err.Error()).To(ContainSubstring("pattern matching"))
 }
 
+func TestCheckRegistry_AllCheckIDs(t *testing.T) {
+	g := NewWithT(t)
+
+	registry := check.NewRegistry()
+
+	mockChecks := []struct {
+		id    string
+		group check.CheckGroup
+	}{
+		{id: "workloads.notebook.impacted", group: check.GroupWorkload},
+		{id: "components.dashboard", group: check.GroupComponent},
+		{id: "dependencies.certmanager.installed", group: check.GroupDependency},
+	}
+
+	for _, mc := range mockChecks {
+		mockCheck := mocks.NewMockCheck()
+		mockCheck.On("ID").Return(mc.id)
+		mockCheck.On("Group").Return(mc.group)
+		g.Expect(registry.Register(mockCheck)).To(Succeed())
+	}
+
+	ids := registry.AllCheckIDs()
+	g.Expect(ids).To(Equal([]string{
+		"components.dashboard",
+		"dependencies.certmanager.installed",
+		"workloads.notebook.impacted",
+	}))
+}
+
+func TestCheckRegistry_AllCheckIDs_Empty(t *testing.T) {
+	g := NewWithT(t)
+
+	registry := check.NewRegistry()
+	ids := registry.AllCheckIDs()
+	g.Expect(ids).To(BeEmpty())
+}
+
+func TestCheckRegistry_MatchesAnyCheck(t *testing.T) {
+	g := NewWithT(t)
+
+	registry := check.NewRegistry()
+
+	// Register test checks
+	mockChecks := []struct {
+		id    string
+		name  string
+		group check.CheckGroup
+	}{
+		{id: "components.dashboard", name: "Dashboard Component", group: check.GroupComponent},
+		{id: "dependencies.certmanager.installed", name: "Cert Manager", group: check.GroupDependency},
+	}
+
+	for _, mc := range mockChecks {
+		mockCheck := mocks.NewMockCheck()
+		mockCheck.On("ID").Return(mc.id)
+		mockCheck.On("Name").Return(mc.name)
+		mockCheck.On("Group").Return(mc.group)
+		g.Expect(registry.Register(mockCheck)).To(Succeed())
+	}
+
+	tests := []struct {
+		name     string
+		patterns []string
+		want     bool
+	}{
+		{
+			name:     "wildcard matches",
+			patterns: []string{"*"},
+			want:     true,
+		},
+		{
+			name:     "exact ID matches",
+			patterns: []string{"components.dashboard"},
+			want:     true,
+		},
+		{
+			name:     "glob pattern matches",
+			patterns: []string{"*certmanager*"},
+			want:     true,
+		},
+		{
+			name:     "group shortcut matches",
+			patterns: []string{"dependencies"},
+			want:     true,
+		},
+		{
+			name:     "no match returns false",
+			patterns: []string{"nonexistent"},
+			want:     false,
+		},
+		{
+			name:     "hyphenated name does not match unhyphenated ID",
+			patterns: []string{"cert-manager"},
+			want:     false,
+		},
+		{
+			name:     "multiple patterns where one matches",
+			patterns: []string{"nonexistent", "components.dashboard"},
+			want:     true,
+		},
+		{
+			name:     "multiple patterns where none match",
+			patterns: []string{"nonexistent", "also-nonexistent"},
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, err := registry.MatchesAnyCheck(tt.patterns)
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(matched).To(Equal(tt.want))
+		})
+	}
+}
+
+func TestCheckRegistry_MatchesAnyCheck_InvalidPattern(t *testing.T) {
+	g := NewWithT(t)
+
+	registry := check.NewRegistry()
+
+	mockCheck := mocks.NewMockCheck()
+	mockCheck.On("ID").Return("components.dashboard")
+	mockCheck.On("Group").Return(check.GroupComponent)
+
+	g.Expect(registry.Register(mockCheck)).To(Succeed())
+
+	_, err := registry.MatchesAnyCheck([]string{"["})
+	g.Expect(err).To(HaveOccurred())
+}
+
 func TestCheckRegistry_ListByPattern_InvalidPattern(t *testing.T) {
 	g := NewWithT(t)
 

@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -140,6 +141,44 @@ func (r *CheckRegistry) ListByPatterns(
 	}
 
 	return result, nil
+}
+
+// MatchesAnyCheck returns true if any registered check matches at least one of the patterns.
+// This is used for early validation that user-provided selectors will match something.
+// Unlike ListByPatterns, this short-circuits on the first match to avoid materializing a full slice.
+func (r *CheckRegistry) MatchesAnyCheck(patterns []string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, check := range r.checks {
+		for _, pattern := range patterns {
+			matched, err := matchesPattern(check, pattern)
+			if err != nil {
+				return false, fmt.Errorf("pattern matching for check %s: %w", check.ID(), err)
+			}
+
+			if matched {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// AllCheckIDs returns all registered check IDs in sorted order.
+func (r *CheckRegistry) AllCheckIDs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	ids := make([]string, 0, len(r.checks))
+	for id := range r.checks {
+		ids = append(ids, id)
+	}
+
+	sort.Strings(ids)
+
+	return ids
 }
 
 // ListByPattern returns checks matching a single selector pattern and group.
