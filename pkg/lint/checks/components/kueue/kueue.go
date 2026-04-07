@@ -21,14 +21,14 @@ const (
 	checkTypeManagementState = "management-state"
 
 	// Deferred: parameterize hardcoded version references using ComponentRequest.TargetVersion.
-	msgManagedProhibited   = "The 3.3.1 upgrade currently only supports the Kueue managementState of Removed. A future 3.3.x release might allow an upgrade when you have migrated to the Red Hat build of Kueue Operator and the Kueue managementState is Unmanaged."
-	msgUnmanagedProhibited = "The 3.3.1 upgrade currently only supports the Kueue managementState of Removed. A future 3.3.x release might allow an upgrade when the Kueue managementState is Unmanaged."
-	msgManagedBlocking     = "The 3.3.1 upgrade currently only supports the Kueue managementState of Removed. The Kueue managementState is currently Managed but no workloads on the cluster are using Kueue. Set the Kueue managementState to Removed and then re-run this script to proceed with migration."
-	msgUnmanagedBlocking   = "The 3.3.1 upgrade currently only supports the Kueue managementState of Removed. The Kueue managementState is currently Unmanaged but no workloads on the cluster are using Kueue. Set the Kueue managementState to Removed and then re-run this script to proceed with migration."
+	msgManagedProhibited   = "The 3.3.2 upgrade currently only supports the Kueue managementState of Removed. A future 3.3.x release might allow an upgrade when you have migrated to the Red Hat build of Kueue Operator and the Kueue managementState is Unmanaged."
+	msgUnmanagedProhibited = "The 3.3.2 upgrade currently only supports the Kueue managementState of Removed. A future 3.3.x release might allow an upgrade when the Kueue managementState is Unmanaged."
+	msgManagedBlocking     = "The 3.3.2 upgrade currently only supports the Kueue managementState of Removed. The Kueue managementState is currently Managed but no workloads on the cluster are using Kueue. Set the Kueue managementState to Removed and then re-run this script to proceed with migration."
+	msgUnmanagedBlocking   = "The 3.3.2 upgrade currently only supports the Kueue managementState of Removed. The Kueue managementState is currently Unmanaged but no workloads on the cluster are using Kueue. Set the Kueue managementState to Removed and then re-run this script to proceed with migration."
 )
 
 // ManagementStateCheck validates that Kueue managementState is Removed before upgrading to 3.x.
-// In RHOAI 3.3.1, only the Removed state is supported. A future 3.3.x release will support
+// In RHOAI 3.3.2, only the Removed state is supported. A future 3.3.x release will support
 // Unmanaged with the Red Hat build of Kueue Operator.
 //
 // The check distinguishes between clusters that are actively using Kueue (namespaces or workloads

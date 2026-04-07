@@ -251,7 +251,7 @@ func TestSameMajorMinor(t *testing.T) {
 		{
 			name:     "3.x to 3.x same minor returns true",
 			a:        toVersionPtr("3.3.0"),
-			b:        toVersionPtr("3.3.1"),
+			b:        toVersionPtr("3.3.2"),
 			expected: true,
 		},
 		{
@@ -290,8 +290,8 @@ func TestMajorMinorLabel(t *testing.T) {
 			expected: "3.0",
 		},
 		{
-			name:     "3.3.1 returns 3.3",
-			version:  toVersionPtr("3.3.1"),
+			name:     "3.3.2 returns 3.3",
+			version:  toVersionPtr("3.3.2"),
 			expected: "3.3",
 		},
 		{

@@ -85,7 +85,7 @@ func TestManagementStateCheck_CanApply_NoDSC(t *testing.T) {
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -104,7 +104,7 @@ func TestManagementStateCheck_CanApply_NotConfigured(t *testing.T) {
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{dsc},
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -127,7 +127,7 @@ func TestManagementStateCheck_ManagedProhibited(t *testing.T) {
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns, nb},
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -144,7 +144,7 @@ func TestManagementStateCheck_ManagedProhibited(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactProhibited))
 	g.Expect(result.Annotations).To(And(
 		HaveKeyWithValue("component.opendatahub.io/management-state", "Managed"),
-		HaveKeyWithValue("check.opendatahub.io/target-version", "3.3.1"),
+		HaveKeyWithValue("check.opendatahub.io/target-version", "3.3.2"),
 	))
 }
 
@@ -157,7 +157,7 @@ func TestManagementStateCheck_ManagedBlocking(t *testing.T) {
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"})},
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -188,7 +188,7 @@ func TestManagementStateCheck_UnmanagedProhibited(t *testing.T) {
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"}), nb},
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -214,7 +214,7 @@ func TestManagementStateCheck_UnmanagedBlocking(t *testing.T) {
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Unmanaged"})},
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
@@ -252,7 +252,7 @@ func TestManagementStateCheck_CanApply_ManagementState(t *testing.T) {
 				ListKinds:      listKinds,
 				Objects:        []*unstructured.Unstructured{dsc},
 				CurrentVersion: "2.25.0",
-				TargetVersion:  "3.3.1",
+				TargetVersion:  "3.3.2",
 			})
 
 			canApply, err := chk.CanApply(t.Context(), target)
@@ -285,7 +285,7 @@ func TestManagementStateCheck_KueueUsageViaNamespaceLabel(t *testing.T) {
 			ListKinds:      listKinds,
 			Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns},
 			CurrentVersion: "2.25.0",
-			TargetVersion:  "3.3.1",
+			TargetVersion:  "3.3.2",
 		})
 
 		chk := kueue.NewManagementStateCheck()
@@ -306,7 +306,7 @@ func TestManagementStateCheck_KueueUsageViaNamespaceLabel(t *testing.T) {
 			ListKinds:      listKinds,
 			Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), ns},
 			CurrentVersion: "2.25.0",
-			TargetVersion:  "3.3.1",
+			TargetVersion:  "3.3.2",
 		})
 
 		chk := kueue.NewManagementStateCheck()
@@ -329,7 +329,7 @@ func TestManagementStateCheck_KueueUsageViaWorkloadLabel(t *testing.T) {
 		ListKinds:      listKinds,
 		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kueue": "Managed"}), nb},
 		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.3.1",
+		TargetVersion:  "3.3.2",
 	})
 
 	chk := kueue.NewManagementStateCheck()
