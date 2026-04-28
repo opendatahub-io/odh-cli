@@ -70,20 +70,7 @@ RUN python3 -m pip install --no-cache-dir \
     'kubernetes>=28.1.0' \
     'PyYAML>=6.0'
 
-# Install kubectl with multi-arch support (latest stable version)
-RUN set -e; \
-    ARCH=${TARGETARCH:-amd64}; \
-    case "$ARCH" in \
-        amd64) KUBE_ARCH="amd64" ;; \
-        arm64) KUBE_ARCH="arm64" ;; \
-        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
-    esac; \
-    echo "Installing kubectl for architecture: $KUBE_ARCH"; \
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBE_ARCH}/kubectl"; \
-    chmod +x kubectl; \
-    mv kubectl /usr/local/bin/kubectl
-
-# Install OpenShift CLI (oc) with multi-arch support (stable version)
+# Install OpenShift CLI (oc) and kubectl with multi-arch support
 RUN set -e; \
     ARCH=${TARGETARCH:-amd64}; \
     case "$ARCH" in \
@@ -91,13 +78,14 @@ RUN set -e; \
         arm64) OC_ARCH="arm64" ;; \
         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac; \
-    echo "Installing oc for architecture: $OC_ARCH"; \
+    echo "Installing oc and kubectl for architecture: $OC_ARCH"; \
     curl -fsSL -o openshift-client.tar.gz \
-        "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable-4.17/openshift-client-linux-${OC_ARCH}-rhel9.tar.gz"; \
+        "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable-4.19/openshift-client-linux-${OC_ARCH}-rhel9.tar.gz"; \
     tar -xzf openshift-client.tar.gz; \
-    chmod +x oc; \
+    chmod +x oc kubectl; \
     mv oc /usr/local/bin/oc; \
-    rm -f openshift-client.tar.gz kubectl README.md
+    mv kubectl /usr/local/bin/kubectl; \
+    rm -f openshift-client.tar.gz README.md
 
 # Install yq with multi-arch support (stable version)
 RUN set -e; \
@@ -114,18 +102,19 @@ RUN set -e; \
     chmod +x /usr/local/bin/yq
 
 # Copy binary from builder (cross-compiled for target platform)
-COPY --from=builder /workspace/bin/kubectl-odh /opt/rhai-cli/bin/rhai-cli
+COPY --from=builder /workspace/bin/odh-cli /opt/odh-cli/bin/odh-cli
 
-# Add rhai-cli to PATH
-ENV PATH="/opt/rhai-cli/bin:${PATH}"
+# Add odh-cli to PATH
+ENV PATH="/opt/odh-cli/bin:${PATH}"
 
 # Copy upgrade helpers from builder
 COPY --from=builder /opt/rhai-upgrade-helpers /opt/rhai-upgrade-helpers
 
 # Create backup directory for upgrade artifacts (world-writable with sticky bit
 # so arbitrary UIDs can create subdirectories without permission errors)
+# This is path is created by https://github.com/red-hat-data-services/rhoai-upgrade-helpers
 RUN mkdir -p /tmp/rhoai-upgrade-backup && chmod 1777 /tmp/rhoai-upgrade-backup
 
-# Set entrypoint to rhai-cli binary
+# Set entrypoint to odh-cli binary
 # Users can override with --entrypoint /bin/bash for interactive debugging
-ENTRYPOINT ["/opt/rhai-cli/bin/rhai-cli"]
+ENTRYPOINT ["/opt/odh-cli/bin/odh-cli"]

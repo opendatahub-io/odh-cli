@@ -26,13 +26,13 @@ migrations without version filtering, or --target-version to filter by applicabi
 
 const cmdExample = `
   # List applicable migrations for version 3.0
-  kubectl odh migrate list --target-version 3.0.0
+  odh-cli migrate list --target-version 3.0.0
 
   # List all migrations without version filtering
-  kubectl odh migrate list --all
+  odh-cli migrate list --all
 
   # List with JSON output
-  kubectl odh migrate list --target-version 3.0.0 -o json
+  odh-cli migrate list --target-version 3.0.0 -o json
 `
 
 // AddCommand adds the list subcommand to the migrate command.

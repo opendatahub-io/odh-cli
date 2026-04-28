@@ -26,20 +26,20 @@ Use 'migrate prepare' to backup resources before running migrations.
 
 const cmdExample = `
   # Run a single migration with confirmation prompts
-  kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0
+  odh-cli migrate run --migration kueue.rhbok.migrate --target-version 3.0.0
 
   # Run migration in dry-run mode (verbose is automatically enabled)
-  kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --dry-run
+  odh-cli migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --dry-run
 
   # Run migration without confirmation prompts
-  kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --yes
+  odh-cli migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --yes
 
   # Run multiple migrations sequentially
-  kubectl odh migrate run -m kueue.rhbok.migrate -m other.migration --target-version 3.0.0
+  odh-cli migrate run -m kueue.rhbok.migrate -m other.migration --target-version 3.0.0
 
   # Typical workflow: prepare first, then run
-  kubectl odh migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0
-  kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --yes
+  odh-cli migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0
+  odh-cli migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --yes
 `
 
 // AddCommand adds the run subcommand to the migrate command.

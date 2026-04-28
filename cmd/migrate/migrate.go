@@ -19,6 +19,12 @@ const (
 const cmdLong = `
 The migrate command manages cluster migrations for OpenShift AI components.
 
+INVOCATION:
+  The examples below use 'odh-cli'. Depending on your setup, substitute with:
+    - Container:       podman|docker run <image> migrate ...
+    - kubectl plugin:  kubectl odh migrate ...
+    - Direct binary:   odh-cli migrate ...
+
 Use 'migrate list' to see available migrations filtered by version compatibility.
 Use 'migrate prepare' to backup resources before migration.
 Use 'migrate run' to execute one or more migrations sequentially.
@@ -35,22 +41,22 @@ Available subcommands:
 
 const cmdExample = `
   # List available migrations for version 3.0
-  kubectl odh migrate list --target-version 3.0.0
+  odh-cli migrate list --target-version 3.0.0
 
   # List all migrations including non-applicable ones
-  kubectl odh migrate list --all
+  odh-cli migrate list --all
 
   # Prepare for migration (creates backups)
-  kubectl odh migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0
+  odh-cli migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0
 
   # Run a migration with confirmation prompts
-  kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0
+  odh-cli migrate run --migration kueue.rhbok.migrate --target-version 3.0.0
 
   # Run migration in dry-run mode (preview changes only)
-  kubectl odh migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --dry-run
+  odh-cli migrate run --migration kueue.rhbok.migrate --target-version 3.0.0 --dry-run
 
   # Run multiple migrations sequentially
-  kubectl odh migrate run --migration kueue.rhbok.migrate --migration other.migration --target-version 3.0.0 --yes
+  odh-cli migrate run --migration kueue.rhbok.migrate --migration other.migration --target-version 3.0.0 --yes
 `
 
 // AddCommand adds the migrate command to the root command.

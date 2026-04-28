@@ -58,6 +58,10 @@ jobs:
           username: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
           password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
 
+      - name: Set container repo for red-hat-data-services
+        if: github.repository_owner == 'red-hat-data-services'
+        run: echo "CONTAINER_REPO=quay.io/rhoai/odh-cli-rhel9" >> $GITHUB_ENV
+
       - name: Build and push dev image
         env:
           VERSION: dev
@@ -96,6 +100,10 @@ jobs:
           registry: ${{ secrets.CONTAINER_REGISTRY }}
           username: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
           password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+
+      - name: Set container repo for red-hat-data-services
+        if: github.repository_owner == 'red-hat-data-services'
+        run: echo "CONTAINER_REPO=quay.io/rhoai/odh-cli-rhel9" >> $GITHUB_ENV
 
       - name: Build and push image
         env:

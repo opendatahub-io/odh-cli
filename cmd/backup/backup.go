@@ -20,6 +20,12 @@ const cmdLong = `
 Backs up OpenShift AI workloads (notebooks, etc.) and their dependencies
 (ConfigMaps, Secrets, PVCs) to a directory structure.
 
+INVOCATION:
+  The examples below use 'odh-cli'. Depending on your setup, substitute with:
+    - Container:       podman|docker run <image> backup ...
+    - kubectl plugin:  kubectl odh backup ...
+    - Direct binary:   odh-cli backup ...
+
 The backup command:
   - Discovers workload resources based on --includes/--exclude filters
   - For each workload, identifies and backs up referenced dependencies

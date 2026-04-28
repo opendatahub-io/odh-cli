@@ -30,19 +30,19 @@ Use --output-dir to specify where backups should be written.
 
 const cmdExample = `
   # Prepare for a single migration (creates timestamped backup directory)
-  kubectl odh migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0
+  odh-cli migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0
 
   # Prepare with custom backup directory
-  kubectl odh migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0 --output-dir /path/to/backups
+  odh-cli migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0 --output-dir /path/to/backups
 
   # Preview what would be backed up (dry-run mode)
-  kubectl odh migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0 --dry-run
+  odh-cli migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0 --dry-run
 
   # Prepare without confirmation prompts
-  kubectl odh migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0 --yes
+  odh-cli migrate prepare --migration kueue.rhbok.migrate --target-version 3.0.0 --yes
 
   # Prepare multiple migrations sequentially
-  kubectl odh migrate prepare -m kueue.rhbok.migrate -m other.migration --target-version 3.0.0
+  odh-cli migrate prepare -m kueue.rhbok.migrate -m other.migration --target-version 3.0.0
 `
 
 // AddCommand adds the prepare subcommand to the migrate command.

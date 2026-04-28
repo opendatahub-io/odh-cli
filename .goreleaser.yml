@@ -1,6 +1,6 @@
 version: 2
 
-project_name: kubectl-odh
+project_name: odh-cli
 
 before:
   hooks:
@@ -8,9 +8,9 @@ before:
     - make fetch-deps
 
 builds:
-  - id: kubectl-odh
+  - id: odh-cli
     main: ./cmd/main.go
-    binary: kubectl-odh
+    binary: odh-cli
     env:
       - CGO_ENABLED=0
     goos:

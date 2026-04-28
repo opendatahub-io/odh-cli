@@ -35,12 +35,23 @@ go run github.com/opendatahub-io/odh-cli/cmd@latest \
 
 ## As kubectl Plugin
 
-Install the `kubectl-odh` binary to your PATH:
+To use as a kubectl plugin, rename or symlink the `odh-cli` binary:
 
 ```bash
-# Download from releases
-# Place in PATH as kubectl-odh
+# Download from GitHub releases
+curl -LO https://github.com/opendatahub-io/odh-cli/releases/latest/download/odh-cli_linux_amd64.tar.gz
+tar -xzf odh-cli_linux_amd64.tar.gz
+
+# Option 1: Rename to kubectl-odh for kubectl to auto discovery
+sudo mv odh-cli /usr/local/bin/kubectl-odh
+
+# Option 2: Symlink (keeps both names available)
+sudo mv odh-cli /usr/local/bin/
+sudo ln -s /usr/local/bin/odh-cli /usr/local/bin/kubectl-odh
+
 # Use with kubectl
 kubectl odh lint --target-version 3.3.0
-kubectl odh version
+
+# or just use directly
+odh-cli lint --target-version 3.3.0
 ```

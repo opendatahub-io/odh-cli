@@ -20,7 +20,7 @@ func main() {
 	flags := genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag()
 
 	cmd := &cobra.Command{
-		Use:   "kubectl-odh",
+		Use:   "odh-cli",
 		Short: "kubectl plugin for ODH/RHOAI",
 	}
 

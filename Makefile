@@ -1,7 +1,7 @@
-# kubectl-odh CLI Makefile
+# odh-cli Makefile
 
 # Binary name
-BINARY_NAME=bin/kubectl-odh
+BINARY_NAME=bin/odh-cli
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -22,7 +22,7 @@ LINT_TIMEOUT := 10m
 
 # Container registry configuration
 CONTAINER_REGISTRY ?= quay.io
-CONTAINER_REPO ?= $(CONTAINER_REGISTRY)/rhoai/rhoai-upgrade-helpers-rhel9
+CONTAINER_REPO ?= $(CONTAINER_REGISTRY)/opendatahub-io/odh-cli-rhel9
 CONTAINER_PLATFORMS ?= linux/amd64,linux/arm64
 CONTAINER_TAGS ?= $(VERSION)
 
@@ -143,7 +143,7 @@ publish: build-image
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build       - Build the kubectl-odh binary"
+	@echo "  build       - Build the odh-cli binary"
 	@echo "  build-image - Build container image without pushing (creates local manifest)"
 	@echo "  publish     - Build and push container image using Podman manifest"
 	@echo "  run         - Run the doctor command"

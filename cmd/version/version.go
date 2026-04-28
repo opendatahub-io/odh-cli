@@ -44,7 +44,7 @@ func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
 			default:
 				_, err := fmt.Fprintf(
 					cmd.OutOrStdout(),
-					"kubectl-odh version %s (commit: %s, built: %s)\n",
+					"odh-cli version %s (commit: %s, built: %s)\n",
 					version.GetVersion(),
 					version.GetCommit(),
 					version.GetDate(),

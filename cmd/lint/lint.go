@@ -20,6 +20,12 @@ const (
 const cmdLong = `
 Validates the current OpenShift AI installation or assesses upgrade readiness.
 
+INVOCATION:
+  The examples below use 'odh-cli'. Depending on your setup, substitute with:
+    - Container:       podman|docker run <image> lint ...
+    - kubectl plugin:  kubectl odh lint ...
+    - Direct binary:   odh-cli lint ...
+
 LINT MODE (without --target-version):
   Validates the current cluster state and reports configuration issues.
 
@@ -39,32 +45,32 @@ Each issue is reported with:
 
 Examples:
   # Validate current cluster state
-  kubectl odh lint
+  odh-cli lint
 
   # Assess upgrade readiness for version 3.0
-  kubectl odh lint --target-version 3.0
+  odh-cli lint --target-version 3.0
 
   # Validate with JSON output
-  kubectl odh lint -o json
+  odh-cli lint -o json
 
   # Validate only component checks
-  kubectl odh lint --checks "components"
+  odh-cli lint --checks "components"
 `
 const cmdExample = `
   # Validate current cluster state
-  kubectl odh lint
+  odh-cli lint
 
   # Assess upgrade readiness for version 3.0
-  kubectl odh lint --target-version 3.0
+  odh-cli lint --target-version 3.0
 
   # Output results in JSON format
-  kubectl odh lint -o json
+  odh-cli lint -o json
 
   # Run only dashboard-related checks
-  kubectl odh lint --checks "*dashboard*"
+  odh-cli lint --checks "*dashboard*"
 
   # Check upgrade readiness to version 3.1
-  kubectl odh lint --target-version 3.1
+  odh-cli lint --target-version 3.1
 `
 
 // AddCommand adds the lint command to the root command.
