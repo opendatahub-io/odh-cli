@@ -65,3 +65,14 @@ func IsVersionAtLeast(
 
 	return version.Major == major && version.Minor >= minor
 }
+
+// IsUpgradeFrom34To35 checks if the versions represent an upgrade from 3.4.x to 3.5.x specifically.
+// This is used for checks that only apply to the llamastackoperator -> ogx migration.
+// Returns false if either version is nil.
+func IsUpgradeFrom34To35(from *semver.Version, to *semver.Version) bool {
+	if from == nil || to == nil {
+		return false
+	}
+
+	return from.Major == 3 && from.Minor == 4 && to.Major == 3 && to.Minor == 5
+}

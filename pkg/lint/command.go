@@ -21,6 +21,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/datasciencepipelines"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/kserve"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/kueue"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/llamastack"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/modelmesh"
 	raycomponent "github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/ray"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/trainingoperator"
@@ -100,7 +101,7 @@ func NewCommand(
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
 
-	// Components (12)
+	// Components (13)
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
 	registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
@@ -113,6 +114,7 @@ func NewCommand(
 	registry.MustRegister(kueue.NewManagementStateCheck())
 	// Deferred: re-enable when a future 3.3.x release supports Unmanaged + Red Hat build of Kueue Operator.
 	// registry.MustRegister(kueue.NewOperatorInstalledCheck())
+	registry.MustRegister(llamastack.NewRemovalCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
