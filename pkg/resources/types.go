@@ -124,6 +124,27 @@ var (
 		Resource: "datasciencepipelinesapplications",
 	}
 
+	OdhDashboardConfig = ResourceType{
+		Group:    "opendatahub.io",
+		Version:  "v1alpha",
+		Kind:     "OdhDashboardConfig",
+		Resource: "odhdashboardconfigs",
+	}
+
+	ConsoleLink = ResourceType{
+		Group:    "console.openshift.io",
+		Version:  "v1",
+		Kind:     "ConsoleLink",
+		Resource: "consolelinks",
+	}
+
+	Route = ResourceType{
+		Group:    "route.openshift.io",
+		Version:  "v1",
+		Kind:     "Route",
+		Resource: "routes",
+	}
+
 	// StatefulSet is the Kubernetes StatefulSet resource.
 	StatefulSet = ResourceType{
 		Group:    "apps",

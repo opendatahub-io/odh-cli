@@ -12,6 +12,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/dashboard/redirect"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/kueue/rhbok"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/modelserving"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches/upgrade"
@@ -49,6 +50,7 @@ func NewRunCommand(streams genericiooptions.IOStreams) *RunCommand {
 	registry.MustRegister(&modelserving.AddOwnerReferencesAction{})
 	registry.MustRegister(&modelserving.ManagedISVCConfigAction{})
 	registry.MustRegister(&upgrade.WorkbenchUpgradeAction{})
+	registry.MustRegister(&redirect.DashboardRedirectAction{})
 
 	return &RunCommand{
 		SharedOptions: shared,
