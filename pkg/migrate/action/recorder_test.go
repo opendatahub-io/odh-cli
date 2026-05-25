@@ -7,6 +7,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 )
 
 func TestRecorder_Child(t *testing.T) {
@@ -22,11 +23,13 @@ func TestRecorder_Child(t *testing.T) {
 
 	actionResult := recorder.Build()
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Steps).To(HaveLen(1))
-	g.Expect(actionResult.Status.Steps[0].Name).To(Equal("step1"))
-	g.Expect(actionResult.Status.Steps[0].Description).To(Equal("First Step"))
-	g.Expect(actionResult.Status.Steps[0].Status).To(Equal(result.StepCompleted))
-	g.Expect(actionResult.Status.Steps[0].Message).To(Equal("Step 1 completed"))
+	g.Expect(actionResult).To(HaveField("Status.Steps", HaveLen(1)))
+	g.Expect(actionResult.Status.Steps[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Name":        Equal("step1"),
+		"Description": Equal("First Step"),
+		"Status":      Equal(result.StepCompleted),
+		"Message":     Equal("Step 1 completed"),
+	}))
 }
 
 func TestRecorder_NestedChildren(t *testing.T) {
@@ -43,15 +46,20 @@ func TestRecorder_NestedChildren(t *testing.T) {
 	parent.Complete(result.StepFailed, "Parent failed due to child")
 
 	actionResult := recorder.Build()
-	g.Expect(actionResult.Status.Steps).To(HaveLen(1))
+	g.Expect(actionResult).To(HaveField("Status.Steps", HaveLen(1)))
+	g.Expect(actionResult).To(HaveField("Status.Completed", BeFalse()))
 
 	parentStep := actionResult.Status.Steps[0]
-	g.Expect(parentStep.Name).To(Equal("parent"))
-	g.Expect(parentStep.Children).To(HaveLen(2))
-	g.Expect(parentStep.Children[0].Name).To(Equal("child1"))
-	g.Expect(parentStep.Children[0].Status).To(Equal(result.StepCompleted))
-	g.Expect(parentStep.Children[1].Name).To(Equal("child2"))
-	g.Expect(parentStep.Children[1].Status).To(Equal(result.StepFailed))
+	g.Expect(parentStep).To(HaveField("Name", Equal("parent")))
+	g.Expect(parentStep).To(HaveField("Children", HaveLen(2)))
+	g.Expect(parentStep.Children[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Name":   Equal("child1"),
+		"Status": Equal(result.StepCompleted),
+	}))
+	g.Expect(parentStep.Children[1]).To(MatchFields(IgnoreExtras, Fields{
+		"Name":   Equal("child2"),
+		"Status": Equal(result.StepFailed),
+	}))
 }
 
 func TestRecorder_AddDetail(t *testing.T) {
@@ -65,11 +73,11 @@ func TestRecorder_AddDetail(t *testing.T) {
 	step.Complete(result.StepCompleted, "Done")
 
 	actionResult := recorder.Build()
-	g.Expect(actionResult.Status.Steps).To(HaveLen(1))
-	g.Expect(actionResult.Status.Steps[0].Details).To(HaveKey("key1"))
-	g.Expect(actionResult.Status.Steps[0].Details["key1"]).To(Equal("value1"))
-	g.Expect(actionResult.Status.Steps[0].Details).To(HaveKey("key2"))
-	g.Expect(actionResult.Status.Steps[0].Details["key2"]).To(Equal(42))
+	g.Expect(actionResult).To(HaveField("Status.Steps", HaveLen(1)))
+	g.Expect(actionResult.Status.Steps[0]).To(HaveField("Details", And(
+		HaveKeyWithValue("key1", "value1"),
+		HaveKeyWithValue("key2", 42),
+	)))
 }
 
 func TestRecorder_Record(t *testing.T) {
@@ -79,8 +87,55 @@ func TestRecorder_Record(t *testing.T) {
 	recorder.Record("quick-step", "Quick step message", result.StepCompleted)
 
 	actionResult := recorder.Build()
-	g.Expect(actionResult.Status.Steps).To(HaveLen(1))
-	g.Expect(actionResult.Status.Steps[0].Name).To(Equal("quick-step"))
-	g.Expect(actionResult.Status.Steps[0].Message).To(Equal("Quick step message"))
-	g.Expect(actionResult.Status.Steps[0].Status).To(Equal(result.StepCompleted))
+	g.Expect(actionResult).To(HaveField("Status.Steps", HaveLen(1)))
+	g.Expect(actionResult.Status.Steps[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Name":    Equal("quick-step"),
+		"Message": Equal("Quick step message"),
+		"Status":  Equal(result.StepCompleted),
+	}))
+}
+
+func TestRecorder_NonTerminalSteps(t *testing.T) {
+	t.Run("running child prevents completion", func(t *testing.T) {
+		g := NewWithT(t)
+
+		recorder := action.NewRootRecorder()
+
+		parent := recorder.Child("parent", "Parent Step")
+		// Leave child in running state (default state when created)
+		parent.Child("child1", "Child 1")
+		parent.Complete(result.StepCompleted, "Parent completed but child running")
+
+		actionResult := recorder.Build()
+		g.Expect(actionResult).To(HaveField("Status.Steps", HaveLen(1)))
+		g.Expect(actionResult).To(HaveField("Status.Completed", BeFalse()))
+	})
+
+	t.Run("pending step prevents completion", func(t *testing.T) {
+		g := NewWithT(t)
+
+		recorder := action.NewRootRecorder()
+		pendingChild := recorder.Child("pending", "Pending Step")
+		pendingChild.Complete(result.StepPending, "Explicitly pending")
+
+		actionResult := recorder.Build()
+		g.Expect(actionResult).To(HaveField("Status.Completed", BeFalse()))
+	})
+
+	t.Run("all terminal steps allows completion", func(t *testing.T) {
+		g := NewWithT(t)
+
+		recorder := action.NewRootRecorder()
+
+		parent := recorder.Child("parent", "Parent Step")
+		child1 := parent.Child("child1", "Child 1")
+		child2 := parent.Child("child2", "Child 2")
+
+		child1.Complete(result.StepCompleted, "Child 1 done")
+		child2.Complete(result.StepSkipped, "Child 2 skipped")
+		parent.Complete(result.StepCompleted, "Parent completed")
+
+		actionResult := recorder.Build()
+		g.Expect(actionResult).To(HaveField("Status.Completed", BeTrue()))
+	})
 }
