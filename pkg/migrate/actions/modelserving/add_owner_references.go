@@ -98,6 +98,7 @@ func (a *AddOwnerReferencesAction) addOwnerReferences(
 		)
 
 		a.patchAuthResourceOwnerRefs(ctx, target, isvc, isvcStep)
+		isvcStep.Complete(result.StepCompleted, "Processed owner references for %s/%s", isvc.GetNamespace(), isvc.GetName())
 		patchedCount++
 	}
 
@@ -193,7 +194,7 @@ func (a *AddOwnerReferencesAction) patchResourceOwnerRef(
 
 	_, err = target.Client.Dynamic().Resource(resourceType.GVR()).
 		Namespace(namespace).
-		Patch(ctx, resourceName, types.StrategicMergePatchType, patchData, metav1.PatchOptions{})
+		Patch(ctx, resourceName, types.MergePatchType, patchData, metav1.PatchOptions{})
 
 	if err != nil {
 		step.Recordf(

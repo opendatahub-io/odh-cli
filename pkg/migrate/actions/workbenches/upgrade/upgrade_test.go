@@ -1594,7 +1594,7 @@ func TestPrepareTask_Validate_ListError(t *testing.T) {
 	result, err := prepTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestPrepareTask_Execute_ListError(t *testing.T) {
@@ -1610,7 +1610,7 @@ func TestPrepareTask_Execute_ListError(t *testing.T) {
 	result, err := prepTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Validate_ListError(t *testing.T) {
@@ -1626,7 +1626,7 @@ func TestRunTask_Validate_ListError(t *testing.T) {
 	result, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_ListError(t *testing.T) {
@@ -1642,7 +1642,7 @@ func TestRunTask_Execute_ListError(t *testing.T) {
 	result, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_UpdateError(t *testing.T) {
@@ -1663,7 +1663,7 @@ func TestRunTask_Execute_UpdateError(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.Status.Completed).To(BeFalse())
 
 	updated, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-nb", metav1.GetOptions{})
