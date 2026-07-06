@@ -168,13 +168,14 @@ func restartWorkbench(
 }
 
 // deleteStatefulSet deletes the StatefulSet associated with a notebook. IsNotFound is not an error.
+// Returns true when the StatefulSet was successfully deleted or already absent.
 func deleteStatefulSet(
 	ctx context.Context,
 	target action.Target,
 	name string,
 	namespace string,
 	step action.StepRecorder,
-) {
+) bool {
 	err := target.Client.Dynamic().Resource(resources.StatefulSet.GVR()).
 		Namespace(namespace).
 		Delete(ctx, name, metav1.DeleteOptions{})
@@ -186,7 +187,7 @@ func deleteStatefulSet(
 			namespace, name,
 		)
 
-		return
+		return true
 	}
 
 	if err != nil {
@@ -197,7 +198,7 @@ func deleteStatefulSet(
 			namespace, name, err,
 		)
 
-		return
+		return false
 	}
 
 	step.Recordf(
@@ -206,6 +207,8 @@ func deleteStatefulSet(
 		result.StepCompleted,
 		namespace, name,
 	)
+
+	return true
 }
 
 // checkKueueTerminatingPods detects pods stuck in Terminating state in

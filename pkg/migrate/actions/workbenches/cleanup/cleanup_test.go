@@ -107,14 +107,14 @@ func envVar(name, value string) map[string]any {
 
 func migratedAnnotations() map[string]string {
 	return map[string]string{
-		annotationInjectAuth: "true",
+		workbenches.AnnotationInjectAuth: "true",
 	}
 }
 
 func migratedContainers() []map[string]any {
 	return []map[string]any{
 		container("my-notebook"),
-		container(containerKubeRBACProxy),
+		container(workbenches.ContainerKubeRBACProxy),
 	}
 }
 
@@ -393,8 +393,8 @@ func TestCheckMigrationState_OAuthProxyStillPresent(t *testing.T) {
 		withAnnotations(migratedAnnotations()),
 		withContainers(
 			container("my-notebook"),
-			container(containerKubeRBACProxy),
-			container(containerOAuthProxy)))
+			container(workbenches.ContainerKubeRBACProxy),
+			container(workbenches.ContainerOAuthProxy)))
 
 	passed, failures := CheckMigrationState(nb)
 
@@ -407,12 +407,12 @@ func TestCheckMigrationState_InjectOAuthTolerated(t *testing.T) {
 
 	nb := newNotebook("wb1", "ns1",
 		withAnnotations(map[string]string{
-			annotationInjectAuth:  "true",
-			annotationInjectOAuth: "true",
+			workbenches.AnnotationInjectAuth:  "true",
+			workbenches.AnnotationInjectOAuth: "true",
 		}),
 		withContainers(
 			container("my-notebook"),
-			container(containerKubeRBACProxy)))
+			container(workbenches.ContainerKubeRBACProxy)))
 
 	passed, failures := CheckMigrationState(nb)
 
@@ -425,8 +425,8 @@ func TestCheckMigrationState_InjectOAuthFails(t *testing.T) {
 
 	nb := newNotebook("wb1", "ns1",
 		withAnnotations(map[string]string{
-			annotationInjectAuth:  "true",
-			annotationInjectOAuth: "true",
+			workbenches.AnnotationInjectAuth:  "true",
+			workbenches.AnnotationInjectOAuth: "true",
 		}),
 		withContainers(container("my-notebook")))
 
@@ -444,7 +444,7 @@ func TestCheckMigrationState_TornadoSettingsPresent(t *testing.T) {
 		withContainers(
 			containerWithEnv("my-notebook",
 				envVar("NOTEBOOK_ARGS", "--ServerApp.tornado_settings={\"xsrf_cookies\": false}")),
-			container(containerKubeRBACProxy)))
+			container(workbenches.ContainerKubeRBACProxy)))
 
 	passed, failures := CheckMigrationState(nb)
 
@@ -472,7 +472,7 @@ func TestCheckMigrationState_TornadoSettingsInDifferentEnvVar(t *testing.T) {
 		withContainers(
 			containerWithEnv("my-notebook",
 				envVar("OTHER_VAR", "--ServerApp.tornado_settings={\"xsrf_cookies\": false}")),
-			container(containerKubeRBACProxy)))
+			container(workbenches.ContainerKubeRBACProxy)))
 
 	passed, failures := CheckMigrationState(nb)
 

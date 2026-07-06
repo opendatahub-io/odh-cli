@@ -18,6 +18,7 @@ import (
 	workbenchcleanup "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches/cleanup"
 	workbenchkueue "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches/kueue"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches/upgrade"
+	workbenchverify "github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches/verify"
 )
 
 func newDefaultRegistry() *action.ActionRegistry {
@@ -38,6 +39,7 @@ func newDefaultRegistry() *action.ActionRegistry {
 	registry.MustRegister(&workbenchkueue.AttachKueueLabelAction{Scope: wbScope})
 	registry.MustRegister(cleanupAction)
 	registry.MustRegister(&authmodel.PatchAuthModelAction{Scope: wbScope, CleanupAction: cleanupAction})
+	registry.MustRegister(&workbenchverify.VerifyMigrationAction{Scope: wbScope})
 	registry.MustRegister(&deadlock.BreakGPUDeadlockAction{})
 	registry.MustRegister(&guardrails.PatchGuardrailsAction{})
 	registry.MustRegister(&otelexporter.MigrateOtelExporterAction{})

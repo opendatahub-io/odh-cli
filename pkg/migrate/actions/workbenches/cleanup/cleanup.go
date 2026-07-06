@@ -17,7 +17,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/confirmation"
-	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )
 
 const (
@@ -25,15 +24,6 @@ const (
 	actionName        = "Clean up legacy OAuth resources from workbenches"
 	actionDescription = "Removes stale OAuth-proxy resources (Route, Service, Secrets, OAuthClient) " +
 		"left behind after migrating workbenches from 2.x to 3.x"
-
-	annotationInjectAuth  = "notebooks.opendatahub.io/inject-auth"
-	annotationInjectOAuth = "notebooks.opendatahub.io/inject-oauth"
-
-	containerKubeRBACProxy = "kube-rbac-proxy"
-	containerOAuthProxy    = "oauth-proxy"
-
-	envNotebookArgs       = "NOTEBOOK_ARGS"
-	tornadoSettingsPrefix = "--ServerApp.tornado_settings="
 
 	minTargetMajorVersion = 3
 )
@@ -77,97 +67,9 @@ func (a *CleanupOAuthAction) Run() action.Task {
 	return &runTask{action: a}
 }
 
-// CheckMigrationState verifies that a notebook has been successfully migrated
-// from OAuth-proxy to kube-rbac-proxy. Returns true if all checks pass, along
-// with a list of failure messages for any checks that did not pass.
+// CheckMigrationState delegates to the shared workbenches.CheckMigrationState.
 func CheckMigrationState(nb *unstructured.Unstructured) (bool, []string) {
-	var failures []string
-
-	annotations := nb.GetAnnotations()
-
-	if annotations[annotationInjectAuth] != "true" {
-		failures = append(failures,
-			fmt.Sprintf("inject-auth annotation missing or not 'true' (found: %q)",
-				annotations[annotationInjectAuth]))
-	}
-
-	containers, err := jq.Query[[]any](nb, ".spec.template.spec.containers")
-	if err != nil {
-		failures = append(failures, fmt.Sprintf("could not read containers: %v", err))
-
-		return false, failures
-	}
-
-	hasKubeRBACProxy := false
-	hasOAuthProxy := false
-
-	for _, raw := range containers {
-		containerMap, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		name, _ := containerMap["name"].(string)
-
-		switch name {
-		case containerKubeRBACProxy:
-			hasKubeRBACProxy = true
-		case containerOAuthProxy:
-			hasOAuthProxy = true
-		}
-	}
-
-	if !hasKubeRBACProxy {
-		failures = append(failures, "kube-rbac-proxy sidecar container missing")
-	}
-
-	if hasOAuthProxy {
-		failures = append(failures, "legacy oauth-proxy sidecar still present")
-	}
-
-	if injectOAuth, exists := annotations[annotationInjectOAuth]; exists {
-		if !hasKubeRBACProxy || hasOAuthProxy {
-			failures = append(failures,
-				fmt.Sprintf("legacy inject-oauth annotation still exists: %q", injectOAuth))
-		}
-	}
-
-	if hasTornadoSettings(containers) {
-		failures = append(failures,
-			"--ServerApp.tornado_settings still present in NOTEBOOK_ARGS")
-	}
-
-	return len(failures) == 0, failures
-}
-
-func hasTornadoSettings(containers []any) bool {
-	for _, raw := range containers {
-		containerMap, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		envVars, ok := containerMap["env"].([]any)
-		if !ok {
-			continue
-		}
-
-		for _, envRaw := range envVars {
-			envMap, ok := envRaw.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			name, _ := envMap["name"].(string)
-			value, _ := envMap["value"].(string)
-
-			if name == envNotebookArgs && strings.Contains(value, tornadoSettingsPrefix) {
-				return true
-			}
-		}
-	}
-
-	return false
+	return workbenches.CheckMigrationState(nb)
 }
 
 // DeleteResourceIfPresent performs an idempotent deletion: if the resource

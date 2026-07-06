@@ -800,6 +800,18 @@ func TestIsStopped_WithoutAnnotation(t *testing.T) {
 	g.Expect(isStopped(nb)).To(BeFalse())
 }
 
+func TestIsStopped_EmptyAnnotationValue(t *testing.T) {
+	g := NewWithT(t)
+
+	nb := newNotebook("wb1", "ns1",
+		withAnnotations(map[string]string{
+			annotationKubeflowResourceStopped: "",
+		}),
+	)
+
+	g.Expect(isStopped(nb)).To(BeFalse())
+}
+
 // --- Validate Tests ---
 
 func TestRunTask_Validate_NoNotebooks(t *testing.T) {
@@ -1566,7 +1578,8 @@ func TestDeleteStatefulSet(t *testing.T) {
 	target := newTarget(k8sClient)
 	step := target.Recorder.Child("test", "test")
 
-	deleteStatefulSet(context.Background(), target, "wb1", "ns1", step)
+	ok := deleteStatefulSet(context.Background(), target, "wb1", "ns1", step)
+	g.Expect(ok).To(BeTrue())
 
 	// Verify it was deleted
 	_, err := k8sClient.Dynamic().Resource(resources.StatefulSet.GVR()).
@@ -1581,9 +1594,8 @@ func TestDeleteStatefulSet_NotFound(t *testing.T) {
 	target := newTarget(k8sClient)
 	step := target.Recorder.Child("test", "test")
 
-	// Should not panic or error
-	deleteStatefulSet(context.Background(), target, "wb1", "ns1", step)
-	g.Expect(true).To(BeTrue())
+	ok := deleteStatefulSet(context.Background(), target, "wb1", "ns1", step)
+	g.Expect(ok).To(BeTrue())
 }
 
 func TestDeleteStatefulSet_Error(t *testing.T) {
@@ -1602,9 +1614,8 @@ func TestDeleteStatefulSet_Error(t *testing.T) {
 	target := newTarget(k8sClient)
 	step := target.Recorder.Child("test", "test")
 
-	// Should record the error but not panic
-	deleteStatefulSet(context.Background(), target, "wb1", "ns1", step)
-	g.Expect(true).To(BeTrue())
+	ok := deleteStatefulSet(context.Background(), target, "wb1", "ns1", step)
+	g.Expect(ok).To(BeFalse())
 }
 
 func TestCheckKueueTerminatingPods_NoKueueNamespaces(t *testing.T) {

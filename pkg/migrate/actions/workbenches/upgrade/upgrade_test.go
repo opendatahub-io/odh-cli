@@ -324,6 +324,15 @@ func TestIsStopped(t *testing.T) {
 			}),
 			true,
 		},
+		{
+			"empty annotation value treated as not stopped",
+			newNotebook("nb1", "ns1", notebookOpts{
+				Annotations: map[string]any{
+					"kubeflow-resource-stopped": "",
+				},
+			}),
+			false,
+		},
 	}
 
 	for _, tt := range tests {

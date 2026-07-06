@@ -75,14 +75,14 @@ func (a *PatchAuthModelAction) Run() action.Task {
 	return &runTask{action: a}
 }
 
-// isStopped returns true if the notebook has the kubeflow-resource-stopped annotation.
+// isStopped returns true if the notebook has a non-empty kubeflow-resource-stopped annotation.
 func isStopped(nb *unstructured.Unstructured) bool {
 	annotations := nb.GetAnnotations()
 	if annotations == nil {
 		return false
 	}
 
-	_, stopped := annotations[annotationKubeflowResourceStopped]
+	stopped, ok := annotations[annotationKubeflowResourceStopped]
 
-	return stopped
+	return ok && stopped != ""
 }

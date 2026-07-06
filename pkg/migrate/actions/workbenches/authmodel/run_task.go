@@ -104,6 +104,8 @@ func (t *runTask) Execute(
 	toPatch, stoppedByAction = t.handleLifecycle(ctx, target, toPatch)
 
 	if len(toPatch) == 0 {
+		t.restartNotebooks(ctx, target, stoppedByAction)
+
 		return action.BuildResult(target)
 	}
 
@@ -119,9 +121,7 @@ func (t *runTask) Execute(
 		target.Recorder.Recordf("patch-cancelled",
 			"User cancelled auth model patch", result.StepSkipped)
 
-		if len(stoppedByAction) > 0 {
-			t.restartNotebooks(ctx, target, stoppedByAction)
-		}
+		t.restartNotebooks(ctx, target, stoppedByAction)
 
 		return action.BuildResult(target)
 	}
@@ -135,9 +135,7 @@ func (t *runTask) Execute(
 	}
 
 	// Step 8: Restart notebooks that were stopped by this action
-	if len(stoppedByAction) > 0 {
-		t.restartNotebooks(ctx, target, stoppedByAction)
-	}
+	t.restartNotebooks(ctx, target, stoppedByAction)
 
 	// Step 9: Check for Kueue terminating pods (when --skip-stop was used)
 	if t.action.SkipStop && len(patched) > 0 {
@@ -265,8 +263,26 @@ func (t *runTask) handleLifecycle(
 			continue
 		}
 
-		stoppedByAction = append(stoppedByAction, nb)
-		toPatch = append(toPatch, nb)
+		// Re-fetch after stop to get the current resourceVersion;
+		// stopWorkbench's MergePatch advanced it on the server.
+		refreshed, err := target.Client.Dynamic().Resource(resources.Notebook.GVR()).
+			Namespace(nb.GetNamespace()).
+			Get(ctx, nb.GetName(), metav1.GetOptions{})
+		if err != nil {
+			step.Recordf(
+				fmt.Sprintf("refetch-failed-%s-%s", nb.GetNamespace(), nb.GetName()),
+				"Failed to re-fetch %s/%s after stop, skipping patch: %v",
+				result.StepFailed,
+				nb.GetNamespace(), nb.GetName(), err,
+			)
+
+			stoppedByAction = append(stoppedByAction, nb)
+
+			continue
+		}
+
+		stoppedByAction = append(stoppedByAction, refreshed)
+		toPatch = append(toPatch, refreshed)
 	}
 
 	if len(stoppedByAction) > 0 {
@@ -351,7 +367,16 @@ func (t *runTask) patchNotebooks(
 			"Auth model patch applied to %s/%s",
 			result.StepCompleted, namespace, name)
 
-		deleteStatefulSet(ctx, target, name, namespace, nbStep)
+		stsDeleted := deleteStatefulSet(ctx, target, name, namespace, nbStep)
+
+		if !stsDeleted {
+			nbStep.Completef(result.StepFailed,
+				"Patched %s/%s but StatefulSet deletion failed, may reconcile with old spec until controller catches up",
+				namespace, name)
+			failCount++
+
+			continue
+		}
 
 		nbStep.Completef(result.StepCompleted,
 			"Patched %s/%s", namespace, name)
@@ -435,6 +460,10 @@ func (t *runTask) restartNotebooks(
 	target action.Target,
 	stoppedByAction []*unstructured.Unstructured,
 ) {
+	if len(stoppedByAction) == 0 {
+		return
+	}
+
 	step := target.Recorder.Child(
 		"restart-workbenches",
 		"Restart workbenches stopped by this action",

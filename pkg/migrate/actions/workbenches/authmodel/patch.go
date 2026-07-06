@@ -40,6 +40,9 @@ func isArgWhitespace(b byte) bool {
 	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
 
+// findBraceEnd finds the end of a brace-delimited block by counting {/} depth.
+// It does not account for braces inside JSON string literals, which is safe for
+// known tornado_settings values (CSP headers) but not arbitrary JSON.
 func findBraceEnd(s string, start int) int {
 	depth := 0
 
