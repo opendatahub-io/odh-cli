@@ -23,8 +23,10 @@ func (t *prepareTask) Validate(
 	target action.Target,
 ) (*result.ActionResult, error) {
 	t.action.verifyRBAC(ctx, target, preparePermissions())
+	t.action.checkCertManager(ctx, target)
 	t.action.checkCurrentKueueState(ctx, target)
 	t.action.verifyKueueResources(ctx, target)
+	t.action.reportLabelingPlan(ctx, target)
 
 	rootRecorder, ok := target.Recorder.(action.RootRecorder)
 	if !ok {
@@ -38,6 +40,15 @@ func (t *prepareTask) Execute(
 	ctx context.Context,
 	target action.Target,
 ) (*result.ActionResult, error) {
+	validationResult, err := t.Validate(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+
+	if hasFailedStep(validationResult.Status.Steps) {
+		return validationResult, errPreflightFailed
+	}
+
 	kueueManaged := t.action.checkKueueManaged(ctx, target)
 
 	if kueueManaged {

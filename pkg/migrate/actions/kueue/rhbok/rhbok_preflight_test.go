@@ -94,7 +94,8 @@ func TestCheckNoRHBOKConflicts(t *testing.T) {
 	t.Run("no subscription exists", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
-		target := newTarget(t, nil, targetOpts{rbacAllowed: true})
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{rbacAllowed: true})
 
 		rhbok.ExportCheckNoRHBOKConflicts(a, ctx, target)
 
@@ -107,8 +108,14 @@ func TestCheckNoRHBOKConflicts(t *testing.T) {
 	t.Run("subscription already exists", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Removed"))
 		sub := makeSubscription("kueue-operator", inNamespace("openshift-kueue-operator"))
-		target := newTarget(t, []*unstructured.Unstructured{sub}, targetOpts{rbacAllowed: true})
+		target := newTarget(t, []*unstructured.Unstructured{dsc, sub}, targetOpts{
+			rbacAllowed: true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription("kueue-operator", "openshift-kueue-operator"),
+			},
+		})
 
 		rhbok.ExportCheckNoRHBOKConflicts(a, ctx, target)
 
@@ -116,6 +123,26 @@ func TestCheckNoRHBOKConflicts(t *testing.T) {
 		g.Expect(res.Status.Steps).To(HaveLen(1))
 		g.Expect(res.Status.Steps[0].Status).To(Equal(result.StepCompleted))
 		g.Expect(res.Status.Steps[0].Message).To(ContainSubstring("already installed"))
+	})
+
+	t.Run("conflict when managed and operator installed", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		sub := makeSubscription("kueue-operator", inNamespace("openshift-kueue-operator"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc, sub}, targetOpts{
+			rbacAllowed: true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription("kueue-operator", "openshift-kueue-operator"),
+			},
+		})
+
+		rhbok.ExportCheckNoRHBOKConflicts(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		g.Expect(res.Status.Steps).To(HaveLen(1))
+		g.Expect(res.Status.Steps[0].Status).To(Equal(result.StepFailed))
+		g.Expect(res.Status.Steps[0].Message).To(ContainSubstring("Conflict"))
 	})
 }
 
@@ -223,11 +250,12 @@ func TestCheckNoRHBOKConflicts_APIError(t *testing.T) {
 	t.Run("non-NotFound error", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
 
-		target := newTarget(t, nil, targetOpts{
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
 			rbacAllowed: true,
-			dynamicReactor: func(act k8stesting.Action) (bool, runtime.Object, error) {
-				if act.GetResource().Resource == "subscriptions" && act.GetVerb() == "get" {
+			olmReactor: func(act k8stesting.Action) (bool, runtime.Object, error) {
+				if act.GetResource().Resource == "subscriptions" && act.GetVerb() == "list" {
 					return true, nil, errors.New("server unavailable")
 				}
 

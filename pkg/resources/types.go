@@ -274,6 +274,13 @@ var (
 		Resource: "installplans",
 	}
 
+	OperatorGroup = ResourceType{
+		Group:    "operators.coreos.com",
+		Version:  "v1",
+		Kind:     "OperatorGroup",
+		Resource: "operatorgroups",
+	}
+
 	// ClusterQueue is the Kueue ClusterQueue resource.
 	ClusterQueue = ResourceType{
 		Group:    "kueue.x-k8s.io",

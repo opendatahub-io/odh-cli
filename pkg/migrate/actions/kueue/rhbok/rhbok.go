@@ -3,13 +3,17 @@ package rhbok
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
@@ -28,52 +32,57 @@ const (
 	operatorNamespace   = "openshift-kueue-operator"
 	subscriptionName    = "kueue-operator"
 	subscriptionPackage = "kueue-operator"
+	subscriptionSource  = "redhat-operators"
+	sourceNamespace     = "openshift-marketplace"
+	csvNamePrefix       = "kueue-operator"
 
 	// Retry configuration for conflict resolution.
 	retryInitialDuration = 500 * time.Millisecond
 	retryFactor          = 2.0
 	retryJitter          = 0.1
 	retryMaxSteps        = 5
-	subscriptionChannel  = "stable-v1.1"
-	subscriptionSource   = "redhat-operators"
-	sourceNamespace      = "openshift-marketplace"
-	csvNamePrefix        = "kueue-operator"
 	operatorTimeout      = 5 * time.Minute
 	operatorPollPeriod   = 10 * time.Second
+	componentPollPeriod  = 10 * time.Second
+	componentTimeout     = 5 * time.Minute
 
 	// DataScienceCluster constants.
-	managementStateManaged   = "Managed"
-	managementStateUnmanaged = "Unmanaged"
-	kueueComponentPath       = ".spec.components.kueue.managementState"
+	kueueComponentPath = ".spec.components.kueue.managementState"
+	kueueReadyType     = "KueueReady"
+
+	// Embedded Kueue deployment.
+	embeddedKueueDeployment = "kueue-controller-manager"
 
 	// ConfigMap constants.
 	configMapName            = "kueue-manager-config"
 	applicationsNamespace    = "redhat-ods-applications"
 	configMapAnnotationKey   = "opendatahub.io/managed"
 	configMapAnnotationValue = "false"
+
+	defaultQueueName = "default"
 )
 
-type RHBOKMigrationAction struct{}
+// RHBOKMigrationAction migrates embedded Kueue to the Red Hat build of Kueue operator.
+type RHBOKMigrationAction struct {
+	ClusterQueueName      string
+	LocalQueueName        string
+	QueueName             string
+	Channel               string
+	SkipRemoveEmbedded    bool
+	ForceDeleteLegacyCRDs bool
 
-func (a *RHBOKMigrationAction) ID() string {
-	return actionID
+	executeLabelingPlan *labelingPlan
 }
 
-func (a *RHBOKMigrationAction) Name() string {
-	return actionName
-}
+func (a *RHBOKMigrationAction) ID() string { return actionID }
 
-func (a *RHBOKMigrationAction) Description() string {
-	return actionDescription
-}
+func (a *RHBOKMigrationAction) Name() string { return actionName }
 
-func (a *RHBOKMigrationAction) Group() action.ActionGroup {
-	return action.GroupMigration
-}
+func (a *RHBOKMigrationAction) Description() string { return actionDescription }
 
-func (a *RHBOKMigrationAction) Phase() action.ActionPhase {
-	return action.PhasePreUpgrade
-}
+func (a *RHBOKMigrationAction) Group() action.ActionGroup { return action.GroupMigration }
+
+func (a *RHBOKMigrationAction) Phase() action.ActionPhase { return action.PhasePreUpgrade }
 
 func (a *RHBOKMigrationAction) CanApply(target action.Target) bool {
 	if target.CurrentVersion == nil {
@@ -83,12 +92,79 @@ func (a *RHBOKMigrationAction) CanApply(target action.Target) bool {
 	return target.CurrentVersion.Major == 2 && target.CurrentVersion.Minor >= 25
 }
 
+func (a *RHBOKMigrationAction) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&a.ClusterQueueName, "cluster-queue-name", "",
+		"Custom default ClusterQueue name for DataScienceCluster (optional)")
+	fs.StringVar(&a.LocalQueueName, "local-queue-name", "",
+		"Custom default LocalQueue name for DataScienceCluster (optional)")
+	fs.StringVar(&a.QueueName, "workload-queue-name", defaultQueueName,
+		"Queue name value for the kueue.x-k8s.io/queue-name workload label")
+	fs.StringVar(&a.Channel, "channel", "",
+		"OLM channel for the Red Hat build of Kueue operator (default: resolved from catalog)")
+	fs.BoolVar(&a.SkipRemoveEmbedded, "skip-remove-embedded", false,
+		"Skip setting Kueue managementState to Removed before installing RHBOK (not recommended)")
+	fs.BoolVar(&a.ForceDeleteLegacyCRDs, "force-delete-legacy-crds", false,
+		"Delete legacy cohorts/topologies CRDs even when instances still exist")
+}
+
 func (a *RHBOKMigrationAction) Prepare() action.Task {
 	return &prepareTask{action: a}
 }
 
 func (a *RHBOKMigrationAction) Run() action.Task {
 	return &runTask{action: a}
+}
+
+func (a *RHBOKMigrationAction) workloadQueueName() string {
+	if a.QueueName == "" {
+		return defaultQueueName
+	}
+
+	return a.QueueName
+}
+
+func (a *RHBOKMigrationAction) getKueueManagementState(
+	ctx context.Context,
+	c client.Client,
+) (string, error) {
+	dsc, err := client.GetSingleton(ctx, c, resources.DataScienceClusterV1)
+	if err != nil {
+		return "", fmt.Errorf("getting DataScienceCluster: %w", err)
+	}
+
+	state, err := jq.Query[string](dsc, kueueComponentPath)
+	if err != nil {
+		return "", fmt.Errorf("querying kueue managementState: %w", err)
+	}
+
+	if state == "" {
+		return "", errors.New("kueue managementState is not configured")
+	}
+
+	switch state {
+	case constants.ManagementStateManaged, constants.ManagementStateUnmanaged, constants.ManagementStateRemoved:
+		return state, nil
+	default:
+		return "", fmt.Errorf("unsupported kueue managementState %q", state)
+	}
+}
+
+func (a *RHBOKMigrationAction) isMigrationComplete(ctx context.Context, target action.Target) bool {
+	state, err := a.getKueueManagementState(ctx, target.Client)
+	if err != nil {
+		return false
+	}
+
+	if state != constants.ManagementStateUnmanaged {
+		return false
+	}
+
+	ready, err := olm.CSVReady(ctx, target.Client, operatorNamespace, csvNamePrefix)
+	if err != nil {
+		return false
+	}
+
+	return ready
 }
 
 func (a *RHBOKMigrationAction) checkKueueManaged(
@@ -100,29 +176,20 @@ func (a *RHBOKMigrationAction) checkKueueManaged(
 		"Check if Kueue is managed by DataScienceCluster",
 	)
 
-	dsc, err := client.GetSingleton(ctx, target.Client, resources.DataScienceClusterV1)
-
+	state, err := a.getKueueManagementState(ctx, target.Client)
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to get DataScienceCluster: %v", err)
 
 		return false
 	}
 
-	managementState, err := jq.Query[string](dsc, kueueComponentPath)
-	if err != nil {
-		step.Completef(result.StepCompleted,
-			"Kueue component not found in DataScienceCluster (not managed)")
-
-		return false
-	}
-
-	if managementState == managementStateManaged {
-		step.Completef(result.StepCompleted, "Kueue is managed (managementState=%s)", managementState)
+	if state == constants.ManagementStateManaged {
+		step.Completef(result.StepCompleted, "Kueue is managed (managementState=%s)", state)
 
 		return true
 	}
 
-	step.Completef(result.StepCompleted, "Kueue is not managed (managementState=%s)", managementState)
+	step.Completef(result.StepCompleted, "Kueue is not managed (managementState=%s)", state)
 
 	return false
 }
@@ -136,7 +203,6 @@ func (a *RHBOKMigrationAction) preserveKueueConfig(
 		"Preserve Kueue ConfigMap for reference",
 	)
 
-	// Check if ConfigMap exists (read-only, safe to run in dry-run)
 	checkStep := step.Child(
 		"check-configmap",
 		fmt.Sprintf("Checking if ConfigMap '%s' exists in namespace '%s'", configMapName, applicationsNamespace),
@@ -155,7 +221,6 @@ func (a *RHBOKMigrationAction) preserveKueueConfig(
 
 	checkStep.Completef(result.StepCompleted, "ConfigMap exists")
 
-	// Apply annotation
 	annotateStep := step.Child(
 		"apply-annotation",
 		fmt.Sprintf("Apply annotation %s=%s", configMapAnnotationKey, configMapAnnotationValue),
@@ -205,6 +270,41 @@ func (a *RHBOKMigrationAction) preserveKueueConfig(
 	step.Completef(result.StepCompleted, "ConfigMap %s annotated for preservation", configMapName)
 }
 
+func (a *RHBOKMigrationAction) resolveSubscriptionChannel(
+	ctx context.Context,
+	target action.Target,
+) (string, error) {
+	if a.Channel != "" {
+		return a.Channel, nil
+	}
+
+	if !target.DryRun {
+		existing, err := target.Client.OLMClient().OperatorsV1alpha1().
+			Subscriptions(operatorNamespace).
+			Get(ctx, subscriptionName, metav1.GetOptions{})
+		if err == nil && existing.Spec != nil && existing.Spec.Channel != "" {
+			return existing.Spec.Channel, nil
+		}
+
+		if err != nil && !apierrors.IsNotFound(err) {
+			return "", fmt.Errorf("checking existing subscription: %w", err)
+		}
+	}
+
+	channel, err := olm.ResolveOperatorChannel(ctx, target.Client, olm.PackageQuery{
+		PackageName:     subscriptionPackage,
+		CatalogSource:   subscriptionSource,
+		SourceNamespace: sourceNamespace,
+	})
+	if err != nil {
+		target.IO.Errorf("Warning: could not resolve operator channel from catalog: %v; using fallback %s", err, olm.FallbackKueueOperatorChannel)
+
+		return olm.FallbackKueueOperatorChannel, nil
+	}
+
+	return channel, nil
+}
+
 func (a *RHBOKMigrationAction) installRHBOKOperator(
 	ctx context.Context,
 	target action.Target,
@@ -214,17 +314,25 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 		"Install Red Hat Build of Kueue Operator",
 	)
 
-	// Check if subscription exists first
+	channel, err := a.resolveSubscriptionChannel(ctx, target)
+	if err != nil {
+		step.Completef(result.StepFailed, "Failed to resolve operator channel: %v", err)
+
+		return
+	}
+
+	step.AddDetail("channel", channel)
+
 	subscriptionExists := false
 	if !target.DryRun {
-		_, err := target.Client.OLMClient().OperatorsV1alpha1().Subscriptions(operatorNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
+		_, err := target.Client.OLMClient().OperatorsV1alpha1().Subscriptions(operatorNamespace).
+			Get(ctx, subscriptionName, metav1.GetOptions{})
 		subscriptionExists = err == nil
 	}
 
-	// Only prompt if subscription doesn't exist and we're not in dry-run mode
 	if !target.DryRun && !target.SkipConfirm && !subscriptionExists {
 		target.IO.Fprintln()
-		target.IO.Errorf("About to install Red Hat Build of Kueue Operator")
+		target.IO.Errorf("About to install Red Hat Build of Kueue Operator (channel: %s)", channel)
 		if !confirmation.Prompt(target.IO, "Proceed with operator installation?") {
 			step.Completef(result.StepSkipped, "User cancelled installation")
 
@@ -232,11 +340,11 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 		}
 	}
 
-	err := olm.EnsureOperatorInstalled(ctx, target.Client, olm.InstallConfig{
+	err = olm.EnsureOperatorInstalled(ctx, target.Client, olm.InstallConfig{
 		Name:            subscriptionName,
 		Namespace:       operatorNamespace,
 		Package:         subscriptionPackage,
-		Channel:         subscriptionChannel,
+		Channel:         channel,
 		Source:          subscriptionSource,
 		SourceNamespace: sourceNamespace,
 		CSVNamePrefix:   csvNamePrefix,
@@ -262,133 +370,17 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 	}
 }
 
-func (a *RHBOKMigrationAction) updateDataScienceCluster(
-	ctx context.Context,
-	target action.Target,
-) {
-	step := target.Recorder.Child(
-		"update-datasciencecluster",
-		"Update DataScienceCluster Kueue managementState",
-	)
-
-	dsc, err := client.GetSingleton(ctx, target.Client, resources.DataScienceClusterV1)
+func getDSCCondition(dsc *unstructured.Unstructured, conditionType string) (*metav1.Condition, error) {
+	conds, err := jq.Query[[]metav1.Condition](dsc, ".status.conditions // []")
 	if err != nil {
-		step.Completef(result.StepFailed, "Failed to get DataScienceCluster: %v", err)
-
-		return
+		return nil, err
 	}
 
-	// Check if already set to Unmanaged
-	currentState, err := jq.Query[string](dsc, ".spec.components.kueue.managementState")
-	if err == nil && currentState == managementStateUnmanaged {
-		step.Completef(result.StepSkipped, "DataScienceCluster Kueue already set to Unmanaged")
-
-		return
-	}
-
-	if target.DryRun {
-		step.Completef(result.StepSkipped, "Would set %s=%s", kueueComponentPath, managementStateUnmanaged)
-
-		return
-	}
-
-	if !target.SkipConfirm {
-		target.IO.Fprintln()
-		target.IO.Errorf("About to update DataScienceCluster Kueue managementState to %s", managementStateUnmanaged)
-		if !confirmation.Prompt(target.IO, "Proceed with configuration update?") {
-			step.Completef(result.StepSkipped, "User cancelled update")
-
-			return
+	for i := range conds {
+		if conds[i].Type == conditionType {
+			return &conds[i], nil
 		}
-		target.IO.Fprintln()
 	}
 
-	// Retry update with exponential backoff in case of conflicts
-	err = wait.ExponentialBackoff(wait.Backoff{
-		Duration: retryInitialDuration,
-		Factor:   retryFactor,
-		Jitter:   retryJitter,
-		Steps:    retryMaxSteps,
-	}, func() (bool, error) {
-		// Get latest version
-		latestDSC, err := client.GetSingleton(ctx, target.Client, resources.DataScienceClusterV1)
-		if err != nil {
-			return false, fmt.Errorf("failed to get DataScienceCluster: %w", err)
-		}
-
-		// Apply the change
-		if err := jq.Transform(latestDSC, ".spec.components.kueue.managementState = %q", managementStateUnmanaged); err != nil {
-			return false, fmt.Errorf("failed to set managementState: %w", err)
-		}
-
-		// Attempt update
-		_, err = target.Client.Dynamic().Resource(resources.DataScienceClusterV1.GVR()).
-			Update(ctx, latestDSC, metav1.UpdateOptions{})
-		if err != nil {
-			// Retry on conflict errors
-			if apierrors.IsConflict(err) {
-				return false, nil // Retry
-			}
-
-			return false, fmt.Errorf("failed to update DataScienceCluster: %w", err)
-		}
-
-		return true, nil // Success
-	})
-
-	if err != nil {
-		step.Completef(result.StepFailed, "Failed to update DataScienceCluster: %v", err)
-
-		return
-	}
-
-	step.Completef(result.StepCompleted, "DataScienceCluster updated successfully")
-}
-
-func (a *RHBOKMigrationAction) verifyResourcesPreserved(
-	ctx context.Context,
-	target action.Target,
-) {
-	step := target.Recorder.Child(
-		"verify-resources-preserved",
-		"Verify ClusterQueue and LocalQueue resources preserved",
-	)
-
-	if target.DryRun {
-		step.Completef(result.StepSkipped, "Would verify ClusterQueue and LocalQueue resources are preserved")
-
-		return
-	}
-
-	clusterQueues, err := target.Client.ListResources(ctx, resources.ClusterQueue.GVR())
-	if err != nil {
-		// If the CRD doesn't exist, that's fine - it means there are no Kueue resources
-		if apierrors.IsNotFound(err) {
-			step.Completef(result.StepCompleted, "No ClusterQueue CRD found (no resources to preserve)")
-
-			return
-		}
-
-		step.Completef(result.StepFailed, "Failed to list ClusterQueues: %v", err)
-
-		return
-	}
-
-	localQueues, err := target.Client.ListResources(ctx, resources.LocalQueue.GVR())
-	if err != nil {
-		// If the CRD doesn't exist, that's fine - it means there are no Kueue resources
-		if apierrors.IsNotFound(err) {
-			step.Completef(result.StepCompleted, "No LocalQueue CRD found (%d ClusterQueues preserved)", len(clusterQueues))
-
-			return
-		}
-
-		step.Completef(result.StepFailed, "Failed to list LocalQueues: %v", err)
-
-		return
-	}
-
-	step.Completef(result.StepCompleted,
-		"All %d ClusterQueues and %d LocalQueues preserved",
-		len(clusterQueues), len(localQueues))
+	return nil, nil
 }

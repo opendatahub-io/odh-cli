@@ -36,8 +36,21 @@ func TestRunTask_Validate(t *testing.T) {
 		res, err := task.Validate(ctx, target)
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(res).ToNot(BeNil())
-		// checkCurrentKueueState + checkNoRHBOKConflicts + verifyKueueResources + verifyRBAC
-		g.Expect(res.Status.Steps).To(HaveLen(4))
+
+		expectedSteps := []string{
+			"verify-rbac",
+			"check-cert-manager",
+			"check-kueue-state",
+			"check-rhbok-conflicts",
+			"check-operator-channel",
+			"verify-kueue-resources",
+			"report-labeling-plan",
+		}
+		stepNames := make([]string, len(res.Status.Steps))
+		for i := range res.Status.Steps {
+			stepNames[i] = res.Status.Steps[i].Name
+		}
+		g.Expect(stepNames).To(Equal(expectedSteps))
 	})
 
 	t.Run("reports RBAC failure", func(t *testing.T) {
@@ -56,6 +69,52 @@ func TestRunTask_Validate(t *testing.T) {
 		rbacStep := findStep(res.Status.Steps, "verify-rbac")
 		g.Expect(rbacStep).ToNot(BeNil())
 		g.Expect(rbacStep.Status).To(Equal(result.StepFailed))
+	})
+
+	t.Run("fails execute when validation fails", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{rbacAllowed: false})
+
+		a := &rhbok.RHBOKMigrationAction{}
+		task := a.Run()
+
+		res, err := task.Execute(ctx, target)
+		g.Expect(err).To(MatchError("preflight checks failed"))
+		g.Expect(res).ToNot(BeNil())
+
+		rbacStep := findStep(res.Status.Steps, "verify-rbac")
+		g.Expect(rbacStep).ToNot(BeNil())
+		g.Expect(rbacStep.Status).To(Equal(result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "preserve-kueue-config")).To(BeNil())
+	})
+
+	t.Run("fails execute when managed Kueue conflicts with installed operator", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		sub := makeSubscription(rhbok.ExportSubscriptionName, inNamespace(rhbok.ExportOperatorNamespace))
+		target := newTarget(t, []*unstructured.Unstructured{dsc, sub}, targetOpts{
+			rbacAllowed: true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+			},
+		})
+
+		a := &rhbok.RHBOKMigrationAction{}
+		task := a.Run()
+
+		res, err := task.Execute(ctx, target)
+		g.Expect(err).To(MatchError("preflight checks failed"))
+		g.Expect(res).ToNot(BeNil())
+
+		conflictStep := findStep(res.Status.Steps, "check-rhbok-conflicts")
+		g.Expect(conflictStep).ToNot(BeNil())
+		g.Expect(conflictStep.Status).To(Equal(result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "preserve-kueue-config")).To(BeNil())
 	})
 }
 
@@ -88,11 +147,11 @@ func TestRunTask_Execute(t *testing.T) {
 		g.Expect(installStep).ToNot(BeNil())
 		g.Expect(installStep.Status).To(Equal(result.StepSkipped))
 
-		updateStep := findStep(res.Status.Steps, "update-datasciencecluster")
+		updateStep := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(updateStep).ToNot(BeNil())
 		g.Expect(updateStep.Status).To(Equal(result.StepSkipped))
 
-		verifyStep := findStep(res.Status.Steps, "verify-resources-preserved")
+		verifyStep := findStep(res.Status.Steps, "verify-migration-complete")
 		g.Expect(verifyStep).ToNot(BeNil())
 		g.Expect(verifyStep.Status).To(Equal(result.StepSkipped))
 	})
@@ -139,10 +198,10 @@ func TestRunTask_Execute(t *testing.T) {
 		res, err := task.Execute(ctx, target)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		updateStep := findStep(res.Status.Steps, "update-datasciencecluster")
-		g.Expect(updateStep).ToNot(BeNil())
-		g.Expect(updateStep.Status).To(Equal(result.StepSkipped))
-		g.Expect(updateStep.Message).To(ContainSubstring("already set to Unmanaged"))
+		completeStep := findStep(res.Status.Steps, "migration-complete")
+		g.Expect(completeStep).ToNot(BeNil())
+		g.Expect(completeStep.Status).To(Equal(result.StepSkipped))
+		g.Expect(completeStep.Message).To(ContainSubstring("already complete"))
 	})
 
 	t.Run("preserveKueueConfig annotates ConfigMap", func(t *testing.T) {
@@ -239,13 +298,13 @@ func TestRunTask_Execute(t *testing.T) {
 		})
 
 		a := &rhbok.RHBOKMigrationAction{}
-		rhbok.ExportUpdateDSC(a, ctx, target)
+		rhbok.ExportActivateRHBOK(a, ctx, target)
 
 		res := target.Recorder.(interface{ Build() *result.ActionResult }).Build()
-		step := findStep(res.Status.Steps, "update-datasciencecluster")
+		step := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(step).ToNot(BeNil())
 		g.Expect(step.Status).To(Equal(result.StepCompleted))
-		g.Expect(step.Message).To(ContainSubstring("updated successfully"))
+		g.Expect(step.Message).To(ContainSubstring("updated to Unmanaged"))
 	})
 
 	t.Run("updateDataScienceCluster dry-run skips", func(t *testing.T) {
@@ -259,10 +318,10 @@ func TestRunTask_Execute(t *testing.T) {
 		})
 
 		a := &rhbok.RHBOKMigrationAction{}
-		rhbok.ExportUpdateDSC(a, ctx, target)
+		rhbok.ExportActivateRHBOK(a, ctx, target)
 
 		res := target.Recorder.(interface{ Build() *result.ActionResult }).Build()
-		step := findStep(res.Status.Steps, "update-datasciencecluster")
+		step := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(step).ToNot(BeNil())
 		g.Expect(step.Status).To(Equal(result.StepSkipped))
 		g.Expect(step.Message).To(ContainSubstring("Would set"))
@@ -278,10 +337,10 @@ func TestRunTask_Execute(t *testing.T) {
 		})
 
 		a := &rhbok.RHBOKMigrationAction{}
-		rhbok.ExportUpdateDSC(a, ctx, target)
+		rhbok.ExportActivateRHBOK(a, ctx, target)
 
 		res := target.Recorder.(interface{ Build() *result.ActionResult }).Build()
-		step := findStep(res.Status.Steps, "update-datasciencecluster")
+		step := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(step).ToNot(BeNil())
 		g.Expect(step.Status).To(Equal(result.StepFailed))
 	})
@@ -519,10 +578,10 @@ func TestRunTask_Execute(t *testing.T) {
 		})
 
 		a := &rhbok.RHBOKMigrationAction{}
-		rhbok.ExportUpdateDSC(a, ctx, target)
+		rhbok.ExportActivateRHBOK(a, ctx, target)
 
 		res := target.Recorder.(interface{ Build() *result.ActionResult }).Build()
-		step := findStep(res.Status.Steps, "update-datasciencecluster")
+		step := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(step).ToNot(BeNil())
 		g.Expect(step.Status).To(Equal(result.StepFailed))
 	})
@@ -559,10 +618,10 @@ func TestRunTask_Execute(t *testing.T) {
 		target.IO = iostreams.NewIOStreams(inBuf, &bytes.Buffer{}, &bytes.Buffer{})
 
 		a := &rhbok.RHBOKMigrationAction{}
-		rhbok.ExportUpdateDSC(a, ctx, target)
+		rhbok.ExportActivateRHBOK(a, ctx, target)
 
 		res := target.Recorder.(interface{ Build() *result.ActionResult }).Build()
-		step := findStep(res.Status.Steps, "update-datasciencecluster")
+		step := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(step).ToNot(BeNil())
 		g.Expect(step.Status).To(Equal(result.StepSkipped))
 		g.Expect(step.Message).To(ContainSubstring("cancelled"))
@@ -572,7 +631,7 @@ func TestRunTask_Execute(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
-		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Removed"))
 		cm := makeConfigMap(rhbok.ExportConfigMapName, inNamespace(rhbok.ExportApplicationsNamespace))
 		cq := makeClusterQueue("cq-1")
 		lq := makeLocalQueue("lq-1", inNamespace("default"))
@@ -593,18 +652,17 @@ func TestRunTask_Execute(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 
 		configStep := findStep(res.Status.Steps, "preserve-kueue-config")
-		g.Expect(configStep).ToNot(BeNil())
-		g.Expect(configStep.Status).To(Equal(result.StepCompleted))
+		g.Expect(configStep).To(BeNil())
 
 		installStep := findStep(res.Status.Steps, "install-rhbok-operator")
 		g.Expect(installStep).ToNot(BeNil())
 		g.Expect(installStep.Status).To(Equal(result.StepCompleted))
 
-		updateStep := findStep(res.Status.Steps, "update-datasciencecluster")
+		updateStep := findStep(res.Status.Steps, "activate-rhbok")
 		g.Expect(updateStep).ToNot(BeNil())
 		g.Expect(updateStep.Status).To(Equal(result.StepCompleted))
 
-		verifyStep := findStep(res.Status.Steps, "verify-resources-preserved")
+		verifyStep := findStep(res.Status.Steps, "verify-migration-complete")
 		g.Expect(verifyStep).ToNot(BeNil())
 		g.Expect(verifyStep.Status).To(Equal(result.StepCompleted))
 	})
@@ -700,7 +758,7 @@ func TestRunTask_Execute(t *testing.T) {
 		})
 
 		a := &rhbok.RHBOKMigrationAction{}
-		rhbok.ExportUpdateDSC(a, ctx, target)
+		rhbok.ExportActivateRHBOK(a, ctx, target)
 
 		fetched, err := target.Client.Dynamic().Resource(resources.DataScienceClusterV1.GVR()).
 			Get(ctx, "default-dsc", metav1.GetOptions{})
@@ -795,7 +853,7 @@ func TestRunTask_Execute(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
-		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Removed"))
 		cm := makeConfigMap(rhbok.ExportConfigMapName, inNamespace(rhbok.ExportApplicationsNamespace))
 		cq := makeClusterQueue("cq-1")
 		lq := makeLocalQueue("lq-1", inNamespace("default"))
@@ -824,13 +882,13 @@ func TestRunTask_Execute(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(state).To(Equal("Unmanaged"))
 
-		// ConfigMap should have the preservation annotation
+		// ConfigMap preservation only runs when Kueue starts Managed
 		fetchedCM, err := target.Client.Dynamic().Resource(resources.ConfigMap.GVR()).
 			Namespace(rhbok.ExportApplicationsNamespace).
 			Get(ctx, rhbok.ExportConfigMapName, metav1.GetOptions{})
 		g.Expect(err).ToNot(HaveOccurred())
 
-		g.Expect(fetchedCM.GetAnnotations()).To(HaveKeyWithValue("opendatahub.io/managed", "false"))
+		g.Expect(fetchedCM.GetAnnotations()).ToNot(HaveKey("opendatahub.io/managed"))
 
 		// Kueue resources should still exist
 		cqs, err := target.Client.ListResources(ctx, resources.ClusterQueue.GVR())
@@ -846,7 +904,7 @@ func TestRunTask_Execute(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
-		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Removed"))
 		cm := makeConfigMap(rhbok.ExportConfigMapName, inNamespace(rhbok.ExportApplicationsNamespace))
 		cq := makeClusterQueue("cq-1")
 		sub := makeSubscription(rhbok.ExportSubscriptionName, inNamespace(rhbok.ExportOperatorNamespace))
@@ -866,11 +924,11 @@ func TestRunTask_Execute(t *testing.T) {
 		res1, err := task.Execute(ctx, target)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		updateStep1 := findStep(res1.Status.Steps, "update-datasciencecluster")
+		updateStep1 := findStep(res1.Status.Steps, "activate-rhbok")
 		g.Expect(updateStep1).ToNot(BeNil())
 		g.Expect(updateStep1.Status).To(Equal(result.StepCompleted))
 
-		// Second run on the same target — DSC is already Unmanaged, operator already installed
+		// Second run on the same target — migration already complete
 		target2 := newTarget(t, nil, targetOpts{
 			skipConfirm: true,
 			rbacAllowed: true,
@@ -879,7 +937,6 @@ func TestRunTask_Execute(t *testing.T) {
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
-		// Re-use the same dynamic client so we see the mutated state from run 1
 		target2.Client = target.Client
 		target2.IO = target.IO
 
@@ -887,22 +944,10 @@ func TestRunTask_Execute(t *testing.T) {
 		res2, err := task2.Execute(ctx, target2)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		// DSC update should be skipped — already Unmanaged
-		updateStep2 := findStep(res2.Status.Steps, "update-datasciencecluster")
-		g.Expect(updateStep2).ToNot(BeNil())
-		g.Expect(updateStep2.Status).To(Equal(result.StepSkipped))
-		g.Expect(updateStep2.Message).To(ContainSubstring("already set to Unmanaged"))
-
-		// Operator install should report already installed
-		installStep2 := findStep(res2.Status.Steps, "install-rhbok-operator")
-		g.Expect(installStep2).ToNot(BeNil())
-		g.Expect(installStep2.Status).To(Equal(result.StepCompleted))
-		g.Expect(installStep2.Message).To(ContainSubstring("already installed"))
-
-		// Resources should still be preserved
-		verifyStep2 := findStep(res2.Status.Steps, "verify-resources-preserved")
-		g.Expect(verifyStep2).ToNot(BeNil())
-		g.Expect(verifyStep2.Status).To(Equal(result.StepCompleted))
+		completeStep := findStep(res2.Status.Steps, "migration-complete")
+		g.Expect(completeStep).ToNot(BeNil())
+		g.Expect(completeStep.Status).To(Equal(result.StepSkipped))
+		g.Expect(completeStep.Message).To(ContainSubstring("already complete"))
 
 		// Verify final k8s state is unchanged from first run
 		fetchedDSC, err := target.Client.Dynamic().Resource(resources.DataScienceClusterV1.GVR()).
@@ -937,5 +982,73 @@ func TestRunTask_Execute(t *testing.T) {
 		configStep := findStep(res.Status.Steps, "preserve-kueue-config")
 		g.Expect(configStep).ToNot(BeNil())
 		g.Expect(configStep.Status).To(Equal(result.StepSkipped))
+	})
+}
+
+func TestIsMigrationComplete(t *testing.T) {
+	a := &rhbok.RHBOKMigrationAction{}
+
+	t.Run("requires succeeded CSV not just subscription", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			rbacAllowed: true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+			},
+		})
+
+		g.Expect(rhbok.ExportIsMigrationComplete(a, ctx, target)).To(BeFalse())
+	})
+
+	t.Run("true when unmanaged and operator CSV succeeded", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			rbacAllowed: true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
+			},
+		})
+
+		g.Expect(rhbok.ExportIsMigrationComplete(a, ctx, target)).To(BeTrue())
+	})
+}
+
+func TestRunTask_HaltsOnStepFailure(t *testing.T) {
+	t.Run("halts when remove embedded fails", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Managed"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			skipConfirm: true,
+			rbacAllowed: true,
+			dynamicReactor: func(act k8stesting.Action) (bool, runtime.Object, error) {
+				if act.GetResource().Resource == "datascienceclusters" && act.GetVerb() == "update" {
+					return true, nil, errors.New("update forbidden")
+				}
+
+				return false, nil, nil
+			},
+		})
+
+		a := &rhbok.RHBOKMigrationAction{}
+		res, err := a.Run().Execute(ctx, target)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		haltStep := findStep(res.Status.Steps, "migration-halted")
+		g.Expect(haltStep).ToNot(BeNil())
+		g.Expect(haltStep.Status).To(Equal(result.StepFailed))
+		g.Expect(haltStep.Message).To(ContainSubstring("remove-embedded-kueue"))
+
+		g.Expect(findStep(res.Status.Steps, "delete-legacy-crds")).To(BeNil())
+		g.Expect(findStep(res.Status.Steps, "install-rhbok-operator")).To(BeNil())
+		g.Expect(findStep(res.Status.Steps, "activate-rhbok")).To(BeNil())
 	})
 }

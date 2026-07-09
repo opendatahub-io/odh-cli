@@ -33,7 +33,7 @@ func TestPrepareTask_Validate(t *testing.T) {
 		res, err := task.Validate(ctx, target)
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(res).ToNot(BeNil())
-		g.Expect(res.Status.Steps).To(HaveLen(3))
+		g.Expect(len(res.Status.Steps)).To(BeNumerically(">=", 5))
 	})
 
 	t.Run("reports failure when DSC not found", func(t *testing.T) {
@@ -51,6 +51,26 @@ func TestPrepareTask_Validate(t *testing.T) {
 		dscStep := findStep(res.Status.Steps, "check-kueue-state")
 		g.Expect(dscStep).ToNot(BeNil())
 		g.Expect(dscStep.Status).To(Equal(result.StepFailed))
+	})
+
+	t.Run("fails execute when validation fails", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		target := newTarget(t, nil, targetOpts{rbacAllowed: true})
+
+		a := &rhbok.RHBOKMigrationAction{}
+		task := a.Prepare()
+
+		res, err := task.Execute(ctx, target)
+		g.Expect(err).To(MatchError("preflight checks failed"))
+		g.Expect(res).ToNot(BeNil())
+
+		dscStep := findStep(res.Status.Steps, "check-kueue-state")
+		g.Expect(dscStep).ToNot(BeNil())
+		g.Expect(dscStep.Status).To(Equal(result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "backup-kueue-resources")).To(BeNil())
+		g.Expect(findStep(res.Status.Steps, "backup-skipped")).To(BeNil())
 	})
 }
 
@@ -251,7 +271,7 @@ func TestPrepareTask_Execute_BackupNotFound(t *testing.T) {
 }
 
 func TestPrepareTask_Execute_BackupErrors(t *testing.T) {
-	t.Run("ClusterQueue list error fails backup", func(t *testing.T) {
+	t.Run("ClusterQueue list error fails validation", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
@@ -271,11 +291,12 @@ func TestPrepareTask_Execute_BackupErrors(t *testing.T) {
 		task := a.Prepare()
 
 		res, err := task.Execute(ctx, target)
-		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(err).To(MatchError("preflight checks failed"))
 
-		backupStep := findStepRecursive(res.Status.Steps, "backup-clusterqueues")
-		g.Expect(backupStep).ToNot(BeNil())
-		g.Expect(backupStep.Status).To(Equal(result.StepFailed))
+		verifyStep := findStep(res.Status.Steps, "verify-kueue-resources")
+		g.Expect(verifyStep).ToNot(BeNil())
+		g.Expect(verifyStep.Status).To(Equal(result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "backup-kueue-resources")).To(BeNil())
 	})
 
 	t.Run("ConfigMap get error fails backup", func(t *testing.T) {

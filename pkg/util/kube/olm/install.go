@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	operatorsv1 "github.com/operator-framework/api/pkg/operators/v1"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,6 +37,8 @@ type InstallConfig struct {
 	Source              string
 	SourceNamespace     string
 	CSVNamePrefix       string
+	OperatorGroupName   string
+	TargetNamespaces    []string
 	PollInterval        time.Duration
 	Timeout             time.Duration
 	StartingCSV         string
@@ -64,6 +68,19 @@ func EnsureOperatorInstalled(
 
 	if config.DryRun {
 		return dryRunOperatorInstall(ctx, k8sClient, config)
+	}
+
+	if err := ensureNamespace(ctx, k8sClient, config.Namespace); err != nil {
+		return fmt.Errorf("failed to ensure namespace: %w", err)
+	}
+
+	operatorGroupName := config.OperatorGroupName
+	if operatorGroupName == "" {
+		operatorGroupName = defaultOperatorGroupName(config.Namespace)
+	}
+
+	if err := ensureOperatorGroup(ctx, k8sClient, config.Namespace, operatorGroupName, config.TargetNamespaces); err != nil {
+		return fmt.Errorf("failed to ensure operator group: %w", err)
 	}
 
 	// Check if subscription exists
@@ -98,6 +115,8 @@ func dryRunOperatorInstall(
 	if config.Recorder == nil {
 		return errors.New("recorder required for dry-run mode")
 	}
+
+	recordDryRunPrerequisiteSteps(config)
 
 	checkStep := config.Recorder.Child("check-subscription",
 		fmt.Sprintf("Checking if subscription '%s' exists in namespace '%s'", config.Name, config.Namespace))
@@ -149,6 +168,139 @@ func dryRunOperatorInstall(
 	return nil
 }
 
+func recordDryRunPrerequisiteSteps(config InstallConfig) {
+	nsStep := config.Recorder.Child("ensure-namespace",
+		fmt.Sprintf("Would ensure namespace '%s' exists", config.Namespace))
+	nsStep.Completef(result.StepSkipped, "Would create namespace if missing")
+
+	ogStep := config.Recorder.Child("ensure-operatorgroup",
+		fmt.Sprintf("Would ensure OperatorGroup exists in namespace '%s'", config.Namespace))
+	ogStep.AddDetail("name", operatorGroupName(config))
+	ogStep.Completef(result.StepSkipped, "Would create OperatorGroup if missing")
+}
+
+func operatorGroupName(config InstallConfig) string {
+	if config.OperatorGroupName != "" {
+		return config.OperatorGroupName
+	}
+
+	return defaultOperatorGroupName(config.Namespace)
+}
+
+func defaultOperatorGroupName(namespace string) string {
+	return namespace + "-og"
+}
+
+func ensureOperatorGroup(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+	targetNamespaces []string,
+) error {
+	list, err := k8sClient.OLMClient().OperatorsV1().OperatorGroups(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("list operatorgroups in %s: %w", namespace, err)
+	}
+
+	if len(list.Items) > 0 {
+		return validateExistingOperatorGroups(list.Items, namespace, targetNamespaces)
+	}
+
+	og := &operatorsv1.OperatorGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+
+	if len(targetNamespaces) > 0 {
+		og.Spec.TargetNamespaces = append([]string(nil), targetNamespaces...)
+	}
+
+	_, err = k8sClient.OLMClient().OperatorsV1().OperatorGroups(namespace).Create(ctx, og, metav1.CreateOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if apierrors.IsAlreadyExists(err) {
+		list, listErr := k8sClient.OLMClient().OperatorsV1().OperatorGroups(namespace).List(ctx, metav1.ListOptions{})
+		if listErr != nil {
+			return fmt.Errorf("list operatorgroups in %s after already exists: %w", namespace, listErr)
+		}
+
+		return validateExistingOperatorGroups(list.Items, namespace, targetNamespaces)
+	}
+
+	return fmt.Errorf("create operatorgroup %s/%s: %w", namespace, name, err)
+}
+
+func validateExistingOperatorGroups(
+	items []operatorsv1.OperatorGroup,
+	namespace string,
+	requested []string,
+) error {
+	if len(items) > 1 {
+		return fmt.Errorf("expected at most one OperatorGroup in %s, found %d", namespace, len(items))
+	}
+
+	if len(items) == 0 {
+		return fmt.Errorf("no OperatorGroup found in %s after create conflict", namespace)
+	}
+
+	existingTargets := items[0].Spec.TargetNamespaces
+	if !slicesEqualUnordered(existingTargets, requested) {
+		return fmt.Errorf(
+			"operatorgroup %s/%s exists with targetNamespaces %v, but requested %v",
+			namespace, items[0].Name, existingTargets, requested,
+		)
+	}
+
+	return nil
+}
+
+func slicesEqualUnordered(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	counts := make(map[string]int, len(a))
+	for _, value := range a {
+		counts[value]++
+	}
+
+	for _, value := range b {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func ensureNamespace(ctx context.Context, k8sClient client.Client, name string) error {
+	_, err := k8sClient.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("get namespace %s: %w", name, err)
+	}
+
+	_, err = k8sClient.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}, metav1.CreateOptions{})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create namespace %s: %w", name, err)
+	}
+
+	return nil
+}
+
 func createSubscription(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -180,6 +332,31 @@ func createSubscription(
 	return nil
 }
 
+// CSVReady reports whether a ClusterServiceVersion with the given name prefix has reached Succeeded phase.
+func CSVReady(
+	ctx context.Context,
+	k8sClient client.Reader,
+	namespace string,
+	csvNamePrefix string,
+) (bool, error) {
+	if csvNamePrefix == "" {
+		return false, errors.New("csv name prefix must not be empty")
+	}
+
+	csvList, err := k8sClient.OLM().ClusterServiceVersions(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("listing CSVs in %s: %w", namespace, err)
+	}
+
+	for _, csv := range csvList.Items {
+		if strings.HasPrefix(csv.Name, csvNamePrefix) && csv.Status.Phase == csvPhaseSucceeded {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // WaitForCSV waits for a ClusterServiceVersion with the given name prefix to reach Succeeded phase.
 func WaitForCSV(
 	ctx context.Context,
@@ -189,6 +366,10 @@ func WaitForCSV(
 	pollInterval time.Duration,
 	timeout time.Duration,
 ) error {
+	if csvNamePrefix == "" {
+		return errors.New("csv name prefix must not be empty")
+	}
+
 	if pollInterval == 0 {
 		pollInterval = defaultPollInterval
 	}
