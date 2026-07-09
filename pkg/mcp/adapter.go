@@ -14,7 +14,7 @@ import (
 )
 
 // toolDefinition pairs an MCP tool schema with a handler.
-type toolDefinition struct { //nolint:unused // used by tools.go in a follow-up PR
+type toolDefinition struct {
 	tool    mcp.Tool
 	handler server.ToolHandlerFunc
 }
@@ -35,7 +35,6 @@ type toolAdapter struct {
 	applier     argumentApplier
 }
 
-//nolint:unparam // error return required by server.ToolHandlerFunc signature
 func (a *toolAdapter) handle(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var outBuf, errBuf bytes.Buffer
 
