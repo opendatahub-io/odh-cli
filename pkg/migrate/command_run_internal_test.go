@@ -3,6 +3,7 @@ package migrate
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -57,11 +58,24 @@ func newIncompleteResult() *result.ActionResult {
 	return r
 }
 
+type runTestStreams struct {
+	cmd    *RunCommand
+	outBuf *bytes.Buffer
+	errBuf *bytes.Buffer
+}
+
 func newTestRunCommand() (*RunCommand, *bytes.Buffer) {
+	s := newTestRunCommandWithStdout()
+
+	return s.cmd, s.errBuf
+}
+
+func newTestRunCommandWithStdout() runTestStreams {
+	outBuf := &bytes.Buffer{}
 	errBuf := &bytes.Buffer{}
 	streams := genericiooptions.IOStreams{
 		In:     &bytes.Buffer{},
-		Out:    &bytes.Buffer{},
+		Out:    outBuf,
 		ErrOut: errBuf,
 	}
 
@@ -70,7 +84,7 @@ func newTestRunCommand() (*RunCommand, *bytes.Buffer) {
 		registry:      action.NewActionRegistry(),
 	}
 
-	return cmd, errBuf
+	return runTestStreams{cmd: cmd, outBuf: outBuf, errBuf: errBuf}
 }
 
 func TestRunMigrationMode(t *testing.T) {
@@ -219,5 +233,75 @@ func TestRunMigrationMode(t *testing.T) {
 		err := cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(task.execCount).To(Equal(1))
+	})
+
+	t.Run("should emit JSON structured output when format is json", func(t *testing.T) {
+		g := NewWithT(t)
+		s := newTestRunCommandWithStdout()
+		s.cmd.OutputFormat = OutputFormatJSON
+
+		task := &stubTask{result: newSuccessResult()}
+		s.cmd.registry.MustRegister(&stubAction{
+			id: "test.migrate", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: task,
+		})
+		s.cmd.MigrationIDs = []string{"test.migrate"}
+
+		err := s.cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		var result RunResult
+		g.Expect(json.Unmarshal(s.outBuf.Bytes(), &result)).To(Succeed())
+		g.Expect(result.Kind).To(Equal("MigrateRunResult"))
+		g.Expect(result.APIVersion).To(Equal("cli.opendatahub.io/v1"))
+		g.Expect(result.CurrentVersion).To(Equal("2.25.0"))
+		g.Expect(result.TargetVersion).To(Equal("3.0.0"))
+		g.Expect(result.Phase).To(Equal("pre-upgrade"))
+		g.Expect(result.Migrations).To(HaveLen(1))
+		g.Expect(result.Migrations[0].ID).To(Equal("test.migrate"))
+		g.Expect(result.Migrations[0].Completed).To(BeTrue())
+		g.Expect(result.Status).ToNot(BeNil())
+		g.Expect(result.Status.Result).To(Equal("success"))
+	})
+
+	t.Run("should emit YAML structured output when format is yaml", func(t *testing.T) {
+		g := NewWithT(t)
+		s := newTestRunCommandWithStdout()
+		s.cmd.OutputFormat = OutputFormatYAML
+
+		task := &stubTask{result: newSuccessResult()}
+		s.cmd.registry.MustRegister(&stubAction{
+			id: "test.migrate", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: task,
+		})
+		s.cmd.MigrationIDs = []string{"test.migrate"}
+
+		err := s.cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		output := s.outBuf.String()
+		g.Expect(output).To(ContainSubstring("kind: MigrateRunResult"))
+		g.Expect(output).To(ContainSubstring("currentVersion: 2.25.0"))
+		g.Expect(output).To(ContainSubstring("targetVersion: 3.0.0"))
+	})
+
+	t.Run("should include skipped steps in JSON structured output", func(t *testing.T) {
+		g := NewWithT(t)
+		s := newTestRunCommandWithStdout()
+		s.cmd.OutputFormat = OutputFormatJSON
+
+		s.cmd.registry.MustRegister(&stubAction{
+			id: "skip.action", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: &stubTask{result: newResultWithSkippedSteps()},
+		})
+		s.cmd.MigrationIDs = []string{"skip.action"}
+
+		err := s.cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		var result RunResult
+		g.Expect(json.Unmarshal(s.outBuf.Bytes(), &result)).To(Succeed())
+		g.Expect(result.Migrations).To(HaveLen(1))
+		g.Expect(result.Migrations[0].HasSkippedSteps).To(BeTrue())
 	})
 }

@@ -16,6 +16,9 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/api"
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/output"
+	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
+	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
 	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
@@ -53,6 +56,8 @@ func (c *PrepareCommand) ActionIDs() []string {
 }
 
 func (c *PrepareCommand) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVarP((*string)(&c.OutputFormat), "output", "o", string(OutputFormatTable), "Output format: table, json, yaml")
+	_ = fs.SetAnnotation("output", api.AnnotationValidValues, []string{"table", "json", "yaml"})
 	fs.BoolVarP(&c.Verbose, "verbose", "v", false, flagDescPrepareVerbose)
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, flagDescPrepareTimeout)
 	fs.BoolVar(&c.DryRun, "dry-run", false, flagDescPrepareDryRun)
@@ -75,6 +80,11 @@ func (c *PrepareCommand) AddFlags(fs *pflag.FlagSet) {
 func (c *PrepareCommand) Complete() error {
 	if err := c.SharedOptions.Complete(); err != nil {
 		return fmt.Errorf("completing shared options: %w", err)
+	}
+
+	// Suppress text output for structured formats (matching codebase pattern)
+	if c.OutputFormat != OutputFormatTable {
+		c.IO = iostreams.NewQuietWrapper(c.IO)
 	}
 
 	// Always enable verbose for migrate prepare
@@ -148,7 +158,9 @@ func (c *PrepareCommand) Run(ctx context.Context) error {
 	c.MigrationIDs = resolvedIDs
 
 	if len(c.MigrationIDs) == 0 {
-		return fmt.Errorf("no applicable migrations found for phase %s", string(effectivePhase))
+		//nolint:wrapcheck // NewExitCodeError is a same-module constructor
+		return clierrors.NewExitCodeError(clierrors.ExitValidation,
+			fmt.Errorf("no applicable migrations found for phase %s", string(effectivePhase)))
 	}
 
 	return c.runPrepareMode(ctx, currentVersion, c.parsedTargetVersion, effectivePhase)
@@ -160,10 +172,17 @@ func (c *PrepareCommand) runPrepareMode(
 	targetVersion *semver.Version,
 	effectivePhase action.ActionPhase,
 ) error {
+	structured := c.OutputFormat != OutputFormatTable
+
 	c.IO.Errorf("Current OpenShift AI version: %s", currentVersion.String())
 	c.IO.Errorf("Target OpenShift AI version: %s", targetVersion.String())
 	c.IO.Errorf("Phase: %s", string(effectivePhase))
 	c.IO.Errorf("Backup directory: %s\n", c.OutputDir)
+
+	// Use FullQuietWrapper for action IO to prevent stdout corruption in structured mode
+	actionIO := actionIOForMode(c.IO, structured)
+
+	var migrationResults []MigrationResultItem
 
 	for idx, migrationID := range c.MigrationIDs {
 		if len(c.MigrationIDs) > 1 {
@@ -172,10 +191,14 @@ func (c *PrepareCommand) runPrepareMode(
 
 		selectedAction, ok := c.registry.Get(migrationID)
 		if !ok {
-			return fmt.Errorf("migration %q not found", migrationID)
+			//nolint:wrapcheck // NewExitCodeError is a same-module constructor
+			return clierrors.NewExitCodeError(clierrors.ExitValidation,
+				fmt.Errorf("migration %q not found", migrationID))
 		}
 
+		var phaseMismatch bool
 		if selectedAction.Phase() != effectivePhase {
+			phaseMismatch = true
 			c.IO.Errorf("WARNING: migration %s has phase %s but effective phase is %s; proceeding because --migration was explicit",
 				migrationID, string(selectedAction.Phase()), string(effectivePhase))
 		}
@@ -183,12 +206,16 @@ func (c *PrepareCommand) runPrepareMode(
 		prepareTask := selectedAction.Prepare()
 		if prepareTask == nil {
 			c.IO.Errorf("Migration %s has no prepare phase (skipped)\n", migrationID)
+			migrationResults = append(migrationResults, MigrationResultItem{
+				ID:            migrationID,
+				Skipped:       true,
+				PhaseMismatch: phaseMismatch,
+			})
 
 			continue
 		}
 
-		// Use verbose recorder for real-time streaming output
-		recorder := action.NewVerboseRootRecorder(c.IO)
+		recorder := action.NewVerboseRootRecorder(actionIO)
 		c.IO.Errorf("\n%s:\n", migrationID)
 
 		target := action.Target{
@@ -200,7 +227,7 @@ func (c *PrepareCommand) runPrepareMode(
 			SkipConfirm:    c.Yes,
 			OutputDir:      c.OutputDir,
 			Recorder:       recorder,
-			IO:             c.IO,
+			IO:             actionIO,
 		}
 
 		if c.DryRun {
@@ -209,17 +236,32 @@ func (c *PrepareCommand) runPrepareMode(
 
 		actionResult, err := prepareTask.Execute(ctx, target)
 		if err != nil {
-			return fmt.Errorf("preparation failed: %w", err)
+			//nolint:wrapcheck // NewExitCodeError is a same-module constructor
+			return clierrors.NewExitCodeError(clierrors.ExitValidation,
+				fmt.Errorf("preparation failed: %w", err))
 		}
 
-		// Output has already been streamed during execution
-		c.IO.Fprintln()
+		c.IO.Errorln()
+
 		if !actionResult.Status.Completed {
 			c.IO.Errorf("Preparation %s incomplete - please review the output above", migrationID)
 
-			return fmt.Errorf("preparation halted: %s", migrationID)
+			//nolint:wrapcheck // NewExitCodeError is a same-module constructor
+			return clierrors.NewExitCodeError(clierrors.ExitValidation,
+				fmt.Errorf("preparation halted: %s", migrationID))
 		}
+
 		c.IO.Errorf("Preparation %s completed successfully!", migrationID)
+		migrationResults = append(migrationResults, MigrationResultItem{
+			ID:              migrationID,
+			Completed:       actionResult.Status.Completed,
+			HasSkippedSteps: actionResult.HasSkippedSteps(),
+			PhaseMismatch:   phaseMismatch,
+		})
+	}
+
+	if structured {
+		return c.writePrepareResult(currentVersion, targetVersion, effectivePhase, migrationResults)
 	}
 
 	c.IO.Fprintln()
@@ -241,4 +283,57 @@ func (c *PrepareCommand) runPrepareMode(
 	}
 
 	return nil
+}
+
+// PrepareResult is the structured success output for migrate prepare.
+type PrepareResult struct {
+	output.Envelope `json:",inline" yaml:",inline"`
+
+	CurrentVersion string                `json:"currentVersion" yaml:"currentVersion"`
+	TargetVersion  string                `json:"targetVersion"  yaml:"targetVersion"`
+	Phase          string                `json:"phase"          yaml:"phase"`
+	DryRun         bool                  `json:"dryRun"         yaml:"dryRun"`
+	OutputDir      string                `json:"outputDir"      yaml:"outputDir"`
+	Migrations     []MigrationResultItem `json:"migrations"     yaml:"migrations"`
+}
+
+// MigrationResultItem represents the result of a single migration in structured output.
+type MigrationResultItem struct {
+	ID              string `json:"id"                        yaml:"id"`
+	Completed       bool   `json:"completed"                 yaml:"completed"`
+	Skipped         bool   `json:"skipped,omitempty"         yaml:"skipped,omitempty"`
+	HasSkippedSteps bool   `json:"hasSkippedSteps,omitempty" yaml:"hasSkippedSteps,omitempty"`
+	PhaseMismatch   bool   `json:"phaseMismatch,omitempty"   yaml:"phaseMismatch,omitempty"`
+}
+
+func countWarnings(migrations []MigrationResultItem) int {
+	warnings := 0
+
+	for _, m := range migrations {
+		if m.Skipped || m.HasSkippedSteps || m.PhaseMismatch {
+			warnings++
+		}
+	}
+
+	return warnings
+}
+
+func (c *PrepareCommand) writePrepareResult(
+	currentVersion *semver.Version,
+	targetVersion *semver.Version,
+	phase action.ActionPhase,
+	migrations []MigrationResultItem,
+) error {
+	result := PrepareResult{
+		Envelope:       output.NewEnvelope("MigratePrepareResult", "migrate prepare"),
+		CurrentVersion: currentVersion.String(),
+		TargetVersion:  targetVersion.String(),
+		Phase:          string(phase),
+		DryRun:         c.DryRun,
+		OutputDir:      c.OutputDir,
+		Migrations:     migrations,
+	}
+	result.SetStatus(countWarnings(migrations), 0)
+
+	return writeStructuredOutput(c.IO.Out(), c.OutputFormat, result)
 }

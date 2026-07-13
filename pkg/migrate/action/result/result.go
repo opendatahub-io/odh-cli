@@ -15,35 +15,35 @@ const (
 )
 
 type ActionResult struct {
-	Metadata ActionMetadata
-	Spec     ActionSpec
-	Status   ActionStatus
+	Metadata ActionMetadata `json:"metadata" yaml:"metadata"`
+	Spec     ActionSpec     `json:"spec"     yaml:"spec"`
+	Status   ActionStatus   `json:"status"   yaml:"status"`
 }
 
 type ActionMetadata struct {
-	Group       string
-	Kind        string
-	Name        string
-	Annotations map[string]string
+	Group       string            `json:"group"                 yaml:"group"`
+	Kind        string            `json:"kind"                  yaml:"kind"`
+	Name        string            `json:"name"                  yaml:"name"`
+	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 }
 
 type ActionSpec struct {
-	Description string
-	DryRun      bool
+	Description string `json:"description" yaml:"description"`
+	DryRun      bool   `json:"dryRun"      yaml:"dryRun"`
 }
 
 type ActionStatus struct {
-	Steps     []ActionStep
-	Completed bool
-	Error     string
+	Steps     []ActionStep `json:"steps"           yaml:"steps"`
+	Completed bool         `json:"completed"       yaml:"completed"`
+	Error     string       `json:"error,omitempty" yaml:"error,omitempty"`
 }
 
 type ActionStep struct {
-	Name        string
-	Description string
-	Status      StepStatus
-	Message     string
-	Timestamp   time.Time
+	Name        string         `json:"name"               yaml:"name"`
+	Description string         `json:"description"        yaml:"description"`
+	Status      StepStatus     `json:"status"             yaml:"status"`
+	Message     string         `json:"message,omitempty"  yaml:"message,omitempty"`
+	Timestamp   time.Time      `json:"timestamp"          yaml:"timestamp"`
 	Children    []ActionStep   `json:"children,omitempty" yaml:"children,omitempty"`
 	Details     map[string]any `json:"details,omitempty"  yaml:"details,omitempty"`
 }

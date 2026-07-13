@@ -8,6 +8,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/migrate"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
 const (
@@ -66,16 +67,21 @@ func AddCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			//nolint:wrapcheck // Errors from Complete and Validate are already contextualized
+			outputFormat := string(command.OutputFormat)
+
 			if err := command.Complete(); err != nil {
-				return err
-			}
-			//nolint:wrapcheck // Errors from Validate are already contextualized
-			if err := command.Validate(); err != nil {
-				return err
+				return clierrors.HandleError(cmd, err, outputFormat)
 			}
 
-			return command.Run(cmd.Context())
+			if err := command.Validate(); err != nil {
+				return clierrors.HandleError(cmd, err, outputFormat)
+			}
+
+			if err := command.Run(cmd.Context()); err != nil {
+				return clierrors.HandleError(cmd, err, outputFormat)
+			}
+
+			return nil
 		},
 	}
 
