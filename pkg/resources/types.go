@@ -514,4 +514,52 @@ var (
 		Kind:     "TrustyAIService",
 		Resource: "trustyaiservices",
 	}
+
+	// ServiceMeshControlPlane is the OSSM v2 ServiceMeshControlPlane resource.
+	ServiceMeshControlPlane = ResourceType{
+		Group:    "maistra.io",
+		Version:  "v2",
+		Kind:     "ServiceMeshControlPlane",
+		Resource: "servicemeshcontrolplanes",
+	}
+
+	// ServiceMeshMemberRoll is the OSSM ServiceMeshMemberRoll resource.
+	ServiceMeshMemberRoll = ResourceType{
+		Group:    "maistra.io",
+		Version:  "v1",
+		Kind:     "ServiceMeshMemberRoll",
+		Resource: "servicemeshmemberrolls",
+	}
+
+	// ServiceMeshMember is the OSSM v1 ServiceMeshMember resource.
+	ServiceMeshMember = ResourceType{
+		Group:    "maistra.io",
+		Version:  "v1",
+		Kind:     "ServiceMeshMember",
+		Resource: "servicemeshmembers",
+	}
+
+	// KnativeServing is the Knative Serving operator resource.
+	KnativeServing = ResourceType{
+		Group:    "operator.knative.dev",
+		Version:  "v1beta1",
+		Kind:     "KnativeServing",
+		Resource: "knativeservings",
+	}
+
+	// KnativeEventing is the Knative Eventing operator resource.
+	KnativeEventing = ResourceType{
+		Group:    "operator.knative.dev",
+		Version:  "v1beta1",
+		Kind:     "KnativeEventing",
+		Resource: "knativeeventings",
+	}
+
+	// KnativeService is the Knative Service (KService) resource.
+	KnativeService = ResourceType{
+		Group:    "serving.knative.dev",
+		Version:  "v1",
+		Kind:     "Service",
+		Resource: "services",
+	}
 )

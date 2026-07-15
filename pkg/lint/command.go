@@ -29,6 +29,8 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/certmanager"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/openshift"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/servicemesh"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/sharedossm"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/sharedserverless"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/datasciencecluster"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/dscinitialization"
 	datasciencepipelinesworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
@@ -123,10 +125,12 @@ func NewCommand(
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-	// Dependencies (3)
+	// Dependencies (5)
 	registry.MustRegister(certmanager.NewCheck())
 	registry.MustRegister(openshift.NewCheck())
 	registry.MustRegister(servicemesh.NewCheck())
+	registry.MustRegister(sharedossm.NewCheck())
+	registry.MustRegister(sharedserverless.NewCheck())
 
 	// Workloads (20)
 	registry.MustRegister(ray.NewAppWrapperCleanupCheck())
