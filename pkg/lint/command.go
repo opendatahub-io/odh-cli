@@ -28,6 +28,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/trainingoperator"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/certmanager"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/openshift"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/ossm34"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/servicemesh"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/sharedossm"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/sharedserverless"
@@ -125,9 +126,10 @@ func NewCommand(
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 
-	// Dependencies (5)
+	// Dependencies (6)
 	registry.MustRegister(certmanager.NewCheck())
 	registry.MustRegister(openshift.NewCheck())
+	registry.MustRegister(ossm34.NewCheck())
 	registry.MustRegister(servicemesh.NewCheck())
 	registry.MustRegister(sharedossm.NewCheck())
 	registry.MustRegister(sharedserverless.NewCheck())
