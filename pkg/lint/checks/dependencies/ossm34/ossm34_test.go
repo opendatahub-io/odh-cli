@@ -84,7 +84,7 @@ func TestOSSM34Check_APIError_Propagated(t *testing.T) {
 	ctx := t.Context()
 
 	olmClient := operatorfake.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
-	olmClient.PrependReactor("get", "subscriptions", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+	olmClient.PrependReactor("list", "subscriptions", func(_ k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("connection refused")
 	})
 
@@ -97,7 +97,7 @@ func TestOSSM34Check_APIError_Propagated(t *testing.T) {
 	_, err := chk.Validate(ctx, target)
 
 	g.Expect(err).To(HaveOccurred())
-	g.Expect(err.Error()).To(ContainSubstring("getting servicemeshoperator3 subscription"))
+	g.Expect(err.Error()).To(ContainSubstring("listing subscriptions"))
 	g.Expect(err.Error()).To(ContainSubstring("connection refused"))
 }
 
@@ -223,6 +223,29 @@ func TestOSSM34Check_NoStartingCSV_StillFlags(t *testing.T) {
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[0].Message).ToNot(ContainSubstring("drifted from pinned version"))
+}
+
+func TestOSSM34Check_UnparsableCSV(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("", "servicemeshoperator3.vNOTASEMVER")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM:           operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionUnknown),
+		"Reason": Equal(check.ReasonInsufficientData),
+	}))
 }
 
 func TestOSSM34Check_EmptyInstalledCSV(t *testing.T) {

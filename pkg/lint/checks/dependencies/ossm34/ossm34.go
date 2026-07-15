@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/blang/semver/v4"
+	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
@@ -19,8 +19,7 @@ const (
 	checkKind = "ossm-v3-compatibility"
 	checkType = "compatibility"
 
-	subscriptionName      = "servicemeshoperator3"
-	subscriptionNamespace = "openshift-operators"
+	subscriptionName = "servicemeshoperator3"
 
 	csvPrefix = "servicemeshoperator3.v"
 )
@@ -68,20 +67,21 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 		return dr, nil
 	}
 
-	sub, err := target.Client.OLM().Subscriptions(subscriptionNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
+	subscriptions, err := target.Client.OLM().Subscriptions("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			dr.SetCondition(check.NewCondition(
-				check.ConditionTypeCompatible,
-				metav1.ConditionTrue,
-				check.WithReason(check.ReasonRequirementsMet),
-				check.WithMessage("servicemeshoperator3 subscription not found in %s namespace; OSSM v3 is not installed via OLM", subscriptionNamespace),
-			))
+		return nil, fmt.Errorf("listing subscriptions: %w", err)
+	}
 
-			return dr, nil
-		}
+	sub := findSubscription(subscriptions)
+	if sub == nil {
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeCompatible,
+			metav1.ConditionTrue,
+			check.WithReason(check.ReasonRequirementsMet),
+			check.WithMessage("servicemeshoperator3 subscription not found; OSSM v3 is not installed via OLM"),
+		))
 
-		return nil, fmt.Errorf("getting servicemeshoperator3 subscription: %w", err)
+		return dr, nil
 	}
 
 	installedCSV := sub.Status.InstalledCSV
@@ -134,6 +134,16 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 	))
 
 	return dr, nil
+}
+
+func findSubscription(list *operatorsv1alpha1.SubscriptionList) *operatorsv1alpha1.Subscription {
+	for i := range list.Items {
+		if list.Items[i].Name == subscriptionName {
+			return &list.Items[i]
+		}
+	}
+
+	return nil
 }
 
 func buildDriftMessage(installedVersion semver.Version, installedCSV, startingCSV string) string {
