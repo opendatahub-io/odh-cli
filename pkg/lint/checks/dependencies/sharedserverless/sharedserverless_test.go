@@ -235,6 +235,35 @@ func TestSharedServerlessCheck_OnlyServingAndEventingDetected(t *testing.T) {
 	g.Expect(result.ImpactedObjects).To(HaveLen(2))
 }
 
+func TestSharedServerlessCheck_NoDSCI_FallsBackToWellKnownNamespaces(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ksvcManaged := newKnativeService("predictor", "knative-serving")
+	ksvcExternal := newKnativeService("my-app", "team-a")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{ksvcManaged, ksvcExternal},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := sharedserverless.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeValidated),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonWorkloadsImpacted),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("1 Serverless resource"))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("team-a"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
 func TestSharedServerlessCheck_CanApply_2xTo3x(t *testing.T) {
 	g := NewWithT(t)
 

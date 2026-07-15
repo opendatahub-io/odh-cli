@@ -209,6 +209,35 @@ func TestSharedOSSMCheck_OnlySMMRsDetected(t *testing.T) {
 	g.Expect(result.ImpactedObjects).To(HaveLen(2))
 }
 
+func TestSharedOSSMCheck_NoDSCI_FallsBackToWellKnownNamespaces(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	smcpManaged := newSMCP("basic", "istio-system")
+	smcpExternal := newSMCP("custom-mesh", "team-a")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{smcpManaged, smcpExternal},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := sharedossm.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeValidated),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonWorkloadsImpacted),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("1 OSSM resource"))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("team-a"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
 func TestSharedOSSMCheck_CanApply_2xTo3x(t *testing.T) {
 	g := NewWithT(t)
 
