@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
-	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 )
 
 func (a *RHBOKMigrationAction) verifyMigrationComplete(
@@ -32,30 +33,23 @@ func (a *RHBOKMigrationAction) verifyMigrationComplete(
 		return
 	}
 
+	checks := []func(context.Context, action.Target) string{
+		a.verifyEmbeddedRemoved,
+		a.verifyManagementState,
+		a.verifyKueueReadyStatus,
+		a.verifyOperatorReady,
+		a.verifyOperatorPodsReady,
+		a.verifyQueuesPreserved,
+		a.verifyNamespaceLabels,
+		a.verifyWorkloadLabels,
+	}
+
 	var failures []string
 
-	if msg := a.verifyEmbeddedRemoved(ctx, target); msg != "" {
-		failures = append(failures, msg)
-	}
-
-	if msg := a.verifyKueueReadyStatus(ctx, target); msg != "" {
-		failures = append(failures, msg)
-	}
-
-	if msg := a.verifyOperatorReady(ctx, target); msg != "" {
-		failures = append(failures, msg)
-	}
-
-	if msg := a.verifyQueuesPreserved(ctx, target); msg != "" {
-		failures = append(failures, msg)
-	}
-
-	if msg := a.verifyNamespaceLabels(ctx, target); msg != "" {
-		failures = append(failures, msg)
-	}
-
-	if msg := a.verifyWorkloadLabels(ctx, target); msg != "" {
-		failures = append(failures, msg)
+	for _, check := range checks {
+		if msg := check(ctx, target); msg != "" {
+			failures = append(failures, msg)
+		}
 	}
 
 	if len(failures) > 0 {
@@ -100,56 +94,97 @@ func (a *RHBOKMigrationAction) verifyKueueReadyStatus(ctx context.Context, targe
 	return ""
 }
 
-func (a *RHBOKMigrationAction) verifyOperatorReady(ctx context.Context, target action.Target) string {
-	info, err := olm.FindOperator(ctx, target.Client, func(sub *olm.SubscriptionInfo) bool {
-		return sub.Name == subscriptionName
-	})
+func (a *RHBOKMigrationAction) verifyManagementState(ctx context.Context, target action.Target) string {
+	state, err := a.getKueueManagementState(ctx, target.Client)
 	if err != nil {
-		return fmt.Sprintf("checking RHBOK operator: %v", err)
+		return fmt.Sprintf("checking managementState: %v", err)
 	}
 
-	if !info.Found() {
-		return "Red Hat build of Kueue operator subscription not found"
+	if state != constants.ManagementStateUnmanaged {
+		return fmt.Sprintf("kueue managementState is %q, expected %q", state, constants.ManagementStateUnmanaged)
+	}
+
+	return ""
+}
+
+func (a *RHBOKMigrationAction) verifyOperatorReady(ctx context.Context, target action.Target) string {
+	sub, err := target.Client.OLM().Subscriptions(operatorNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return "RHBOK operator subscription not found in " + operatorNamespace
+		}
+
+		return fmt.Sprintf("checking RHBOK operator subscription: %v", err)
+	}
+
+	installedCSV := sub.Status.InstalledCSV
+	if installedCSV == "" {
+		return "RHBOK operator subscription has no installedCSV"
+	}
+
+	csv, err := target.Client.OLM().ClusterServiceVersions(operatorNamespace).Get(ctx, installedCSV, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Sprintf("getting RHBOK CSV %s: %v", installedCSV, err)
+	}
+
+	if csv.Status.Phase != operatorsv1alpha1.CSVPhaseSucceeded {
+		return fmt.Sprintf("RHBOK CSV %s is in %s phase, expected Succeeded", installedCSV, csv.Status.Phase)
+	}
+
+	return ""
+}
+
+func (a *RHBOKMigrationAction) verifyOperatorPodsReady(ctx context.Context, target action.Target) string {
+	pods, err := target.Client.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/name=kueue",
+	})
+	if err != nil {
+		return fmt.Sprintf("listing RHBOK pods: %v", err)
+	}
+
+	if len(pods.Items) == 0 {
+		return "no pods found matching app.kubernetes.io/name=kueue in RHBOK operator namespace"
+	}
+
+	for i := range pods.Items {
+		if !podReady(&pods.Items[i]) {
+			return fmt.Sprintf("RHBOK pod %s is not ready (phase: %s)",
+				pods.Items[i].Name, pods.Items[i].Status.Phase)
+		}
 	}
 
 	return ""
 }
 
 func (a *RHBOKMigrationAction) verifyQueuesPreserved(ctx context.Context, target action.Target) string {
-	if msg := a.verifyQueueCRDListable(ctx, target, resources.ClusterQueue, "ClusterQueue"); msg != "" {
-		return msg
+	cqCount, err := a.countQueueResources(ctx, target, resources.ClusterQueue)
+	if err != nil {
+		return fmt.Sprintf("listing ClusterQueues: %v", err)
 	}
 
-	if msg := a.verifyQueueCRDListable(ctx, target, resources.LocalQueue, "LocalQueue"); msg != "" {
-		return msg
+	lqCount, err := a.countQueueResources(ctx, target, resources.LocalQueue)
+	if err != nil {
+		return fmt.Sprintf("listing LocalQueues: %v", err)
+	}
+
+	if target.IO != nil {
+		target.IO.Fprintf("Verified: %d ClusterQueue(s), %d LocalQueue(s) preserved\n", cqCount, lqCount)
 	}
 
 	return ""
 }
 
-func (a *RHBOKMigrationAction) verifyQueueCRDListable(
+func (a *RHBOKMigrationAction) countQueueResources(
 	ctx context.Context,
 	target action.Target,
 	resource resources.ResourceType,
-	kind string,
-) string {
-	_, err := target.Client.ListResources(ctx, resource.GVR())
-	if err == nil {
-		return ""
+) (int, error) {
+	items, err := target.Client.ListResources(ctx, resource.GVR())
+	if err != nil {
+		return 0, fmt.Errorf("listing %s resources: %w", resource.Kind, err)
 	}
 
-	if apierrors.IsNotFound(err) || client.IsResourceTypeNotFound(err) {
-		if target.IO != nil {
-			target.IO.Fprintf(
-				"Warning: %s CRD not found during migration verification; queue preservation could not be verified\n",
-				kind,
-			)
-		}
-
-		return ""
-	}
-
-	return fmt.Sprintf("listing %ss: %v", kind, err)
+	return len(items), nil
 }
 
 func (a *RHBOKMigrationAction) verifyNamespaceLabels(ctx context.Context, target action.Target) string {
@@ -206,7 +241,7 @@ func (a *RHBOKMigrationAction) verifyWorkloadLabels(ctx context.Context, target 
 	return ""
 }
 
-// verifyQueuesPreserved is kept for backward-compatible test exports.
+// verifyResourcesPreserved is kept for backward-compatible test exports.
 func (a *RHBOKMigrationAction) verifyResourcesPreserved(
 	ctx context.Context,
 	target action.Target,

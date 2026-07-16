@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -187,7 +188,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -373,7 +374,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -416,7 +417,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -640,7 +641,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -862,7 +863,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -912,7 +913,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -933,7 +934,7 @@ func TestRunTask_Execute(t *testing.T) {
 			skipConfirm: true,
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
@@ -1011,12 +1012,61 @@ func TestIsMigrationComplete(t *testing.T) {
 		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
 			rbacAllowed: true,
 			olmObjects: []runtime.Object{
-				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
 				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
 			},
 		})
 
 		g.Expect(rhbok.ExportIsMigrationComplete(a, ctx, target)).To(BeTrue())
+	})
+
+	t.Run("false when no operator pods exist", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			rbacAllowed: true,
+			noPods:      true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
+				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
+			},
+		})
+
+		g.Expect(rhbok.ExportIsMigrationComplete(a, ctx, target)).To(BeFalse())
+	})
+
+	t.Run("false when operator pods are not ready", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			rbacAllowed: true,
+			noPods:      true,
+			olmObjects: []runtime.Object{
+				newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, rhbok.ExportCSVNamePrefix+".v1.0.0"),
+				newOLMCSV(rhbok.ExportCSVNamePrefix+".v1.0.0", rhbok.ExportOperatorNamespace),
+			},
+			kubeObjects: []runtime.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "kueue-controller-manager",
+						Namespace: rhbok.ExportOperatorNamespace,
+						Labels:    map[string]string{"app.kubernetes.io/name": "kueue"},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodRunning,
+						Conditions: []corev1.PodCondition{
+							{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+						},
+					},
+				},
+			},
+		})
+
+		g.Expect(rhbok.ExportIsMigrationComplete(a, ctx, target)).To(BeFalse())
 	})
 }
 

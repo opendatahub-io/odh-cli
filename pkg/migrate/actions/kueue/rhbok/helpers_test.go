@@ -55,6 +55,8 @@ type targetOpts struct {
 	outputDir      string
 	olmObjects     []runtime.Object
 	kubeObjects    []runtime.Object
+	apiExtObjects  []runtime.Object
+	noPods         bool
 	rbacAllowed    bool
 	dynamicReactor func(k8stesting.Action) (bool, runtime.Object, error)
 	olmReactor     func(k8stesting.Action) (bool, runtime.Object, error)
@@ -97,10 +99,14 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 	kubeObjs = append(kubeObjs,
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default"}},
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: rhbok.ExportOperatorNamespace}},
-		&corev1.Pod{
+	)
+
+	if !opts.noPods {
+		kubeObjs = append(kubeObjs, &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kueue-controller-manager",
 				Namespace: rhbok.ExportOperatorNamespace,
+				Labels:    map[string]string{"app.kubernetes.io/name": "kueue"},
 			},
 			Status: corev1.PodStatus{
 				Phase: corev1.PodRunning,
@@ -111,8 +117,9 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 					},
 				},
 			},
-		},
-	)
+		})
+	}
+
 	kubeObjs = append(kubeObjs, opts.kubeObjects...)
 
 	kubeClient := kubefake.NewSimpleClientset(kubeObjs...) //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
@@ -129,11 +136,15 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 		kube.ToPartialObjectMetadata(append(objects, makeKueuePackageManifest())...)...,
 	)
 
+	apiExtObjs := make([]runtime.Object, 0, 1+len(opts.apiExtObjects))
+	apiExtObjs = append(apiExtObjs, certManagerCRD())
+	apiExtObjs = append(apiExtObjs, opts.apiExtObjects...)
+
 	testClient := client.NewForTesting(client.TestClientConfig{
 		Dynamic:       dynamicClient,
 		OLM:           olmClient,
 		Kubernetes:    kubeClient,
-		APIExtensions: apiextensionsfake.NewSimpleClientset(certManagerCRD()), //nolint:staticcheck // apply configs not available for apiextensions fake
+		APIExtensions: apiextensionsfake.NewSimpleClientset(apiExtObjs...), //nolint:staticcheck // apply configs not available for apiextensions fake
 		Metadata:      metadataClient,
 	})
 
@@ -290,23 +301,33 @@ func makeDeployment(name string, opts ...objOption) *unstructured.Unstructured {
 	return makeObj(resources.Deployment, name, opts...)
 }
 
-func newOLMSubscription(name, namespace string) *operatorsv1alpha1.Subscription {
-	return &operatorsv1alpha1.Subscription{
+func newOLMSubscription(name, namespace string, csvName ...string) *operatorsv1alpha1.Subscription {
+	sub := &operatorsv1alpha1.Subscription{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 	}
+
+	if len(csvName) > 0 {
+		sub.Status.InstalledCSV = csvName[0]
+	}
+
+	return sub
 }
 
 func newOLMCSV(name, namespace string) *operatorsv1alpha1.ClusterServiceVersion {
+	return newOLMCSVWithPhase(name, namespace, operatorsv1alpha1.CSVPhaseSucceeded)
+}
+
+func newOLMCSVWithPhase(name, namespace string, phase operatorsv1alpha1.ClusterServiceVersionPhase) *operatorsv1alpha1.ClusterServiceVersion {
 	return &operatorsv1alpha1.ClusterServiceVersion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Status: operatorsv1alpha1.ClusterServiceVersionStatus{
-			Phase: operatorsv1alpha1.CSVPhaseSucceeded,
+			Phase: phase,
 		},
 	}
 }

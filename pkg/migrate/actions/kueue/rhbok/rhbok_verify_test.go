@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
@@ -36,11 +38,14 @@ func verifiedMigrationSetup() verifiedMigrationFixture {
 	nb := makeNotebook("nb-1", inNamespace("team-a"),
 		withLabel(constants.LabelKueueQueueName, "default"))
 
+	csvName := rhbok.ExportCSVNamePrefix + ".v1.0.0"
+
 	opts := targetOpts{
 		skipConfirm: true,
 		rbacAllowed: true,
 		olmObjects: []runtime.Object{
-			newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+			newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, csvName),
+			newOLMCSV(csvName, rhbok.ExportOperatorNamespace),
 		},
 		kubeObjects: []runtime.Object{
 			makeKubeNamespace("team-a", map[string]string{
@@ -146,6 +151,113 @@ func TestVerifyMigrationComplete(t *testing.T) {
 		g.Expect(step.Message).To(ContainSubstring("subscription not found"))
 	})
 
+	t.Run("fails when subscription has no installedCSV", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		fixture := verifiedMigrationSetup()
+		fixture.opts.olmObjects = []runtime.Object{
+			newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace),
+		}
+		target := newTarget(t, fixture.objects, fixture.opts)
+
+		rhbok.ExportVerifyMigration(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-migration-complete")
+		g.Expect(step.Status).To(Equal(result.StepFailed))
+		g.Expect(step.Message).To(ContainSubstring("no installedCSV"))
+	})
+
+	t.Run("fails when CSV is not Succeeded", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		failedCSV := rhbok.ExportCSVNamePrefix + ".v2.0.0"
+		fixture := verifiedMigrationSetup()
+		fixture.opts.olmObjects = []runtime.Object{
+			newOLMSubscription(rhbok.ExportSubscriptionName, rhbok.ExportOperatorNamespace, failedCSV),
+			newOLMCSVWithPhase(failedCSV, rhbok.ExportOperatorNamespace, "Installing"),
+		}
+		target := newTarget(t, fixture.objects, fixture.opts)
+
+		rhbok.ExportVerifyMigration(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-migration-complete")
+		g.Expect(step.Status).To(Equal(result.StepFailed))
+		g.Expect(step.Message).To(ContainSubstring("Installing"))
+		g.Expect(step.Message).To(ContainSubstring("expected Succeeded"))
+	})
+
+	t.Run("fails when managementState is not Unmanaged", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		fixture := verifiedMigrationSetup()
+		fixture.dsc = makeDSCV1("default-dsc",
+			withComponent("kueue", "Managed"),
+			withDSCCondition("KueueReady", "True", "Ready"),
+		)
+		fixture.objects[0] = fixture.dsc
+		target := newTarget(t, fixture.objects, fixture.opts)
+
+		rhbok.ExportVerifyMigration(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-migration-complete")
+		g.Expect(step.Status).To(Equal(result.StepFailed))
+		g.Expect(step.Message).To(ContainSubstring("managementState"))
+		g.Expect(step.Message).To(ContainSubstring("Managed"))
+	})
+
+	t.Run("fails when RHBOK pods are not ready", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		fixture := verifiedMigrationSetup()
+		fixture.opts.noPods = true
+		fixture.opts.kubeObjects = append(fixture.opts.kubeObjects,
+			&corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kueue-controller-manager",
+					Namespace: rhbok.ExportOperatorNamespace,
+					Labels:    map[string]string{"app.kubernetes.io/name": "kueue"},
+				},
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+					Conditions: []corev1.PodCondition{
+						{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+					},
+				},
+			},
+		)
+		target := newTarget(t, fixture.objects, fixture.opts)
+
+		rhbok.ExportVerifyMigration(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-migration-complete")
+		g.Expect(step.Status).To(Equal(result.StepFailed))
+		g.Expect(step.Message).To(ContainSubstring("not ready"))
+	})
+
+	t.Run("fails when no pods exist in operator namespace", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		fixture := verifiedMigrationSetup()
+		fixture.opts.noPods = true
+		target := newTarget(t, fixture.objects, fixture.opts)
+
+		rhbok.ExportVerifyMigration(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-migration-complete")
+		g.Expect(step.Status).To(Equal(result.StepFailed))
+		g.Expect(step.Message).To(ContainSubstring("no pods found"))
+	})
+
 	t.Run("fails when namespaces are missing openshift managed label", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
@@ -241,5 +353,29 @@ func TestVerifyResourcesPreserved(t *testing.T) {
 		step := findStep(res.Status.Steps, "verify-resources-preserved")
 		g.Expect(step.Status).To(Equal(result.StepFailed))
 		g.Expect(step.Message).To(ContainSubstring("Failed to list ClusterQueues"))
+	})
+
+	t.Run("LocalQueue list error fails", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		cq := makeClusterQueue("cq-1")
+		target := newTarget(t, []*unstructured.Unstructured{cq}, targetOpts{
+			rbacAllowed: true,
+			dynamicReactor: func(act k8stesting.Action) (bool, runtime.Object, error) {
+				if act.GetResource().Resource == "localqueues" && act.GetVerb() == "list" {
+					return true, nil, errors.New("forbidden")
+				}
+
+				return false, nil, nil
+			},
+		})
+
+		rhbok.ExportVerifyResources(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-resources-preserved")
+		g.Expect(step.Status).To(Equal(result.StepFailed))
+		g.Expect(step.Message).To(ContainSubstring("Failed to list LocalQueues"))
 	})
 }

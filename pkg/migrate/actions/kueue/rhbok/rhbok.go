@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/pflag"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -159,12 +160,30 @@ func (a *RHBOKMigrationAction) isMigrationComplete(ctx context.Context, target a
 		return false
 	}
 
-	ready, err := olm.CSVReady(ctx, target.Client, operatorNamespace, csvNamePrefix)
-	if err != nil {
+	sub, err := target.Client.OLM().Subscriptions(operatorNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
+	if err != nil || sub.Status.InstalledCSV == "" {
 		return false
 	}
 
-	return ready
+	csv, err := target.Client.OLM().ClusterServiceVersions(operatorNamespace).Get(ctx, sub.Status.InstalledCSV, metav1.GetOptions{})
+	if err != nil || csv.Status.Phase != operatorsv1alpha1.CSVPhaseSucceeded {
+		return false
+	}
+
+	pods, err := target.Client.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/name=kueue",
+	})
+	if err != nil || len(pods.Items) == 0 {
+		return false
+	}
+
+	for i := range pods.Items {
+		if !podReady(&pods.Items[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (a *RHBOKMigrationAction) checkKueueManaged(

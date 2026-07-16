@@ -129,6 +129,7 @@ func (t *runTask) executeMigration(ctx context.Context, target action.Target) {
 	}
 
 	t.action.verifyMigrationComplete(ctx, target)
+	t.action.verifyResourcesPreserved(ctx, target)
 }
 
 func haltIfStepFailed(target action.Target, stepName string) bool {
