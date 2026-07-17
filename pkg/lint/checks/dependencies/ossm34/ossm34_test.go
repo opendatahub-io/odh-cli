@@ -9,13 +9,16 @@ import (
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/ossm34"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -246,6 +249,185 @@ func TestOSSM34Check_UnparsableCSV(t *testing.T) {
 		"Status": Equal(metav1.ConditionUnknown),
 		"Reason": Equal(check.ReasonInsufficientData),
 	}))
+}
+
+func createClusterVersion(ver string) *unstructured.Unstructured {
+	cv := &unstructured.Unstructured{}
+	cv.SetAPIVersion("config.openshift.io/v1")
+	cv.SetKind("ClusterVersion")
+	cv.SetName("version")
+
+	_ = unstructured.SetNestedField(cv.Object, ver, "status", "desired", "version")
+
+	return cv
+}
+
+func TestOSSM34Check_DriftToV34_OCPPatched(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("servicemeshoperator3.v3.1.0", "servicemeshoperator3.v3.4.0")
+	cv := createClusterVersion("4.21.22")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM: operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.ClusterVersion.GVR(): "ClusterVersionList",
+		},
+		Objects:       []*unstructured.Unstructured{cv},
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonVersionCompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("includes the fix"))
+}
+
+func TestOSSM34Check_DriftToV34_OCPHigherPatched(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("servicemeshoperator3.v3.1.0", "servicemeshoperator3.v3.4.0")
+	cv := createClusterVersion("4.22.0")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM: operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.ClusterVersion.GVR(): "ClusterVersionList",
+		},
+		Objects:       []*unstructured.Unstructured{cv},
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonVersionCompatible),
+	}))
+}
+
+func TestOSSM34Check_DriftToV34_OCPBelowFix(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("servicemeshoperator3.v3.1.0", "servicemeshoperator3.v3.4.0")
+	cv := createClusterVersion("4.21.21")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM: operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.ClusterVersion.GVR(): "ClusterVersionList",
+		},
+		Objects:       []*unstructured.Unstructured{cv},
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+}
+
+func TestOSSM34Check_DriftToV34_OCP420Affected(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("servicemeshoperator3.v3.1.0", "servicemeshoperator3.v3.4.0")
+	cv := createClusterVersion("4.20.15")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM: operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.ClusterVersion.GVR(): "ClusterVersionList",
+		},
+		Objects:       []*unstructured.Unstructured{cv},
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+}
+
+func TestOSSM34Check_DriftToV34_OCP419Affected(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("servicemeshoperator3.v3.1.0", "servicemeshoperator3.v3.4.0")
+	cv := createClusterVersion("4.19.30")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM: operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds: map[schema.GroupVersionResource]string{
+			resources.ClusterVersion.GVR(): "ClusterVersionList",
+		},
+		Objects:       []*unstructured.Unstructured{cv},
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+}
+
+func TestOSSM34Check_DriftToV34_OCPUndetectable(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := newSubscription("servicemeshoperator3.v3.1.0", "servicemeshoperator3.v3.4.0")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		OLM:           operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		TargetVersion: "3.0.0",
+	})
+
+	chk := ossm34.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestOSSM34Check_EmptyInstalledCSV(t *testing.T) {

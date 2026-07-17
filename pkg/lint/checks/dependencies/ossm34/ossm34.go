@@ -26,6 +26,8 @@ const (
 
 var minAffectedVersion = semver.Version{Major: 3, Minor: 4, Patch: 0} //nolint:gochecknoglobals,mnd // constant-like semver
 
+var minFixedOCPVersion = semver.Version{Major: 4, Minor: 21, Patch: 22} //nolint:gochecknoglobals,mnd // OCP 4.21.22 includes Sail Library fix
+
 // Check detects servicemeshoperator3 subscription drift to v3.4.0+, which causes
 // GatewayConfig to get stuck NotReady on OCP 4.19-4.21 due to Istio v1.26.2
 // being rejected as end-of-life by the stricter version gate in OSSM 3.4.
@@ -41,7 +43,7 @@ func NewCheck() *Check {
 			Type:             checkType,
 			CheckID:          "dependencies.ossm-v3-compatibility.compatibility",
 			CheckName:        "Dependencies :: OSSM v3 Compatibility :: Version Compatibility",
-			CheckDescription: "Detects servicemeshoperator3 subscription drift to v3.4.0+ which causes GatewayConfig failures on OCP 4.19-4.21",
+			CheckDescription: "Detects servicemeshoperator3 subscription drift to v3.4.0+ which causes GatewayConfig failures on unpatched OCP 4.19-4.21",
 			CheckRemediation: "Do not approve servicemeshoperator3 InstallPlans beyond v3.3.x on OCP 4.19-4.21. " +
 				"Upgrade to OpenShift Container Platform 4.21.22 or higher to resolve via the Sail Library (no OLM dependency). " +
 				"See https://access.redhat.com/solutions/7145505 for details.",
@@ -109,6 +111,21 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 	}
 
 	if installedVersion.GTE(minAffectedVersion) {
+		ocpVersion, ocpErr := version.DetectOpenShiftVersion(ctx, target.Client)
+		if ocpErr == nil && ocpVersion.GTE(minFixedOCPVersion) {
+			dr.SetCondition(check.NewCondition(
+				check.ConditionTypeCompatible,
+				metav1.ConditionTrue,
+				check.WithReason(check.ReasonVersionCompatible),
+				check.WithMessage(
+					"servicemeshoperator3 is at %s (affected), but OCP %s includes the fix (Sail Library); no action required",
+					installedVersion, ocpVersion,
+				),
+			))
+
+			return dr, nil
+		}
+
 		var startingCSV string
 		if sub.Spec != nil {
 			startingCSV = sub.Spec.StartingCSV
