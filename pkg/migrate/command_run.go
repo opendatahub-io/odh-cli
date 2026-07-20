@@ -301,14 +301,16 @@ func (c *RunCommand) runMigrationMode(
 		skippedSteps := actionResult.HasSkippedSteps()
 		failedSteps := actionResult.HasFailedSteps()
 
+		if skippedSteps {
+			hasSkips = true
+		}
+
 		if failedSteps {
 			c.IO.Errorf("Migration %s completed with failures", migrationID)
 
 			hasFailures = true
 		} else if skippedSteps {
 			c.IO.Errorf("Migration %s completed with skipped steps", migrationID)
-
-			hasSkips = true
 		} else {
 			c.IO.Errorf("Migration %s completed successfully!", migrationID)
 		}

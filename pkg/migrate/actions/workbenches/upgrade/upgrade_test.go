@@ -1400,10 +1400,15 @@ func TestRunTask_Validate_WithNonStopped(t *testing.T) {
 	a := &WorkbenchUpgradeAction{}
 	runTask := a.Run()
 
-	result, err := runTask.Validate(ctx, target)
+	actionResult, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(actionResult).ToNot(BeNil())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+
+	for _, step := range actionResult.Status.Steps {
+		g.Expect(step.Name).ToNot(Equal("verify-auth-model"))
+	}
 }
 
 func TestRunTask_Execute_NonSkipConfirm_UserConfirms(t *testing.T) {

@@ -69,6 +69,18 @@ func newResultWithFailedSteps() *result.ActionResult {
 	return r
 }
 
+func newResultWithFailedAndSkippedSteps() *result.ActionResult {
+	r := result.New("migration", "test", "Test", "")
+	r.Status.Completed = true
+	r.Status.Steps = []result.ActionStep{
+		result.NewStep("step1", "Step 1", result.StepCompleted, "done"),
+		result.NewStep("step2", "Step 2", result.StepSkipped, "user cancelled"),
+		result.NewStep("step3", "Step 3", result.StepFailed, "auth model not patched"),
+	}
+
+	return r
+}
+
 type runTestStreams struct {
 	cmd    *RunCommand
 	outBuf *bytes.Buffer
@@ -265,7 +277,24 @@ func TestRunMigrationMode(t *testing.T) {
 		err := cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("completed with failures"))
-		g.Expect(errBuf.String()).To(ContainSubstring("completed with failures"))
+		g.Expect(errBuf.String()).To(ContainSubstring("some steps failed, some were skipped"))
+		g.Expect(errBuf.String()).ToNot(ContainSubstring("completed successfully"))
+	})
+
+	t.Run("should track skips when single migration has both failed and skipped steps", func(t *testing.T) {
+		g := NewWithT(t)
+		cmd, errBuf := newTestRunCommand()
+
+		cmd.registry.MustRegister(&stubAction{
+			id: "mixed.action", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: &stubTask{result: newResultWithFailedAndSkippedSteps()},
+		})
+		cmd.MigrationIDs = []string{"mixed.action"}
+
+		err := cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("completed with failures"))
+		g.Expect(errBuf.String()).To(ContainSubstring("some steps failed, some were skipped"))
 		g.Expect(errBuf.String()).ToNot(ContainSubstring("completed successfully"))
 	})
 

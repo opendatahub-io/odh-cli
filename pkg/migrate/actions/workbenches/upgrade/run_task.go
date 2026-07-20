@@ -40,6 +40,13 @@ func (t *runTask) Validate(
 
 	stopped := t.action.handleNonStoppedNotebooks(target, notebooks, step)
 
+	if len(stopped) == 0 {
+		step.Completef(result.StepSkipped,
+			"No eligible Notebook(s) to validate (all non-stopped)")
+
+		return buildResult(target.Recorder)
+	}
+
 	mismatchCount := 0
 	checkErrCount := 0
 
@@ -227,11 +234,11 @@ func (t *runTask) verifyAuthModel(
 
 	if needsPatchCount > 0 {
 		step.Completef(result.StepFailed,
-			"%d Notebook(s) still have legacy OAuth-proxy sidecar — run workbenches.patch-auth-model to complete migration",
+			"%d stopped Notebook(s) still have legacy OAuth-proxy sidecar — run workbenches.patch-auth-model to complete migration",
 			needsPatchCount)
 	} else {
 		step.Completef(result.StepCompleted,
-			"All %d Notebook(s) have correct auth model", len(notebooks))
+			"All %d stopped Notebook(s) have correct auth model", len(notebooks))
 	}
 }
 
