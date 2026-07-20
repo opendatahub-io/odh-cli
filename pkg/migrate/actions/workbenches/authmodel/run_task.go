@@ -435,7 +435,7 @@ func (t *runTask) runCleanup(
 			continue
 		}
 
-		if cleanup.CleanupNotebook(ctx, target, refreshed, cleanupStep) == cleanup.CleanupResultCleaned {
+		if cleanup.CleanupNotebookAfterPatch(ctx, target, refreshed, cleanupStep) == cleanup.CleanupResultCleaned {
 			successCount++
 		} else {
 			failCount++

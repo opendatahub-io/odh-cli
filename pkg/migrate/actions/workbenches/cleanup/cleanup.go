@@ -138,6 +138,8 @@ const (
 
 // CleanupNotebook deletes the legacy OAuth resources for a single notebook.
 // It runs the pre-check and prompts for confirmation if the check fails.
+// When SkipConfirm is true (non-interactive mode) and the pre-check fails,
+// cleanup is refused to prevent deleting secrets from unpatched notebooks.
 func CleanupNotebook(
 	ctx context.Context,
 	target action.Target,
@@ -159,26 +161,65 @@ func CleanupNotebook(
 			result.StepFailed,
 			strings.Join(failures, "; "))
 
-		if !target.SkipConfirm {
-			target.IO.Fprintln()
-			target.IO.Errorf("Pre-checks failed for %s/%s:", namespace, name)
+		if target.SkipConfirm {
+			step.Completef(result.StepFailed,
+				"Skipping cleanup for %s/%s: notebook has not been migrated to kube-rbac-proxy (run workbenches.patch-auth-model first)",
+				namespace, name)
 
-			for _, f := range failures {
-				target.IO.Errorf("  - %s", f)
-			}
+			return CleanupResultFailed
+		}
 
-			if !confirmation.Prompt(target.IO,
-				fmt.Sprintf("Continue cleanup for %s/%s despite failed pre-checks?", namespace, name)) {
-				step.Completef(result.StepSkipped,
-					"Skipped cleanup for %s/%s (pre-check failed)", namespace, name)
+		target.IO.Fprintln()
+		target.IO.Errorf("Pre-checks failed for %s/%s:", namespace, name)
 
-				return CleanupResultSkipped
-			}
+		for _, f := range failures {
+			target.IO.Errorf("  - %s", f)
+		}
+
+		if !confirmation.Prompt(target.IO,
+			fmt.Sprintf("Continue cleanup for %s/%s despite failed pre-checks?", namespace, name)) {
+			step.Completef(result.StepSkipped,
+				"Skipped cleanup for %s/%s (pre-check failed)", namespace, name)
+
+			return CleanupResultSkipped
 		}
 
 		step.Recordf("precheck-override",
 			"Continuing cleanup despite failed pre-checks", result.StepCompleted)
 	}
+
+	return deleteOAuthResources(ctx, target, nb, step)
+}
+
+// CleanupNotebookAfterPatch deletes legacy OAuth resources for a notebook that
+// was just patched by patch-auth-model. Skips the migration pre-check because
+// the kube-rbac-proxy sidecar is injected by the controller during reconciliation,
+// not by the CLI patch.
+func CleanupNotebookAfterPatch(
+	ctx context.Context,
+	target action.Target,
+	nb *unstructured.Unstructured,
+	parentStep action.StepRecorder,
+) CleanupResult {
+	name := nb.GetName()
+	namespace := nb.GetNamespace()
+
+	step := parentStep.Child(
+		fmt.Sprintf("cleanup-%s-%s", namespace, name),
+		fmt.Sprintf("Clean up OAuth resources for %s/%s", namespace, name),
+	)
+
+	return deleteOAuthResources(ctx, target, nb, step)
+}
+
+func deleteOAuthResources(
+	ctx context.Context,
+	target action.Target,
+	nb *unstructured.Unstructured,
+	step action.StepRecorder,
+) CleanupResult {
+	name := nb.GetName()
+	namespace := nb.GetNamespace()
 
 	hasFailed := !DeleteResourceIfPresent(ctx, target,
 		resources.Route.GVR(), name, namespace, step)

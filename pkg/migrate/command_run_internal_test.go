@@ -58,6 +58,17 @@ func newIncompleteResult() *result.ActionResult {
 	return r
 }
 
+func newResultWithFailedSteps() *result.ActionResult {
+	r := result.New("migration", "test", "Test", "")
+	r.Status.Completed = true
+	r.Status.Steps = []result.ActionStep{
+		result.NewStep("step1", "Step 1", result.StepCompleted, "done"),
+		result.NewStep("step2", "Step 2", result.StepFailed, "auth model not patched"),
+	}
+
+	return r
+}
+
 type runTestStreams struct {
 	cmd    *RunCommand
 	outBuf *bytes.Buffer
@@ -216,6 +227,45 @@ func TestRunMigrationMode(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(errBuf.String()).To(ContainSubstring("completed with skipped steps"))
 		g.Expect(errBuf.String()).To(ContainSubstring("some steps were skipped"))
+		g.Expect(errBuf.String()).ToNot(ContainSubstring("completed successfully"))
+	})
+
+	t.Run("should report failed steps and return error", func(t *testing.T) {
+		g := NewWithT(t)
+		cmd, errBuf := newTestRunCommand()
+
+		cmd.registry.MustRegister(&stubAction{
+			id: "fail.action", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: &stubTask{result: newResultWithFailedSteps()},
+		})
+		cmd.MigrationIDs = []string{"fail.action"}
+
+		err := cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("completed with failures"))
+		g.Expect(errBuf.String()).To(ContainSubstring("completed with failures"))
+		g.Expect(errBuf.String()).To(ContainSubstring("some steps failed"))
+		g.Expect(errBuf.String()).ToNot(ContainSubstring("completed successfully"))
+	})
+
+	t.Run("should report failures over skips when both present across migrations", func(t *testing.T) {
+		g := NewWithT(t)
+		cmd, errBuf := newTestRunCommand()
+
+		cmd.registry.MustRegister(&stubAction{
+			id: "fail.action", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: &stubTask{result: newResultWithFailedSteps()},
+		})
+		cmd.registry.MustRegister(&stubAction{
+			id: "skip.action", phase: action.PhasePreUpgrade, canApply: true,
+			runTask: &stubTask{result: newResultWithSkippedSteps()},
+		})
+		cmd.MigrationIDs = []string{"fail.action", "skip.action"}
+
+		err := cmd.runMigrationMode(context.Background(), &current, &target, action.PhasePreUpgrade)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("completed with failures"))
+		g.Expect(errBuf.String()).To(ContainSubstring("completed with failures"))
 		g.Expect(errBuf.String()).ToNot(ContainSubstring("completed successfully"))
 	})
 

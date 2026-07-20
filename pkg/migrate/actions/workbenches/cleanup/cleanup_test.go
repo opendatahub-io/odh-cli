@@ -775,15 +775,48 @@ func TestRunTask_Execute_PreCheckFails_SkipConfirm(t *testing.T) {
 	a := &CleanupOAuthAction{Scope: &workbenches.SharedScopeOptions{}}
 	task := a.Run()
 
-	result, err := task.Execute(ctx, target)
+	actionResult, err := task.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(actionResult).ToNot(BeNil())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
 
-	// SkipConfirm=true means pre-check failure is overridden and cleanup proceeds
+	// SkipConfirm=true with failed pre-check means cleanup is refused (resources NOT deleted)
 	_, err = k8sClient.Dynamic().Resource(resources.Route.GVR()).
 		Namespace("ns1").Get(context.Background(), "wb1", metav1.GetOptions{})
-	g.Expect(err).To(HaveOccurred(), "route should be deleted even with failed pre-check (SkipConfirm)")
+	g.Expect(err).ToNot(HaveOccurred(), "route should still exist when pre-check fails with SkipConfirm")
+}
+
+func TestCleanupNotebookAfterPatch_SkipsPreCheck(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	nb := newNotebook("wb1", "ns1",
+		withContainers(container("my-notebook")))
+
+	objects := append(
+		[]*unstructured.Unstructured{nb},
+		allOAuthResources("wb1", "ns1")...,
+	)
+	k8sClient := newFakeClient(objects)
+	target := newTarget(k8sClient)
+
+	parentStep := target.Recorder.Child("test-parent", "Test parent step")
+
+	cleanupResult := CleanupNotebookAfterPatch(ctx, target, nb, parentStep)
+	g.Expect(cleanupResult).To(Equal(CleanupResultCleaned))
+
+	_, err := k8sClient.Dynamic().Resource(resources.Route.GVR()).
+		Namespace("ns1").Get(context.Background(), "wb1", metav1.GetOptions{})
+	g.Expect(err).To(HaveOccurred(), "route should be deleted even though pre-check would fail")
+
+	_, err = k8sClient.Dynamic().Resource(resources.Secret.GVR()).
+		Namespace("ns1").Get(context.Background(), "wb1-oauth-config", metav1.GetOptions{})
+	g.Expect(err).To(HaveOccurred(), "oauth-config secret should be deleted")
+
+	_, err = k8sClient.Dynamic().Resource(resources.OAuthClient.GVR()).
+		Get(context.Background(), "wb1-ns1-oauth-client", metav1.GetOptions{})
+	g.Expect(err).To(HaveOccurred(), "oauthclient should be deleted")
 }
 
 func TestRunTask_Execute_PreCheckFails_UserSkips(t *testing.T) {

@@ -230,6 +230,7 @@ func (c *RunCommand) runMigrationMode(
 	actionIO := actionIOForMode(c.IO, structured)
 
 	hasSkips := false
+	hasFailures := false
 
 	var migrationResults []MigrationResultItem
 
@@ -297,9 +298,14 @@ func (c *RunCommand) runMigrationMode(
 			return clierrors.NewExitCodeError(clierrors.ExitValidation,
 				fmt.Errorf("migration halted: %s", migrationID))
 		}
-
 		skippedSteps := actionResult.HasSkippedSteps()
-		if skippedSteps {
+		failedSteps := actionResult.HasFailedSteps()
+
+		if failedSteps {
+			c.IO.Errorf("Migration %s completed with failures", migrationID)
+
+			hasFailures = true
+		} else if skippedSteps {
 			c.IO.Errorf("Migration %s completed with skipped steps", migrationID)
 
 			hasSkips = true
@@ -311,6 +317,7 @@ func (c *RunCommand) runMigrationMode(
 			ID:              migrationID,
 			Completed:       actionResult.Status.Completed,
 			HasSkippedSteps: skippedSteps,
+			HasFailedSteps:  failedSteps,
 			PhaseMismatch:   phaseMismatch,
 		})
 	}
@@ -319,7 +326,21 @@ func (c *RunCommand) runMigrationMode(
 		return c.writeRunResult(currentVersion, targetVersion, effectivePhase, migrationResults)
 	}
 
+	return c.reportRunSummary(hasFailures, hasSkips)
+}
+
+func (c *RunCommand) reportRunSummary(hasFailures, hasSkips bool) error {
 	c.IO.Fprintln()
+
+	if hasFailures {
+		if hasSkips {
+			c.IO.Errorf("All migrations completed (some steps failed, some were skipped). Review the output above for details.")
+		} else {
+			c.IO.Errorf("All migrations completed (some steps failed). Review the output above for details.")
+		}
+
+		return errors.New("one or more migrations completed with failures")
+	}
 
 	if hasSkips {
 		c.IO.Errorf("All migrations completed (some steps were skipped).")
@@ -355,7 +376,15 @@ func (c *RunCommand) writeRunResult(
 		DryRun:         c.DryRun,
 		Migrations:     migrations,
 	}
-	result.SetStatus(countWarnings(migrations), 0)
+	result.SetStatus(countWarnings(migrations), countErrors(migrations))
+
+	if errCount := countErrors(migrations); errCount > 0 {
+		if err := writeStructuredOutput(c.IO.Out(), c.OutputFormat, result); err != nil {
+			return err
+		}
+
+		return errors.New("one or more migrations completed with failures")
+	}
 
 	return writeStructuredOutput(c.IO.Out(), c.OutputFormat, result)
 }

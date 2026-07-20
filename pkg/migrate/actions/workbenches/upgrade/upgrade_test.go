@@ -20,6 +20,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
@@ -1857,6 +1858,170 @@ func TestWorkbenchUpgradeAction_AddFlags(t *testing.T) {
 	flag := fs.Lookup("force-non-stopped")
 	g.Expect(flag).ToNot(BeNil())
 	g.Expect(flag.DefValue).To(Equal("false"))
+}
+
+// --- Auth Model Verification Tests ---
+
+func oauthAnnotations() map[string]any {
+	return map[string]any{
+		"kubeflow-resource-stopped":                    "2026-01-15T00:00:00Z",
+		"notebooks.opendatahub.io/last-size-selection": `{"name":"Small"}`,
+		"notebooks.opendatahub.io/inject-oauth":        "true",
+	}
+}
+
+func patchedAuthAnnotations() map[string]any {
+	return map[string]any{
+		"kubeflow-resource-stopped":                    "2026-01-15T00:00:00Z",
+		"notebooks.opendatahub.io/last-size-selection": `{"name":"Small"}`,
+		"notebooks.opendatahub.io/inject-auth":         "true",
+	}
+}
+
+func TestRunTask_Validate_DetectsLegacyAuthModel(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	nb := newNotebook("my-notebook", "ns1", notebookOpts{
+		Annotations: oauthAnnotations(),
+		Containers: []any{
+			container("my-notebook", "jupyter:latest"),
+			container("oauth-proxy", "registry/ose-oauth-proxy-rhel9:latest"),
+		},
+	})
+
+	k8sClient := newFakeClient(newScheme(), nb)
+	target := newTarget(k8sClient)
+
+	a := &WorkbenchUpgradeAction{}
+	runTask := a.Run()
+
+	actionResult, err := runTask.Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult).ToNot(BeNil())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+	hasAuthModelStep := false
+
+	for _, step := range actionResult.Status.Steps {
+		if step.Name == "verify-auth-model" {
+			hasAuthModelStep = true
+			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
+		}
+	}
+
+	g.Expect(hasAuthModelStep).To(BeTrue())
+}
+
+func TestRunTask_Execute_DetectsLegacyAuthModel(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	nb := newNotebook("my-notebook", "ns1", notebookOpts{
+		Annotations: oauthAnnotations(),
+		Containers: []any{
+			container("my-notebook", "jupyter:latest"),
+			container("oauth-proxy", "registry/ose-oauth-proxy-rhel9:latest"),
+		},
+	})
+
+	k8sClient := newFakeClient(newScheme(), nb)
+	target := newTarget(k8sClient)
+
+	a := &WorkbenchUpgradeAction{}
+	runTask := a.Run()
+
+	actionResult, err := runTask.Execute(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult).ToNot(BeNil())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+	hasAuthModelStep := false
+
+	for _, step := range actionResult.Status.Steps {
+		if step.Name == "verify-auth-model" {
+			hasAuthModelStep = true
+			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
+		}
+	}
+
+	g.Expect(hasAuthModelStep).To(BeTrue())
+}
+
+func TestRunTask_Execute_AuthModelAlreadyPatched(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	nb := newNotebook("my-notebook", "ns1", notebookOpts{
+		Annotations: patchedAuthAnnotations(),
+		Containers: []any{
+			container("my-notebook", "jupyter:latest"),
+			container("kube-rbac-proxy", "registry/kube-rbac-proxy:latest"),
+		},
+	})
+
+	k8sClient := newFakeClient(newScheme(), nb)
+	target := newTarget(k8sClient)
+
+	a := &WorkbenchUpgradeAction{}
+	runTask := a.Run()
+
+	actionResult, err := runTask.Execute(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult).ToNot(BeNil())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+
+	for _, step := range actionResult.Status.Steps {
+		if step.Name == "verify-auth-model" {
+			g.Expect(step.Status).To(Equal(result.StepCompleted))
+		}
+	}
+}
+
+func TestRunTask_Execute_FixesNamesAndDetectsAuthModel(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	nb := newNotebook("my-notebook", "ns1", notebookOpts{
+		Annotations: oauthAnnotations(),
+		Containers: []any{
+			container("old-name", "jupyter:latest"),
+			container("oauth-proxy", "registry/ose-oauth-proxy-rhel9:latest"),
+		},
+	})
+
+	k8sClient := newFakeClient(newScheme(), nb)
+	target := newTarget(k8sClient)
+
+	a := &WorkbenchUpgradeAction{}
+	runTask := a.Run()
+
+	actionResult, err := runTask.Execute(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult).ToNot(BeNil())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+	updated, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
+		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+
+	containers, _ := extractWorkloadContainersFromUnstructured(updated)
+	g.Expect(containers).To(HaveLen(2))
+	g.Expect(containers[0]["name"]).To(Equal("my-notebook"))
+	g.Expect(containers[1]["name"]).To(Equal("oauth-proxy"))
+
+	for _, step := range actionResult.Status.Steps {
+		if step.Name == "verify-auth-model" {
+			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
+		}
+	}
 }
 
 // --- Test Helpers ---

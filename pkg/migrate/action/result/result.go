@@ -75,6 +75,10 @@ func (r *ActionResult) HasSkippedSteps() bool {
 	return hasSkipped(r.Status.Steps)
 }
 
+func (r *ActionResult) HasFailedSteps() bool {
+	return hasFailed(r.Status.Steps)
+}
+
 func hasSkipped(steps []ActionStep) bool {
 	for _, s := range steps {
 		if s.Status == StepSkipped {
@@ -82,6 +86,20 @@ func hasSkipped(steps []ActionStep) bool {
 		}
 
 		if hasSkipped(s.Children) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasFailed(steps []ActionStep) bool {
+	for _, s := range steps {
+		if s.Status == StepFailed {
+			return true
+		}
+
+		if hasFailed(s.Children) {
 			return true
 		}
 	}

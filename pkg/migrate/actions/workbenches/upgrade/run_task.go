@@ -3,11 +3,13 @@ package upgrade
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/actions/workbenches"
 )
 
 type runTask struct {
@@ -68,6 +70,8 @@ func (t *runTask) Validate(
 			"All %d stopped Notebook(s) have correct container names", len(stopped))
 	}
 
+	t.verifyAuthModel(target, stopped)
+
 	return buildResult(target.Recorder)
 }
 
@@ -105,6 +109,8 @@ func (t *runTask) Execute(
 	}
 
 	t.fixContainerNames(ctx, target, stopped)
+
+	t.verifyAuthModel(target, stopped)
 
 	return buildResult(target.Recorder)
 }
@@ -191,6 +197,41 @@ func (t *runTask) fixContainerNames(
 	} else {
 		step.Completef(result.StepCompleted,
 			"Fixed container names in %d/%d Notebook(s)", successCount, len(toFix))
+	}
+}
+
+func (t *runTask) verifyAuthModel(
+	target action.Target,
+	notebooks []*unstructured.Unstructured,
+) {
+	step := target.Recorder.Child(
+		"verify-auth-model",
+		"Verify workbench auth model migration",
+	)
+
+	needsPatchCount := 0
+
+	for _, nb := range notebooks {
+		passed, failures := workbenches.CheckMigrationState(nb)
+		if !passed {
+			step.Recordf(
+				fmt.Sprintf("auth-model-%s-%s", nb.GetNamespace(), nb.GetName()),
+				"%s/%s needs auth model patch: %s",
+				result.StepFailed,
+				nb.GetNamespace(), nb.GetName(), strings.Join(failures, "; "),
+			)
+
+			needsPatchCount++
+		}
+	}
+
+	if needsPatchCount > 0 {
+		step.Completef(result.StepFailed,
+			"%d Notebook(s) still have legacy OAuth-proxy sidecar — run workbenches.patch-auth-model to complete migration",
+			needsPatchCount)
+	} else {
+		step.Completef(result.StepCompleted,
+			"All %d Notebook(s) have correct auth model", len(notebooks))
 	}
 }
 

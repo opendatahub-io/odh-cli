@@ -24,7 +24,8 @@ import (
 const (
 	actionID          = "workbenches.upgrade-2x-to-3x"
 	actionName        = "Upgrade workbenches from 2.x to 3.x"
-	actionDescription = "Updates workbench notebook container names for 3.x compatibility"
+	actionDescription = "Updates workbench notebook container names for 3.x compatibility. " +
+		"Run workbenches.patch-auth-model separately to complete the auth model migration."
 
 	annotationKubeflowResourceStopped = "kubeflow-resource-stopped"
 	annotationAcceleratorName         = "opendatahub.io/accelerator-name"

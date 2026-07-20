@@ -303,6 +303,7 @@ type MigrationResultItem struct {
 	Completed       bool   `json:"completed"                 yaml:"completed"`
 	Skipped         bool   `json:"skipped,omitempty"         yaml:"skipped,omitempty"`
 	HasSkippedSteps bool   `json:"hasSkippedSteps,omitempty" yaml:"hasSkippedSteps,omitempty"`
+	HasFailedSteps  bool   `json:"hasFailedSteps,omitempty"  yaml:"hasFailedSteps,omitempty"`
 	PhaseMismatch   bool   `json:"phaseMismatch,omitempty"   yaml:"phaseMismatch,omitempty"`
 }
 
@@ -316,6 +317,18 @@ func countWarnings(migrations []MigrationResultItem) int {
 	}
 
 	return warnings
+}
+
+func countErrors(migrations []MigrationResultItem) int {
+	errs := 0
+
+	for _, m := range migrations {
+		if m.HasFailedSteps {
+			errs++
+		}
+	}
+
+	return errs
 }
 
 func (c *PrepareCommand) writePrepareResult(
