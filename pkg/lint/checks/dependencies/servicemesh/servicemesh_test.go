@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
+	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
+	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,6 +98,21 @@ func newPackageManifest(catalogSource string, channel string, csvNames []string)
 	return &unstructured.Unstructured{Object: obj}
 }
 
+func newOSSMSubscription(installedCSV string) *operatorsv1alpha1.Subscription {
+	return &operatorsv1alpha1.Subscription{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "servicemeshoperator3",
+			Namespace: "openshift-operators",
+		},
+		Spec: &operatorsv1alpha1.SubscriptionSpec{
+			Channel: "stable",
+		},
+		Status: operatorsv1alpha1.SubscriptionStatus{
+			InstalledCSV: installedCSV,
+		},
+	}
+}
+
 func TestServiceMeshV3Check_VersionAvailable(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -105,10 +122,12 @@ func TestServiceMeshV3Check_VersionAvailable(t *testing.T) {
 		"GATEWAY_API_OPERATOR_CHANNEL": "stable",
 	})
 	pm := newPackageManifest("redhat-operators", "stable", []string{"servicemeshoperator3.v3.1.0"})
+	sub := newOSSMSubscription("servicemeshoperator3.v3.1.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -130,7 +149,7 @@ func TestServiceMeshV3Check_VersionAvailable(t *testing.T) {
 	))
 }
 
-func TestServiceMeshV3Check_DeploymentNotFound(t *testing.T) {
+func TestServiceMeshV3Check_DeploymentNotFound_Advisory(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
@@ -153,7 +172,102 @@ func TestServiceMeshV3Check_DeploymentNotFound(t *testing.T) {
 		"Status": Equal(metav1.ConditionFalse),
 		"Reason": Equal(check.ReasonResourceNotFound),
 	}))
-	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("HCP"))
+}
+
+func TestServiceMeshV3Check_NoOLMMode_NoSubscription(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	deploy := newIngressOperatorDeployment(map[string]string{
+		"GATEWAY_API_OPERATOR_VERSION": "servicemeshoperator3.v3.1.0",
+		"GATEWAY_API_OPERATOR_CHANNEL": "stable",
+	})
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{deploy},
+		OLM:            operatorfake.NewSimpleClientset(), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	smCheck := servicemesh.NewCheck()
+	result, err := smCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("noOLM mode"))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("servicemeshoperator3"))
+}
+
+func TestServiceMeshV3Check_NoOLMMode_OLMUnavailable(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	deploy := newIngressOperatorDeployment(map[string]string{
+		"GATEWAY_API_OPERATOR_VERSION": "servicemeshoperator3.v3.1.0",
+		"GATEWAY_API_OPERATOR_CHANNEL": "stable",
+	})
+
+	// No OLM client provided — OLM().Available() returns false.
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{deploy},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	smCheck := servicemesh.NewCheck()
+	result, err := smCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("noOLM mode"))
+}
+
+func TestServiceMeshV3Check_OLMMode_WithSubscription(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	deploy := newIngressOperatorDeployment(map[string]string{
+		"GATEWAY_API_OPERATOR_VERSION": "servicemeshoperator3.v3.1.0",
+		"GATEWAY_API_OPERATOR_CHANNEL": "stable",
+	})
+	pm := newPackageManifest("redhat-operators", "stable", []string{"servicemeshoperator3.v3.1.0"})
+
+	sub := newOSSMSubscription("servicemeshoperator3.v3.1.0")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	smCheck := servicemesh.NewCheck()
+	result, err := smCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonResourceFound),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("servicemeshoperator3.v3.1.0"))
 }
 
 func TestServiceMeshV3Check_InsufficientPermissions(t *testing.T) {
@@ -237,10 +351,12 @@ func TestServiceMeshV3Check_PackageManifestNotFound(t *testing.T) {
 		"GATEWAY_API_OPERATOR_VERSION": "servicemeshoperator3.v3.1.0",
 		"GATEWAY_API_OPERATOR_CHANNEL": "stable",
 	})
+	sub := newOSSMSubscription("servicemeshoperator3.v3.1.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -280,10 +396,12 @@ func TestServiceMeshV3Check_WrongCatalogSource(t *testing.T) {
 	})
 	// PackageManifest exists but from a non-redhat-operators catalog; the check should not find it.
 	pm := newPackageManifest("custom-operators", "stable", []string{"servicemeshoperator3.v3.1.0"})
+	sub := newOSSMSubscription("servicemeshoperator3.v3.1.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -322,10 +440,12 @@ func TestServiceMeshV3Check_VersionNotAvailable(t *testing.T) {
 		"GATEWAY_API_OPERATOR_CHANNEL": "stable",
 	})
 	pm := newPackageManifest("redhat-operators", "stable", []string{"servicemeshoperator3.v3.0.0"})
+	sub := newOSSMSubscription("servicemeshoperator3.v3.0.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -440,10 +560,12 @@ func TestServiceMeshV3Check_VersionAvailableAmongMultipleEntries(t *testing.T) {
 		"servicemeshoperator3.v3.1.0",
 		"servicemeshoperator3.v3.2.0",
 	})
+	sub := newOSSMSubscription("servicemeshoperator3.v3.2.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -496,10 +618,12 @@ func TestServiceMeshV3Check_MissingCatalogSource(t *testing.T) {
 			},
 		},
 	}
+	sub := newOSSMSubscription("servicemeshoperator3.v3.1.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -600,10 +724,12 @@ func TestServiceMeshV3Check_VersionInDifferentChannel(t *testing.T) {
 	})
 	// The CSV exists in the "candidate" channel, but the check requires "stable".
 	pm := newPackageManifest("redhat-operators", "candidate", []string{"servicemeshoperator3.v3.1.0"})
+	sub := newOSSMSubscription("servicemeshoperator3.v3.1.0")
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds(),
 		Objects:        []*unstructured.Unstructured{deploy, pm},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})

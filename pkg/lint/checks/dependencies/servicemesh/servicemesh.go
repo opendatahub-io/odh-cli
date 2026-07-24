@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,6 +24,8 @@ import (
 const kind = "servicemesh-v3"
 
 const displayName = "Red Hat Service Mesh v3"
+
+const subscriptionName = "servicemeshoperator3"
 
 // mirrorRemediationFmt is the shared remediation template for failures where the required
 // servicemeshoperator3 CSV is not available in the cluster catalog.
@@ -99,9 +103,9 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 			check.ConditionTypeAvailable,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonResourceNotFound),
-			check.WithMessage("ingress-operator deployment not found in openshift-ingress-operator namespace"),
-			check.WithRemediation("Check that the openshift-ingress-operator namespace and the ingress-operator deployment exist in the cluster."),
-			check.WithImpact(result.ImpactBlocking),
+			check.WithMessage("ingress-operator deployment not found in openshift-ingress-operator namespace; unable to determine required OSSM version (expected on HCP clusters)"),
+			check.WithRemediation("If this is a Hosted Control Plane (HCP) cluster, this check can be safely ignored. Otherwise, verify that the openshift-ingress-operator namespace and ingress-operator deployment exist."),
+			check.WithImpact(result.ImpactAdvisory),
 		))
 
 		return dr, nil
@@ -136,18 +140,45 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 	requiredCSV := requiredVersion
 	displayVersion := strings.TrimPrefix(requiredCSV, "servicemeshoperator3.v")
 
-	// Step 5: Find the servicemeshoperator3 PackageManifest from redhat-operators in openshift-marketplace.
-	// Multiple catalog sources can produce PackageManifests with the same name, so we list all
-	// PackageManifests and filter by .status.catalogSource. A direct get-by-name would return a
-	// non-deterministic result when multiple catalog sources provide the same package.
+	// Step 5: Check for noOLM mode. On OCP 4.21.22+ / 4.22+, the Cluster Ingress Operator
+	// deploys istiod directly (Sail Library) without an OSSM OLM subscription. When no
+	// servicemeshoperator3 subscription exists, the PackageManifest validation is not applicable.
+	noOLM, err := isNoOLMMode(ctx, target)
+	if err != nil {
+		return nil, fmt.Errorf("checking noOLM mode: %w", err)
+	}
+
+	if noOLM {
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeAvailable,
+			metav1.ConditionTrue,
+			check.WithReason(check.ReasonRequirementsMet),
+			check.WithMessage("Gateway API is managed by the Cluster Ingress Operator (noOLM mode); %s catalog entry not required", subscriptionName),
+		))
+
+		return dr, nil
+	}
+
+	// Step 6: Validate that the required CSV is available in the OLM catalog.
+	return validateCatalogCSV(ctx, target, dr, requiredCSV, requiredChannel, displayVersion)
+}
+
+// validateCatalogCSV validates that the required servicemeshoperator3 CSV is available
+// in the redhat-operators catalog. Reached only when a subscription exists (OLM mode).
+func validateCatalogCSV(
+	ctx context.Context,
+	target check.Target,
+	dr *result.DiagnosticResult,
+	requiredCSV, requiredChannel, displayVersion string,
+) (*result.DiagnosticResult, error) {
 	manifests, err := client.List[*unstructured.Unstructured](ctx, target.Client, resources.PackageManifest,
 		func(pm *unstructured.Unstructured) (bool, error) {
 			if pm.GetName() != "servicemeshoperator3" || pm.GetNamespace() != "openshift-marketplace" {
 				return false, nil
 			}
 
-			catalogSource, err := jq.Query[string](pm, ".status.catalogSource")
-			if err != nil {
+			catalogSource, queryErr := jq.Query[string](pm, ".status.catalogSource")
+			if queryErr != nil {
 				return false, nil
 			}
 
@@ -172,14 +203,12 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 
 	pm := manifests[0]
 
-	// Step 6: Extract available CSVs from the required channel.
 	availableCSVs, err := jq.Query[[]string](pm,
 		fmt.Sprintf(`[.status.channels[]? | select(.name == "%s") | .entries[]?.name]`, requiredChannel))
 	if err != nil {
 		return nil, fmt.Errorf("querying available CSVs: %w", err)
 	}
 
-	// Step 7: Check if the required CSV is available.
 	if slices.Contains(availableCSVs, requiredCSV) {
 		dr.SetCondition(check.NewCondition(
 			check.ConditionTypeAvailable,
@@ -199,4 +228,31 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 	}
 
 	return dr, nil
+}
+
+// isNoOLMMode checks whether the cluster is running in noOLM Gateway API mode.
+// Returns true when OLM is unavailable or no servicemeshoperator3 subscription exists.
+func isNoOLMMode(ctx context.Context, target check.Target) (bool, error) {
+	if !target.Client.OLM().Available() {
+		return true, nil
+	}
+
+	subscriptions, err := target.Client.OLM().Subscriptions("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		// Cannot determine subscription state (e.g. RBAC restriction);
+		// fall through to OLM catalog validation rather than failing the check.
+		return false, nil
+	}
+
+	return findSubscription(subscriptions) == nil, nil
+}
+
+func findSubscription(list *operatorsv1alpha1.SubscriptionList) *operatorsv1alpha1.Subscription {
+	for i := range list.Items {
+		if list.Items[i].Name == subscriptionName {
+			return &list.Items[i]
+		}
+	}
+
+	return nil
 }
