@@ -143,12 +143,7 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 	// Step 5: Check for noOLM mode. On OCP 4.21.22+ / 4.22+, the Cluster Ingress Operator
 	// deploys istiod directly (Sail Library) without an OSSM OLM subscription. When no
 	// servicemeshoperator3 subscription exists, the PackageManifest validation is not applicable.
-	noOLM, err := isNoOLMMode(ctx, target)
-	if err != nil {
-		return nil, fmt.Errorf("checking noOLM mode: %w", err)
-	}
-
-	if noOLM {
+	if isNoOLMMode(ctx, target) {
 		dr.SetCondition(check.NewCondition(
 			check.ConditionTypeAvailable,
 			metav1.ConditionTrue,
@@ -232,19 +227,19 @@ func validateCatalogCSV(
 
 // isNoOLMMode checks whether the cluster is running in noOLM Gateway API mode.
 // Returns true when OLM is unavailable or no servicemeshoperator3 subscription exists.
-func isNoOLMMode(ctx context.Context, target check.Target) (bool, error) {
+func isNoOLMMode(ctx context.Context, target check.Target) bool {
 	if !target.Client.OLM().Available() {
-		return true, nil
+		return true
 	}
 
 	subscriptions, err := target.Client.OLM().Subscriptions("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		// Cannot determine subscription state (e.g. RBAC restriction);
 		// fall through to OLM catalog validation rather than failing the check.
-		return false, nil
+		return false
 	}
 
-	return findSubscription(subscriptions) == nil, nil
+	return findSubscription(subscriptions) == nil
 }
 
 func findSubscription(list *operatorsv1alpha1.SubscriptionList) *operatorsv1alpha1.Subscription {
