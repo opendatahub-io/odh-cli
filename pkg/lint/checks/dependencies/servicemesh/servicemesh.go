@@ -124,25 +124,11 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 		return dr, nil
 	}
 
-	// Step 2: Extract the required version from the GATEWAY_API_OPERATOR_VERSION env var.
-	requiredVersion, earlyResult, err := extractEnvVar(deploy, dr, "GATEWAY_API_OPERATOR_VERSION")
-	if earlyResult != nil || err != nil {
-		return earlyResult, err
-	}
-
-	// Step 3: Extract the required channel from the GATEWAY_API_OPERATOR_CHANNEL env var.
-	requiredChannel, earlyResult, err := extractEnvVar(deploy, dr, "GATEWAY_API_OPERATOR_CHANNEL")
-	if earlyResult != nil || err != nil {
-		return earlyResult, err
-	}
-
-	// Step 4: The env var contains the full CSV name (e.g. "servicemeshoperator3.v3.1.0").
-	requiredCSV := requiredVersion
-	displayVersion := strings.TrimPrefix(requiredCSV, "servicemeshoperator3.v")
-
-	// Step 5: Check for noOLM mode. On OCP 4.21.22+ / 4.22+, the Cluster Ingress Operator
+	// Step 2: Check for noOLM mode. On OCP 4.21.22+ / 4.22+, the Cluster Ingress Operator
 	// deploys istiod directly (Sail Library) without an OSSM OLM subscription. When no
 	// servicemeshoperator3 subscription exists, the PackageManifest validation is not applicable.
+	// This must run before env var extraction: noOLM clusters may lack the GATEWAY_API_OPERATOR_*
+	// env vars entirely, which would otherwise produce false-positive blocking failures.
 	if isNoOLMMode(ctx, target) {
 		dr.SetCondition(check.NewCondition(
 			check.ConditionTypeAvailable,
@@ -153,6 +139,22 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 
 		return dr, nil
 	}
+
+	// Step 3: Extract the required version from the GATEWAY_API_OPERATOR_VERSION env var.
+	requiredVersion, earlyResult, err := extractEnvVar(deploy, dr, "GATEWAY_API_OPERATOR_VERSION")
+	if earlyResult != nil || err != nil {
+		return earlyResult, err
+	}
+
+	// Step 4: Extract the required channel from the GATEWAY_API_OPERATOR_CHANNEL env var.
+	requiredChannel, earlyResult, err := extractEnvVar(deploy, dr, "GATEWAY_API_OPERATOR_CHANNEL")
+	if earlyResult != nil || err != nil {
+		return earlyResult, err
+	}
+
+	// Step 5: The env var contains the full CSV name (e.g. "servicemeshoperator3.v3.1.0").
+	requiredCSV := requiredVersion
+	displayVersion := strings.TrimPrefix(requiredCSV, "servicemeshoperator3.v")
 
 	// Step 6: Validate that the required CSV is available in the OLM catalog.
 	return validateCatalogCSV(ctx, target, dr, requiredCSV, requiredChannel, displayVersion)
