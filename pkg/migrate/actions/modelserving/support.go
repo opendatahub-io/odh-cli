@@ -22,6 +22,7 @@ import (
 const (
 	// Annotation keys.
 	annotationDeploymentMode      = "serving.kserve.io/deploymentMode"
+	annotationEnableAuth          = "security.opendatahub.io/enable-auth"
 	annotationManaged             = "opendatahub.io/managed"
 	annotationHardwareProfileName = "opendatahub.io/hardware-profile-name"
 	annotationHardwareProfileNS   = "opendatahub.io/hardware-profile-namespace"
@@ -32,12 +33,18 @@ const (
 	deploymentModeModelMesh     = "ModelMesh"
 	deploymentModeRawDeployment = "RawDeployment"
 
+	// KServe constants.
+	kserveContainerName = "kserve-container"
+
 	// ConfigMap constants.
 	inferenceServiceConfigName = "inferenceservice-config"
 	inferenceServiceDataKey    = "inferenceService"
 
 	// Deployment name for KServe controller.
 	kserveControllerDeployment = "kserve-controller-manager"
+
+	// Namespace label for ModelMesh.
+	labelModelMeshEnabled = "modelmesh-enabled"
 
 	// Managed annotation values.
 	managedTrue  = "true"
@@ -59,6 +66,10 @@ const (
 	msgGetConfigMapFailed         = "Failed to get ConfigMap %s/%s: %v"
 	msgConfigMapNotFound          = "ConfigMap %s not found in namespace %s"
 	msgGetAppNamespaceFailed      = "Failed to get applications namespace: %v"
+	msgRemoveNSLabelSuccess       = "Removed %s label from namespace %s"
+	msgRemoveNSLabelFailed        = "Failed to remove %s label from namespace %s: %v"
+	msgRemoveNSLabelDryRun        = "Would remove %s label from namespace %s"
+	msgAuthSkipped                = "Auth not enabled on InferenceService %s/%s (skipped auth resources)"
 )
 
 // inferenceServiceConfig preserves all fields in the inferenceService JSON
@@ -438,6 +449,58 @@ func ensureRoleBinding(
 	}
 
 	step.Recordf("create-rolebinding", "Created RoleBinding %s/%s", result.StepCompleted, namespace, name)
+}
+
+// hasAuthEnabled returns true if the ISVC has the enable-auth annotation set to "true".
+func hasAuthEnabled(isvc *unstructured.Unstructured) bool {
+	val, err := jq.Query[string](isvc, ".metadata.annotations.\""+annotationEnableAuth+"\"")
+	if err != nil {
+		return false
+	}
+
+	return val == "true"
+}
+
+// removeModelMeshLabel removes the modelmesh-enabled label from a namespace.
+func removeModelMeshLabel(
+	ctx context.Context,
+	target action.Target,
+	namespace string,
+	step action.StepRecorder,
+) {
+	if target.DryRun {
+		step.Recordf(
+			"remove-ns-label-"+namespace,
+			msgRemoveNSLabelDryRun,
+			result.StepSkipped,
+			labelModelMeshEnabled, namespace,
+		)
+
+		return
+	}
+
+	patchData := fmt.Sprintf(`{"metadata":{"labels":{%q:null}}}`, labelModelMeshEnabled)
+
+	_, err := target.Client.Dynamic().Resource(resources.Namespace.GVR()).
+		Patch(ctx, namespace, types.MergePatchType, []byte(patchData), metav1.PatchOptions{})
+
+	if err != nil {
+		step.Recordf(
+			"remove-ns-label-"+namespace,
+			msgRemoveNSLabelFailed,
+			result.StepFailed,
+			labelModelMeshEnabled, namespace, err,
+		)
+
+		return
+	}
+
+	step.Recordf(
+		"remove-ns-label-"+namespace,
+		msgRemoveNSLabelSuccess,
+		result.StepCompleted,
+		labelModelMeshEnabled, namespace,
+	)
 }
 
 // groupByNamespace groups unstructured objects by their namespace.

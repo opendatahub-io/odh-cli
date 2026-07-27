@@ -55,9 +55,48 @@ func newServingRuntime(namespace, name string, multiModel bool) *unstructured.Un
 			},
 			"spec": map[string]any{
 				"multiModel": multiModel,
+				"containers": []any{
+					map[string]any{
+						"name":  "ovms",
+						"image": "openvino/model_server:latest",
+					},
+				},
 			},
 		},
 	}
+}
+
+func newModelMeshISVCWithAuth(namespace, name, runtimeName string) *unstructured.Unstructured {
+	isvc := newModelMeshISVC(namespace, name, runtimeName)
+
+	annotations := isvc.GetAnnotations()
+	annotations["security.opendatahub.io/enable-auth"] = "true"
+	isvc.SetAnnotations(annotations)
+
+	return isvc
+}
+
+func newNamespace(name string, labels map[string]string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.Namespace.APIVersion(),
+			"kind":       resources.Namespace.Kind,
+			"metadata": map[string]any{
+				"name": name,
+			},
+		},
+	}
+
+	if labels != nil {
+		labelsAny := make(map[string]any, len(labels))
+		for k, v := range labels {
+			labelsAny[k] = v
+		}
+
+		obj.Object["metadata"].(map[string]any)["labels"] = labelsAny
+	}
+
+	return obj
 }
 
 func TestModelMeshToRawAction_ID(t *testing.T) {
@@ -126,12 +165,13 @@ func TestModelMeshToRawAction_RunValidate(t *testing.T) {
 }
 
 func TestModelMeshToRawAction_RunExecute(t *testing.T) {
-	t.Run("should convert ModelMesh ISVCs to RawDeployment", func(t *testing.T) {
+	t.Run("should convert ModelMesh ISVCs to RawDeployment and rename container", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
 		isvc := newModelMeshISVC(testISVCNamespace, "mm-model", "ovms-runtime")
 		sr := newServingRuntime(testISVCNamespace, "ovms-runtime", true)
+		ns := newNamespace(testISVCNamespace, map[string]string{"modelmesh-enabled": "true"})
 
 		scheme := runtime.NewScheme()
 
@@ -141,10 +181,11 @@ func TestModelMeshToRawAction_RunExecute(t *testing.T) {
 			resources.ServiceAccount.GVR():   resources.ServiceAccount.ListKind(),
 			resources.Role.GVR():             resources.Role.ListKind(),
 			resources.RoleBinding.GVR():      resources.RoleBinding.ListKind(),
+			resources.Namespace.GVR():        resources.Namespace.ListKind(),
 		}
 
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-			scheme, listKinds, isvc, sr,
+			scheme, listKinds, isvc, sr, ns,
 		)
 
 		testClient := client.NewForTesting(client.TestClientConfig{
@@ -178,6 +219,104 @@ func TestModelMeshToRawAction_RunExecute(t *testing.T) {
 
 		annotations := updated.GetAnnotations()
 		g.Expect(annotations).To(HaveKeyWithValue("serving.kserve.io/deploymentMode", "RawDeployment"))
+
+		// Verify ServingRuntime container was renamed to kserve-container
+		updatedSR, err := dynamicClient.Resource(resources.ServingRuntime.GVR()).
+			Namespace(testISVCNamespace).
+			Get(ctx, "ovms-runtime", metav1.GetOptions{})
+
+		g.Expect(err).ToNot(HaveOccurred())
+
+		containers, _, _ := unstructured.NestedSlice(updatedSR.Object, "spec", "containers")
+		g.Expect(containers).To(HaveLen(1))
+
+		firstContainer := containers[0].(map[string]any)
+		g.Expect(firstContainer).To(HaveKeyWithValue("name", "kserve-container"))
+
+		// Verify modelmesh-enabled label was removed from namespace
+		updatedNS, err := dynamicClient.Resource(resources.Namespace.GVR()).
+			Get(ctx, testISVCNamespace, metav1.GetOptions{})
+
+		g.Expect(err).ToNot(HaveOccurred())
+
+		nsLabels := updatedNS.GetLabels()
+		g.Expect(nsLabels).ToNot(HaveKey("modelmesh-enabled"))
+	})
+
+	t.Run("should skip auth resources when enable-auth annotation is not set", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		isvc := newModelMeshISVC(testISVCNamespace, "mm-model-noauth", "ovms-runtime")
+		sr := newServingRuntime(testISVCNamespace, "ovms-runtime", true)
+		ns := newNamespace(testISVCNamespace, nil)
+
+		scheme := runtime.NewScheme()
+
+		listKinds := map[schema.GroupVersionResource]string{
+			resources.InferenceService.GVR(): resources.InferenceService.ListKind(),
+			resources.ServingRuntime.GVR():   resources.ServingRuntime.ListKind(),
+			resources.ServiceAccount.GVR():   resources.ServiceAccount.ListKind(),
+			resources.Role.GVR():             resources.Role.ListKind(),
+			resources.RoleBinding.GVR():      resources.RoleBinding.ListKind(),
+			resources.Namespace.GVR():        resources.Namespace.ListKind(),
+		}
+
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+			scheme, listKinds, isvc, sr, ns,
+		)
+
+		target := newTestTarget(dynamicClient, "2.25.0", false)
+
+		a := &modelserving.ModelMeshToRawAction{}
+		_, err := a.Run().Execute(ctx, target)
+
+		g.Expect(err).ToNot(HaveOccurred())
+
+		// Verify no ServiceAccount was created (auth not enabled)
+		_, saErr := dynamicClient.Resource(resources.ServiceAccount.GVR()).
+			Namespace(testISVCNamespace).
+			Get(ctx, "mm-model-noauth-sa", metav1.GetOptions{})
+
+		g.Expect(saErr).To(HaveOccurred())
+	})
+
+	t.Run("should create auth resources when enable-auth annotation is set", func(t *testing.T) {
+		g := NewWithT(t)
+		ctx := t.Context()
+
+		isvc := newModelMeshISVCWithAuth(testISVCNamespace, "mm-model-auth", "ovms-runtime")
+		sr := newServingRuntime(testISVCNamespace, "ovms-runtime", true)
+		ns := newNamespace(testISVCNamespace, nil)
+
+		scheme := runtime.NewScheme()
+
+		listKinds := map[schema.GroupVersionResource]string{
+			resources.InferenceService.GVR(): resources.InferenceService.ListKind(),
+			resources.ServingRuntime.GVR():   resources.ServingRuntime.ListKind(),
+			resources.ServiceAccount.GVR():   resources.ServiceAccount.ListKind(),
+			resources.Role.GVR():             resources.Role.ListKind(),
+			resources.RoleBinding.GVR():      resources.RoleBinding.ListKind(),
+			resources.Namespace.GVR():        resources.Namespace.ListKind(),
+		}
+
+		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+			scheme, listKinds, isvc, sr, ns,
+		)
+
+		target := newTestTarget(dynamicClient, "2.25.0", false)
+
+		a := &modelserving.ModelMeshToRawAction{}
+		_, err := a.Run().Execute(ctx, target)
+
+		g.Expect(err).ToNot(HaveOccurred())
+
+		// Verify ServiceAccount was created (auth enabled)
+		_, saErr := dynamicClient.Resource(resources.ServiceAccount.GVR()).
+			Namespace(testISVCNamespace).
+			Get(ctx, "mm-model-auth-sa", metav1.GetOptions{})
+
+		g.Expect(saErr).ToNot(HaveOccurred())
 	})
 
 	t.Run("should skip when no ModelMesh ISVCs exist", func(t *testing.T) {
@@ -216,6 +355,7 @@ func TestModelMeshToRawAction_RunExecute(t *testing.T) {
 
 		isvc := newModelMeshISVC(testISVCNamespace, "mm-model", "ovms-runtime")
 		sr := newServingRuntime(testISVCNamespace, "ovms-runtime", true)
+		ns := newNamespace(testISVCNamespace, map[string]string{"modelmesh-enabled": "true"})
 
 		scheme := runtime.NewScheme()
 
@@ -225,10 +365,11 @@ func TestModelMeshToRawAction_RunExecute(t *testing.T) {
 			resources.ServiceAccount.GVR():   resources.ServiceAccount.ListKind(),
 			resources.Role.GVR():             resources.Role.ListKind(),
 			resources.RoleBinding.GVR():      resources.RoleBinding.ListKind(),
+			resources.Namespace.GVR():        resources.Namespace.ListKind(),
 		}
 
 		dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-			scheme, listKinds, isvc, sr,
+			scheme, listKinds, isvc, sr, ns,
 		)
 
 		target := newTestTarget(dynamicClient, "2.25.0", true)
@@ -248,5 +389,18 @@ func TestModelMeshToRawAction_RunExecute(t *testing.T) {
 
 		annotations := original.GetAnnotations()
 		g.Expect(annotations).To(HaveKeyWithValue("serving.kserve.io/deploymentMode", "ModelMesh"))
+
+		// Verify ServingRuntime container was NOT renamed
+		originalSR, err := dynamicClient.Resource(resources.ServingRuntime.GVR()).
+			Namespace(testISVCNamespace).
+			Get(ctx, "ovms-runtime", metav1.GetOptions{})
+
+		g.Expect(err).ToNot(HaveOccurred())
+
+		containers, _, _ := unstructured.NestedSlice(originalSR.Object, "spec", "containers")
+		g.Expect(containers).To(HaveLen(1))
+
+		firstContainer := containers[0].(map[string]any)
+		g.Expect(firstContainer).To(HaveKeyWithValue("name", "ovms"))
 	})
 }

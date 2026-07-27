@@ -102,6 +102,7 @@ func (a *ModelMeshToRawAction) convertISVCs(
 	}
 
 	convertedCount := 0
+	processedNamespaces := make(map[string]bool)
 
 	for _, isvc := range isvcs {
 		isvcStep := step.Child(
@@ -115,10 +116,25 @@ func (a *ModelMeshToRawAction) convertISVCs(
 		// Patch deployment mode
 		patchISVCDeploymentMode(ctx, target, isvc, deploymentModeRawDeployment, isvcStep)
 
-		// Create auth resources
-		ensureAuthResources(ctx, target, isvc, isvcStep)
+		// Create auth resources only when auth is enabled
+		if hasAuthEnabled(isvc) {
+			ensureAuthResources(ctx, target, isvc, isvcStep)
+		} else {
+			isvcStep.Recordf(
+				"auth-skip-"+isvc.GetName(),
+				msgAuthSkipped,
+				result.StepSkipped,
+				isvc.GetNamespace(), isvc.GetName(),
+			)
+		}
 
+		processedNamespaces[isvc.GetNamespace()] = true
 		convertedCount++
+	}
+
+	// Remove modelmesh-enabled label from processed namespaces
+	for ns := range processedNamespaces {
+		removeModelMeshLabel(ctx, target, ns, step)
 	}
 
 	if target.DryRun {
@@ -165,13 +181,20 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 	}
 
 	if target.DryRun {
-		step.Completef(result.StepSkipped, "Would set multiModel=false on ServingRuntime %s/%s", ns, runtimeName)
+		step.Completef(result.StepSkipped, "Would update ServingRuntime %s/%s for RawDeployment (multiModel=false, rename container to %s)", ns, runtimeName, kserveContainerName)
 
 		return
 	}
 
 	if err := jq.Transform(runtime, ".spec.multiModel = false"); err != nil {
 		step.Completef(result.StepFailed, "Failed to update ServingRuntime %s/%s: %v", ns, runtimeName, err)
+
+		return
+	}
+
+	// KServe RawDeployment requires a container named "kserve-container"
+	if err := jq.Transform(runtime, ".spec.containers[0].name = %q", kserveContainerName); err != nil {
+		step.Completef(result.StepFailed, "Failed to rename container in ServingRuntime %s/%s: %v", ns, runtimeName, err)
 
 		return
 	}
@@ -186,7 +209,7 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 		return
 	}
 
-	step.Completef(result.StepCompleted, "Set multiModel=false on ServingRuntime %s/%s", ns, runtimeName)
+	step.Completef(result.StepCompleted, "Updated ServingRuntime %s/%s (multiModel=false, container renamed to %s)", ns, runtimeName, kserveContainerName)
 }
 
 // --- Prepare Task ---
