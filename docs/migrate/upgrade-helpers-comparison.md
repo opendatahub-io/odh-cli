@@ -1982,7 +1982,18 @@ Run 'migrate run' to execute the migration.
 
 This action has no bash script equivalent -- it is new in `rhai-cli`.
 
+It migrates OpenShift AI built-in (embedded) Kueue to the Red Hat build of Kueue (RHBOK) operator: remove embedded Kueue, delete legacy v1alpha1 CRDs, install RHBOK via OLM, set DSC `managementState` to `Unmanaged`, label namespaces/workloads, and verify.
+
+For as-built internals, see [rhbok-migration.md](rhbok-migration.md).
+
 ```bash
+# Preflight + backup ClusterQueues and kueue-manager-config (when Managed)
+rhai-cli migrate prepare \
+  --migration kueue.rhbok.migrate \
+  --target-version 3.5.0 \
+  --output-dir /backups
+
+# Run migration
 rhai-cli migrate run \
   --migration kueue.rhbok.migrate \
   --target-version 3.5.0
@@ -1993,6 +2004,17 @@ rhai-cli migrate run \
   --target-version 3.5.0 \
   --dry-run
 ```
+
+**RHBOK-specific flags:**
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--cluster-queue-name` | *(empty)* | Optional DSC `defaultClusterQueueName` |
+| `--local-queue-name` | *(empty)* | Optional DSC `defaultLocalQueueName` |
+| `--workload-queue-name` | `default` | Value for `kueue.x-k8s.io/queue-name` on workloads |
+| `--channel` | catalog-resolved | OLM channel (fallback `stable-v1.2`) |
+| `--skip-remove-embedded` | `false` | Skip Managed → Removed (not recommended) |
+| `--force-delete-legacy-crds` | `false` | Delete legacy cohorts/topologies CRDs even when instances exist |
 
 <details>
 <summary><b>Example: Kueue RHBOK migration output</b></summary>
@@ -2008,18 +2030,37 @@ kueue.rhbok.migrate:
 
 Running migration: kueue.rhbok.migrate (confirmations skipped)
 
-  → Validate prerequisites
-    ✓ Found 15 Kueue resources to migrate
+  → Verify RBAC permissions
+  → Verify cert-manager is installed
+  → Verify current Kueue state
+  → Check for Red Hat build of Kueue operator conflicts
+  → Resolve Red Hat build of Kueue operator channel
+  → Verify Kueue resources exist
+  → Report namespaces and workloads requiring labels
+  → Preserve Kueue ConfigMap for reference
+    ✓ Annotated ConfigMap opendatahub.io/managed=false
+  → Uninstall embedded Kueue by setting managementState to Removed
+    ✓ Set Kueue managementState to Removed
+  → Wait for embedded Kueue to be removed
+    ✓ Embedded Kueue removed
+  → Delete legacy v1alpha1 Kueue CRDs
+    ✓ Deleted cohorts.kueue.x-k8s.io
+    ✓ Deleted topologies.kueue.x-k8s.io
   → Install Red Hat Build of Kueue Operator
     ✓ Created Namespace openshift-kueue-operator
     ✓ Created OperatorGroup
     ✓ Subscription created successfully
     ✓ ClusterServiceVersion ready
-  → Update DataScienceCluster
+  → Activate Red Hat build of Kueue in DataScienceCluster
     ✓ Set Kueue managementState to Unmanaged
-    ✓ Configuration updated
-  → Verify resources preserved
-    ✓ All 15 resources preserved after operator handoff
+  → Wait for KueueReady condition
+    ✓ KueueReady=True and operator pods ready
+  → Apply kueue.openshift.io/managed=true to namespaces
+  → Apply kueue.x-k8s.io/queue-name to workloads
+  → Verify RHBOK migration completed successfully
+    ✓ Migration verification passed
+  → Verify ClusterQueue and LocalQueue resources preserved
+    ✓ All ClusterQueues and LocalQueues preserved
 
 Migration kueue.rhbok.migrate completed successfully!
 ```
@@ -2187,15 +2228,20 @@ kueue.rhbok.migrate:
 
 Running migration: kueue.rhbok.migrate (confirmations skipped)
 
-  → Validate prerequisites
-    ✓ Found 15 Kueue resources to migrate
+  → Preserve Kueue ConfigMap for reference
+  → Uninstall embedded Kueue by setting managementState to Removed
+  → Wait for embedded Kueue to be removed
+  → Delete legacy v1alpha1 Kueue CRDs
   → Install Red Hat Build of Kueue Operator
     ✓ Subscription created successfully
     ✓ ClusterServiceVersion ready
-  → Update DataScienceCluster
-    ✓ Configuration updated
-  → Verify resources preserved
-    ✓ All 15 resources preserved after operator handoff
+  → Activate Red Hat build of Kueue in DataScienceCluster
+    ✓ Set Kueue managementState to Unmanaged
+  → Wait for KueueReady condition
+  → Apply kueue.openshift.io/managed=true to namespaces
+  → Apply kueue.x-k8s.io/queue-name to workloads
+  → Verify RHBOK migration completed successfully
+  → Verify ClusterQueue and LocalQueue resources preserved
 
 Migration kueue.rhbok.migrate completed successfully!
 

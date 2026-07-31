@@ -76,6 +76,8 @@ The `coding/` directory contains focused coding guidelines:
 ### Command-Specific Documentation
 - **[lint/architecture.md](lint/architecture.md)** - Lint command architecture and design
 - **[lint/writing-checks.md](lint/writing-checks.md)** - Writing diagnostic checks for the lint command
+- **[migrate/rhbok-migration.md](migrate/rhbok-migration.md)** - As-built RHBOK Kueue migration (`kueue.rhbok.migrate`)
+- **[migrate/upgrade-helpers-comparison.md](migrate/upgrade-helpers-comparison.md)** - Operator guide: upgrade-helpers scripts → migrate CLI
 
 ## Common Tasks
 
@@ -99,6 +101,7 @@ See [code-review.md](code-review.md#pull-request-checklist)
 For broader architectural context:
 - **[design.md](design.md)** - Overall CLI design and architecture
 - **[lint/architecture.md](lint/architecture.md)** - Lint command-specific architecture
+- **[migrate/rhbok-migration.md](migrate/rhbok-migration.md)** - RHBOK Kueue migration as-built
 
 ## Contributing
 
