@@ -2012,9 +2012,9 @@ rhai-cli migrate run \
 | `--cluster-queue-name` | *(empty)* | Optional DSC `defaultClusterQueueName` |
 | `--local-queue-name` | *(empty)* | Optional DSC `defaultLocalQueueName` |
 | `--workload-queue-name` | `default` | Value for `kueue.x-k8s.io/queue-name` on workloads |
-| `--channel` | catalog-resolved | OLM channel (fallback `stable-v1.2`) |
+| `--channel` | resolved | OLM channel: existing Subscription → PackageManifest → fallback `stable-v1.2` |
 | `--skip-remove-embedded` | `false` | Skip Managed → Removed (not recommended) |
-| `--force-delete-legacy-crds` | `false` | Delete legacy cohorts/topologies CRDs even when instances exist |
+| `--force-delete-legacy-crds` | `false` | Delete legacy cohorts/topologies CRDs even when instances exist (irreversible — also deletes existing Cohort/Topology instances; prepare does not back them up) |
 
 <details>
 <summary><b>Example: Kueue RHBOK migration output</b></summary>
@@ -2059,8 +2059,8 @@ Running migration: kueue.rhbok.migrate (confirmations skipped)
   → Apply kueue.x-k8s.io/queue-name to workloads
   → Verify RHBOK migration completed successfully
     ✓ Migration verification passed
-  → Verify ClusterQueue and LocalQueue resources preserved
-    ✓ All ClusterQueues and LocalQueues preserved
+  → Check ClusterQueue and LocalQueue counts
+    ✓ ClusterQueue and LocalQueue counts matched
 
 Migration kueue.rhbok.migrate completed successfully!
 ```
@@ -2241,7 +2241,7 @@ Running migration: kueue.rhbok.migrate (confirmations skipped)
   → Apply kueue.openshift.io/managed=true to namespaces
   → Apply kueue.x-k8s.io/queue-name to workloads
   → Verify RHBOK migration completed successfully
-  → Verify ClusterQueue and LocalQueue resources preserved
+  → Check ClusterQueue and LocalQueue counts
 
 Migration kueue.rhbok.migrate completed successfully!
 

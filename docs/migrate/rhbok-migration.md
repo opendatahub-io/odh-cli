@@ -47,9 +47,11 @@ Shared command flags (`--dry-run`, `--yes`, `--output-dir`, etc.) come from the 
 | `--cluster-queue-name` | `""` | Optional DSC `defaultClusterQueueName` |
 | `--local-queue-name` | `""` | Optional DSC `defaultLocalQueueName` |
 | `--workload-queue-name` | `default` | Value for `kueue.x-k8s.io/queue-name` on workloads |
-| `--channel` | catalog-resolved | OLM channel; fallback `stable-v1.2` |
+| `--channel` | resolved (see below) | OLM channel |
 | `--skip-remove-embedded` | `false` | Skip Managed → Removed (not recommended) |
-| `--force-delete-legacy-crds` | `false` | Delete legacy CRDs even when instances exist |
+| `--force-delete-legacy-crds` | `false` | Delete legacy CRDs even when instances exist (irreversible — also deletes existing Cohort/Topology instances; prepare does not back them up) |
+
+`--channel` resolution order when the flag is empty: existing `kueue-operator` Subscription channel → catalog PackageManifest lookup → fallback `stable-v1.2`.
 
 ## Package Map
 
@@ -152,6 +154,7 @@ Workload kinds labeled/verified (from `pkg/lint/checks/kueue/discovery`): Notebo
 - Applications namespace is hardcoded to `redhat-ods-applications` (RHOAI), not ODH `opendatahub`.
 - Queue “preservation” verification compares **counts**, not backup diffs.
 - Prepare does not backup LocalQueues or DSC.
+- If the migration is already complete (Unmanaged + operator ready), `--cluster-queue-name`, `--local-queue-name`, and `--workload-queue-name` are ignored — the full migration action (including activation and workload labeling) is skipped.
 - `waitForKueueReady` lists all pods in the operator namespace; some verify/complete checks filter `app.kubernetes.io/name=kueue`.
 
 ## Related
