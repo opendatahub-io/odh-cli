@@ -542,7 +542,7 @@ func TestDataIntegrityCheck_MixedViolationsAcrossNamespaces(t *testing.T) {
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "2"))
 }
 
-func TestDataIntegrityCheck_BlockingImpact(t *testing.T) {
+func TestDataIntegrityCheck_AdvisoryImpact(t *testing.T) {
 	g := NewWithT(t)
 
 	dsc := testutil.NewDSC(map[string]string{
@@ -567,7 +567,7 @@ func TestDataIntegrityCheck_BlockingImpact(t *testing.T) {
 	result, err := chk.Validate(t.Context(), target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Conditions[0]).To(HaveField("Impact", Equal(resultpkg.ImpactProhibited)))
+	g.Expect(result.Status.Conditions[0]).To(HaveField("Impact", Equal(resultpkg.ImpactAdvisory)))
 }
 
 func TestDataIntegrityCheck_AnnotationCheckTargetVersion(t *testing.T) {

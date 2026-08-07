@@ -120,7 +120,7 @@ func (c *DataIntegrityCheck) Validate(
 		metav1.ConditionFalse,
 		check.WithReason(check.ReasonConfigurationInvalid),
 		check.WithMessage(msgInconsistent, len(violations)),
-		check.WithImpact(result.ImpactProhibited),
+		check.WithImpact(result.ImpactAdvisory),
 		check.WithRemediation(c.CheckRemediation),
 	))
 
