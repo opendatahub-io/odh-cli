@@ -120,8 +120,7 @@ func NewCommand(
 	registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
 	registry.MustRegister(kserve.NewServiceMeshRemovalCheck())
 	registry.MustRegister(kueue.NewManagementStateCheck())
-	// Deferred: re-enable when a future 3.3.x release supports Unmanaged + Red Hat build of Kueue Operator.
-	// registry.MustRegister(kueue.NewOperatorInstalledCheck())
+	registry.MustRegister(kueue.NewOperatorInstalledCheck())
 	registry.MustRegister(llamastack.NewRemovalCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
