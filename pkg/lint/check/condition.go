@@ -194,6 +194,11 @@ const (
 
 	// ReasonConfigurationUnmanaged indicates a configuration is not managed by the operator.
 	ReasonConfigurationUnmanaged = "ConfigurationUnmanaged"
+
+	// ReasonDefaultLocalQueueConflict indicates a potentially dangerous "default" LocalQueue
+	// naming configuration was detected (a LocalQueue named "default", or
+	// spec.components.kueue.defaultLocalQueueName set to "default").
+	ReasonDefaultLocalQueueConflict = "DefaultLocalQueueConflict"
 )
 
 // Standard Reason Values - Unknown/Error.
