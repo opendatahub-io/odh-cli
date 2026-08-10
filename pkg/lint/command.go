@@ -41,6 +41,7 @@ import (
 	llamastackworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/llamastack"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/notebook"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
+	trainerworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainer"
 	trainingoperatorworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainingoperator"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/schema"
@@ -133,7 +134,7 @@ func NewCommand(
 	registry.MustRegister(sharedossm.NewCheck())
 	registry.MustRegister(sharedserverless.NewCheck())
 
-	// Workloads (21)
+	// Workloads (22)
 	registry.MustRegister(ray.NewAppWrapperCleanupCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewInstructLabRemovalCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewStoredVersionRemovalCheck())
@@ -154,6 +155,7 @@ func NewCommand(
 	registry.MustRegister(notebook.NewImpactedWorkloadsCheck())
 	registry.MustRegister(notebook.NewNonStoppedWorkloadsCheck())
 	registry.MustRegister(ray.NewImpactedWorkloadsCheck())
+	registry.MustRegister(trainerworkloads.NewPodTemplateOverridesCheck())
 	registry.MustRegister(trainingoperatorworkloads.NewImpactedWorkloadsCheck())
 
 	c := &Command{

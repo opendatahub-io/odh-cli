@@ -363,8 +363,8 @@ var (
 
 	// TrainJob is the Kubeflow Trainer v2 TrainJob resource.
 	TrainJob = ResourceType{
-		Group:    "kubeflow.org",
-		Version:  "v2alpha1",
+		Group:    "trainer.kubeflow.org",
+		Version:  "v1alpha1",
 		Kind:     "TrainJob",
 		Resource: "trainjobs",
 	}

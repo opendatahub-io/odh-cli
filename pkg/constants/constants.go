@@ -18,6 +18,7 @@ const (
 	ComponentDashboard        = "dashboard"
 	ComponentKServe           = "kserve"
 	ComponentRay              = "ray"
+	ComponentTrainer          = "trainer"
 	ComponentTrainingOperator = "trainingoperator"
 	ComponentWorkbenches      = "workbenches"
 )
