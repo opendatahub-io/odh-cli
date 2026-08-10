@@ -21,6 +21,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/cmd/migrate"
 	"github.com/opendatahub-io/odh-cli/cmd/status"
 	"github.com/opendatahub-io/odh-cli/cmd/version"
+	internalversion "github.com/opendatahub-io/odh-cli/internal/version"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -28,8 +29,9 @@ func main() {
 	flags := genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag()
 
 	cmd := &cobra.Command{
-		Use:   "kubectl-odh",
-		Short: "kubectl plugin for ODH/RHOAI",
+		Use:     "kubectl-odh",
+		Short:   "kubectl plugin for ODH/RHOAI",
+		Version: internalversion.GetVersion(),
 	}
 
 	// Add kubectl-style flags to root command (inherited by subcommands).
