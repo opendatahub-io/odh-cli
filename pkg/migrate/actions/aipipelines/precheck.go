@@ -8,6 +8,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
 
 // PreUpgradeCheckAction captures DSPA pod health, migrates v1alpha1→v1, and detects RBAC gaps.
@@ -52,40 +53,7 @@ func (t *preUpgradeCheckPrepareTask) discover(
 	recorder action.RootRecorder,
 ) {
 	// Step 1: Capture pod health state for v1 DSPAs
-	healthStep := recorder.Child("capture-pod-health", "Capture pre-upgrade DSPA pod health")
-
-	v1DSPAs, err := listDSPAs(ctx, target.Client, resources.DataSciencePipelinesApplicationV1)
-	if err != nil {
-		healthStep.Completef(result.StepFailed, "Failed to list v1 DSPAs: %v", err)
-
-		return
-	}
-
-	var state PodHealthState
-
-	if len(v1DSPAs) == 0 {
-		healthStep.Completef(result.StepCompleted, "No v1 DSPAs found")
-
-		state = PodHealthState{
-			CapturedAt: time.Now().UTC().Format(time.RFC3339),
-			DSPAs:      []DSPAState{},
-		}
-	} else {
-		var captureErr error
-
-		state, captureErr = capturePodHealth(ctx, target.Client, healthStep, v1DSPAs)
-		if captureErr != nil {
-			healthStep.Completef(result.StepFailed, "Failed to capture pod health: %v", captureErr)
-
-			return
-		}
-
-		healthStep.Completef(result.StepCompleted, "Captured pod health for %d DSPA(s)", len(v1DSPAs))
-	}
-
-	if !target.DryRun {
-		t.saveState(target, recorder, state)
-	}
+	captureAndSavePodHealth(ctx, target.Client, recorder, target.DryRun, false)
 
 	// Step 2: Detect v1alpha1 DSPAs by checking CRD storedVersions
 	v1alpha1Step := recorder.Child("detect-v1alpha1", "Detect deprecated v1alpha1 DSPAs")
@@ -105,30 +73,6 @@ func (t *preUpgradeCheckPrepareTask) discover(
 
 	// Step 3: Detect custom roles needing RBAC update
 	_, _ = findRolesNeedingFix(ctx, target.Client, recorder)
-}
-
-func (t *preUpgradeCheckPrepareTask) saveState(
-	target action.Target,
-	recorder action.StepRecorder,
-	state PodHealthState,
-) {
-	saveStep := recorder.Child("save-state", "Save pre-upgrade state")
-
-	if target.DryRun {
-		saveStep.Completef(result.StepSkipped, "Would save pre-upgrade pod health state")
-
-		return
-	}
-
-	statePath := defaultStatePath()
-
-	if err := savePodHealthState(state, statePath); err != nil {
-		saveStep.Completef(result.StepFailed, "Failed to save state: %v", err)
-
-		return
-	}
-
-	saveStep.Completef(result.StepCompleted, "State saved to %s", statePath)
 }
 
 // --- Run task: migrate v1alpha1 DSPAs to v1 ---
@@ -159,9 +103,81 @@ func (t *preUpgradeCheckRunTask) Validate(ctx context.Context, target action.Tar
 func (t *preUpgradeCheckRunTask) Execute(ctx context.Context, target action.Target) (*result.ActionResult, error) {
 	recorder := action.NewVerboseRootRecorder(target.IO)
 
+	// Capture pod health state so post-upgrade-check can compare even if
+	// the user did not run "migrate prepare" separately.
+	captureAndSavePodHealth(ctx, target.Client, recorder, target.DryRun, true)
+
 	if err := migrateAllDSPAsToV1(ctx, target.Client, recorder, migrateOpts{DryRun: target.DryRun}); err != nil {
 		return recorder.Build(), fmt.Errorf("v1alpha1 migration failed: %w", err)
 	}
 
 	return recorder.Build(), nil
+}
+
+// captureAndSavePodHealth captures DSPA pod health state and persists it to disk.
+// When skipIfExists is true, it skips capture if a state file already exists (used
+// by the run task to avoid overwriting state saved by a prior "migrate prepare").
+func captureAndSavePodHealth(
+	ctx context.Context,
+	c client.Client,
+	recorder action.RootRecorder,
+	dryRun bool,
+	skipIfExists bool,
+) {
+	statePath := defaultStatePath()
+
+	if skipIfExists {
+		if _, err := loadPodHealthState(statePath); err == nil {
+			recorder.Recordf("pod-health-state", "Pre-upgrade pod health state already exists at %s", result.StepCompleted, statePath)
+
+			return
+		}
+	}
+
+	healthStep := recorder.Child("capture-pod-health", "Capture pre-upgrade DSPA pod health")
+
+	v1DSPAs, err := listDSPAs(ctx, c, resources.DataSciencePipelinesApplicationV1)
+	if err != nil {
+		healthStep.Completef(result.StepFailed, "Failed to list v1 DSPAs: %v", err)
+
+		return
+	}
+
+	var state PodHealthState
+
+	if len(v1DSPAs) == 0 {
+		healthStep.Completef(result.StepCompleted, "No v1 DSPAs found")
+
+		state = PodHealthState{
+			CapturedAt: time.Now().UTC().Format(time.RFC3339),
+			DSPAs:      []DSPAState{},
+		}
+	} else {
+		var captureErr error
+
+		state, captureErr = capturePodHealth(ctx, c, healthStep, v1DSPAs)
+		if captureErr != nil {
+			healthStep.Completef(result.StepFailed, "Failed to capture pod health: %v", captureErr)
+
+			return
+		}
+
+		healthStep.Completef(result.StepCompleted, "Captured pod health for %d DSPA(s)", len(v1DSPAs))
+	}
+
+	saveStep := recorder.Child("save-state", "Save pre-upgrade state")
+
+	if dryRun {
+		saveStep.Completef(result.StepSkipped, "Would save pre-upgrade pod health state")
+
+		return
+	}
+
+	if err := savePodHealthState(state, statePath); err != nil {
+		saveStep.Completef(result.StepFailed, "Failed to save state: %v", err)
+
+		return
+	}
+
+	saveStep.Completef(result.StepCompleted, "State saved to %s", statePath)
 }

@@ -15,7 +15,18 @@ var (
 	ListDSPAs                   = listDSPAs
 	HasV1Alpha1StoredVersion    = hasV1Alpha1StoredVersion
 	RemoveV1Alpha1StoredVersion = removeV1Alpha1StoredVersion
+	CaptureAndSavePodHealth     = captureAndSavePodHealth
 )
+
+// SetDefaultStatePath overrides the state file path for testing.
+// Returns a cleanup function that restores the original.
+func SetDefaultStatePath(path string) func() {
+	original := defaultStatePathFunc
+
+	defaultStatePathFunc = func() string { return path }
+
+	return func() { defaultStatePathFunc = original }
+}
 
 func MakePodUnstructured(name, namespace, phase, readyStatus string) unstructured.Unstructured {
 	conditions := []any{}

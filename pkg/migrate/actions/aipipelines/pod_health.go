@@ -271,6 +271,10 @@ func loadPodHealthState(path string) (PodHealthState, error) {
 	return state, nil
 }
 
-func defaultStatePath() string {
+var defaultStatePathFunc = func() string { //nolint:gochecknoglobals // Overridden in tests via export_test.go
 	return filepath.Join(defaultStateDir, stateFileName)
+}
+
+func defaultStatePath() string {
+	return defaultStatePathFunc()
 }
