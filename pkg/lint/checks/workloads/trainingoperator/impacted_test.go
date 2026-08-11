@@ -297,6 +297,154 @@ func TestImpactedWorkloadsCheck_JobWithoutStatus(t *testing.T) {
 	g.Expect(result.ImpactedObjects).To(HaveLen(1))
 }
 
+func TestImpactedWorkloadsCheck_ActiveJobs_BlockingAt36(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	activeJob := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.PyTorchJob.APIVersion(),
+			"kind":       resources.PyTorchJob.Kind,
+			"metadata": map[string]any{
+				"name":      "active-pytorch-job",
+				"namespace": "test-ns",
+			},
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
+						"type":   "Running",
+						"status": "True",
+					},
+				},
+			},
+		},
+	}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{activeJob},
+		TargetVersion: "3.6.0",
+	})
+
+	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
+	result, err := impactedCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(trainingoperator.ConditionTypePyTorchJobsCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonWorkloadsImpacted),
+		"Message": And(ContainSubstring("Found 1 active PyTorchJob(s)"), ContainSubstring("removed in 3.6")),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
+func TestImpactedWorkloadsCheck_MixedJobs_BlockingAt36(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	activeJob := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.PyTorchJob.APIVersion(),
+			"kind":       resources.PyTorchJob.Kind,
+			"metadata": map[string]any{
+				"name":      "active-job",
+				"namespace": "ns1",
+			},
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
+						"type":   "Running",
+						"status": "True",
+					},
+				},
+			},
+		},
+	}
+
+	completedJob := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.PyTorchJob.APIVersion(),
+			"kind":       resources.PyTorchJob.Kind,
+			"metadata": map[string]any{
+				"name":      "completed-job",
+				"namespace": "ns1",
+			},
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
+						"type":   "Succeeded",
+						"status": "True",
+					},
+				},
+			},
+		},
+	}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{activeJob, completedJob},
+		TargetVersion: "3.6.0",
+	})
+
+	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
+	result, err := impactedCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(trainingoperator.ConditionTypePyTorchJobsCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonWorkloadsImpacted),
+		"Message": And(ContainSubstring("1 active"), ContainSubstring("1 completed"), ContainSubstring("removed in 3.6")),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+}
+
+func TestImpactedWorkloadsCheck_CompletedOnly_NonBlockingAt36(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	completedJob := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.PyTorchJob.APIVersion(),
+			"kind":       resources.PyTorchJob.Kind,
+			"metadata": map[string]any{
+				"name":      "completed-job",
+				"namespace": "test-ns",
+			},
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
+						"type":   "Succeeded",
+						"status": "True",
+					},
+				},
+			},
+		},
+	}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:     listKinds,
+		Objects:       []*unstructured.Unstructured{completedJob},
+		TargetVersion: "3.6.0",
+	})
+
+	impactedCheck := &trainingoperator.ImpactedWorkloadsCheck{}
+	result, err := impactedCheck.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(trainingoperator.ConditionTypePyTorchJobsCompatible),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonVersionCompatible),
+	}))
+}
+
 func TestImpactedWorkloadsCheck_Metadata(t *testing.T) {
 	g := NewWithT(t)
 

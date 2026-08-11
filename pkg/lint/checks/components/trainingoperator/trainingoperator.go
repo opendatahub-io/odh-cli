@@ -38,10 +38,11 @@ func NewDeprecationCheck() *DeprecationCheck {
 // CanApply returns whether this check should run for the given target.
 // This check applies when target version is >= 3.3 and < 3.6 (removal check takes over at 3.6).
 func (c *DeprecationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	//nolint:mnd // Version numbers 3.3, 3.6
+	//nolint:mnd // Version numbers 3.3
 	if !version.IsVersionAtLeast(target.TargetVersion, 3, 3) {
 		return false, nil
 	}
+	//nolint:mnd // Version numbers 3.6
 	if version.IsVersionAtLeast(target.TargetVersion, 3, 6) {
 		return false, nil
 	}
