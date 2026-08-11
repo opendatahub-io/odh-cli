@@ -33,8 +33,8 @@ func NewImpactedWorkloadsCheck() *ImpactedWorkloadsCheck {
 			Type:             check.CheckTypeImpactedWorkloads,
 			CheckID:          "workloads.trainingoperator.impacted-workloads",
 			CheckName:        "Workloads :: TrainingOperator :: Impacted Workloads (3.3+)",
-			CheckDescription: "Lists PyTorchJobs using deprecated TrainingOperator (Kubeflow v1) that will be impacted by transition to Trainer v2",
-			CheckRemediation: "Complete or delete active PyTorchJobs before upgrading; plan migration to Trainer v2 API",
+			CheckDescription: "Lists PyTorchJobs using deprecated TrainingOperator (Kubeflow v1) that will be impacted by removal in 3.6 and transition to Trainer v2",
+			CheckRemediation: "Complete or delete active PyTorchJobs before upgrading; migrate to Trainer v2 TrainJob API",
 		},
 	}
 }
@@ -81,7 +81,9 @@ func (c *ImpactedWorkloadsCheck) Validate(
 				}
 			}
 
-			req.Result.SetCondition(c.newPyTorchJobCondition(len(active), len(completed)))
+			//nolint:mnd // Version 3.6 — component removed
+			isRemoval := version.IsVersionAtLeast(target.TargetVersion, 3, 6)
+			req.Result.SetCondition(c.newPyTorchJobCondition(len(active), len(completed), isRemoval))
 
 			return nil
 		})

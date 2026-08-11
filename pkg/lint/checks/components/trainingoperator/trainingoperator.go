@@ -28,18 +28,21 @@ func NewDeprecationCheck() *DeprecationCheck {
 			Kind:             constants.ComponentTrainingOperator,
 			Type:             checkType,
 			CheckID:          "components.trainingoperator.deprecation",
-			CheckName:        "Components :: TrainingOperator :: Deprecation (3.3+)",
-			CheckDescription: "Validates that TrainingOperator (Kubeflow Training Operator v1) deprecation is acknowledged - will be replaced by Trainer v2 in future RHOAI releases",
-			CheckRemediation: "Plan migration from TrainingOperator (Kubeflow v1) to Trainer v2 in a future release",
+			CheckName:        "Components :: TrainingOperator :: Deprecation (3.3–3.5)",
+			CheckDescription: "Validates that TrainingOperator (Kubeflow Training Operator v1) deprecation is acknowledged - removed in RHOAI 3.6, use Trainer v2",
+			CheckRemediation: "Plan migration from TrainingOperator (Kubeflow v1) to Trainer v2 before upgrading to 3.6",
 		},
 	}
 }
 
 // CanApply returns whether this check should run for the given target.
-// This check only applies when target version is >= 3.3 and TrainingOperator is Managed.
+// This check applies when target version is >= 3.3 and < 3.6 (removal check takes over at 3.6).
 func (c *DeprecationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	//nolint:mnd // Version numbers 3.3
+	//nolint:mnd // Version numbers 3.3, 3.6
 	if !version.IsVersionAtLeast(target.TargetVersion, 3, 3) {
+		return false, nil
+	}
+	if version.IsVersionAtLeast(target.TargetVersion, 3, 6) {
 		return false, nil
 	}
 
@@ -62,9 +65,9 @@ func newDeprecationCondition(_ context.Context, req *validate.ComponentRequest) 
 			check.ConditionTypeCompatible,
 			metav1.ConditionFalse,
 			check.WithReason(check.ReasonDeprecated),
-			check.WithMessage("TrainingOperator (Kubeflow Training Operator v1) is enabled (state: %s) but is deprecated in RHOAI 3.3 and will be replaced by Trainer v2 in a future release", req.ManagementState),
+			check.WithMessage("TrainingOperator (Kubeflow Training Operator v1) is enabled (state: %s) but is deprecated since RHOAI 3.3 and removed in 3.6. Migrate to Trainer v2.", req.ManagementState),
 			check.WithImpact(result.ImpactAdvisory),
-			check.WithRemediation("Plan migration from TrainingOperator (Kubeflow v1) to Trainer v2 in a future release"),
+			check.WithRemediation("Plan migration from TrainingOperator (Kubeflow v1) to Trainer v2 before upgrading to 3.6"),
 		),
 	}, nil
 }

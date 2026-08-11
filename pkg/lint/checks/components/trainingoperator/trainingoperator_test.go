@@ -73,7 +73,7 @@ func TestTrainingOperatorDeprecationCheck_ManagedDeprecated(t *testing.T) {
 		"Type":    Equal(check.ConditionTypeCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonDeprecated),
-		"Message": And(ContainSubstring("enabled"), ContainSubstring("deprecated in RHOAI 3.3")),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("deprecated since RHOAI 3.3")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 	g.Expect(result.Annotations).To(And(
@@ -181,7 +181,7 @@ func TestTrainingOperatorDeprecationCheck_Metadata(t *testing.T) {
 	trainingoperatorCheck := trainingoperator.NewDeprecationCheck()
 
 	g.Expect(trainingoperatorCheck.ID()).To(Equal("components.trainingoperator.deprecation"))
-	g.Expect(trainingoperatorCheck.Name()).To(Equal("Components :: TrainingOperator :: Deprecation (3.3+)"))
+	g.Expect(trainingoperatorCheck.Name()).To(Equal("Components :: TrainingOperator :: Deprecation (3.3–3.5)"))
 	g.Expect(trainingoperatorCheck.Group()).To(Equal(check.GroupComponent))
 	g.Expect(trainingoperatorCheck.Description()).ToNot(BeEmpty())
 }

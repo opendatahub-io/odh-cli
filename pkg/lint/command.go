@@ -126,6 +126,7 @@ func NewCommand(
 	registry.MustRegister(llamastack.NewRemovalCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
+	registry.MustRegister(trainingoperator.NewRemovalCheck())
 
 	// Dependencies (6)
 	registry.MustRegister(certmanager.NewCheck())

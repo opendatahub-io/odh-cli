@@ -84,7 +84,7 @@ func TestImpactedWorkloadsCheck_ActiveJobs(t *testing.T) {
 		"Type":    Equal(trainingoperator.ConditionTypePyTorchJobsCompatible),
 		"Status":  Equal(metav1.ConditionFalse),
 		"Reason":  Equal(check.ReasonWorkloadsImpacted),
-		"Message": And(ContainSubstring("Found 1 active PyTorchJob(s)"), ContainSubstring("deprecated TrainingOperator")),
+		"Message": And(ContainSubstring("Found 1 active PyTorchJob(s)"), ContainSubstring("TrainingOperator (Kubeflow v1)")),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
 	g.Expect(result.Annotations).To(HaveKeyWithValue(check.AnnotationImpactedWorkloadCount, "1"))
