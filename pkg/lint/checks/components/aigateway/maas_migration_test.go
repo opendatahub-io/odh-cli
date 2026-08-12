@@ -95,6 +95,23 @@ func TestMaaSFieldMigrationCheck_CanApply_OldFieldManaged(t *testing.T) {
 	g.Expect(canApply).To(BeTrue())
 }
 
+func TestMaaSFieldMigrationCheck_CanApply_OldFieldUnmanaged(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{newDSCWithKserveMaaS("Unmanaged")},
+		CurrentVersion: "3.4.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	chk := aigateway.NewMaaSFieldMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeTrue())
+}
+
 func TestMaaSFieldMigrationCheck_CanApply_OldFieldRemoved(t *testing.T) {
 	g := NewWithT(t)
 

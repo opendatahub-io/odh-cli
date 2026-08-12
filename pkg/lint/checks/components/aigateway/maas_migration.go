@@ -65,7 +65,7 @@ func (c *MaaSFieldMigrationCheck) CanApply(ctx context.Context, target check.Tar
 		return false, fmt.Errorf("querying kserve modelsAsService state: %w", err)
 	}
 
-	return state == constants.ManagementStateManaged, nil
+	return state == constants.ManagementStateManaged || state == constants.ManagementStateUnmanaged, nil
 }
 
 // Validate executes the check against the provided target.
