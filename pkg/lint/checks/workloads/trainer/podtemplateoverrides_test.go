@@ -229,7 +229,7 @@ func TestPodTemplateOverridesCheck_TrainJobWithOverrides(t *testing.T) {
 		"Reason": Equal(check.ReasonWorkloadsImpacted),
 		"Message": And(
 			ContainSubstring("Found 1 TrainJob(s) that use podTemplateOverrides"),
-			ContainSubstring("Wait for these jobs to complete before upgrading"),
+			ContainSubstring("We recommend waiting for these jobs to complete before upgrading when possible"),
 			ContainSubstring("recreate TrainJobs using runtimePatches"),
 			ContainSubstring("https://access.redhat.com/articles/7146204"),
 		),
