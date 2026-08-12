@@ -16,6 +16,7 @@ const (
 //nolint:gochecknoglobals // Component CR mapping is static configuration
 var ComponentCRResourceTypes = map[string]ResourceType{
 	// DSC v2 component names
+	"aigateway":          newComponentCR("aigateways", "AIGateway"),
 	"aipipelines":        newComponentCR("datasciencepipelines", "DataSciencePipelines"),
 	"dashboard":          newComponentCR("dashboards", "Dashboard"),
 	"feastoperator":      newComponentCR("feastoperators", "FeastOperator"),

@@ -8,6 +8,7 @@ import (
 
 func TestComponentCRResourceTypes(t *testing.T) {
 	expectedComponents := []string{
+		"aigateway",
 		"aipipelines",
 		"dashboard",
 		"feastoperator",
@@ -80,6 +81,7 @@ func TestAllComponentsHaveVerifiedLabels(t *testing.T) {
 	// When adding a new component, verify its actual label by checking deployed resources:
 	//   oc get pods -n opendatahub -l app.kubernetes.io/part-of=<component> --show-labels
 	expectedLabels := map[string]string{
+		"aigateway":          "aigateway",
 		"aipipelines":        "data-science-pipelines-operator",
 		"dashboard":          "dashboard",
 		"feastoperator":      "feastoperator",
