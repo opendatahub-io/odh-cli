@@ -51,7 +51,8 @@ func (c *PodTemplateOverridesCheck) newPodTemplateOverridesCondition(
 			"Found %d TrainJob(s) that use podTemplateOverrides. In OpenShift AI 3.6, Trainer v2.3 removes "+
 				"podTemplateOverrides and replaces it with runtimePatches. Pause and resume of these "+
 				"pre-upgrade TrainJobs may fail after upgrade, including when managed by Kueue. "+
-				"Migrate affected workloads before upgrading. See %s",
+				"Wait for these jobs to complete before upgrading. After upgrade, recreate TrainJobs "+
+				"using runtimePatches. See %s",
 			count,
 			kbArticleURL,
 		),

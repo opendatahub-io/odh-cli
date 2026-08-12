@@ -33,10 +33,10 @@ func NewPodTemplateOverridesCheck() *PodTemplateOverridesCheck {
 			Type:       check.CheckTypeImpactedWorkloads,
 			CheckID:    "workloads.trainer.podtemplateoverrides",
 			CheckName:  "Workloads :: Trainer :: PodTemplateOverrides (3.6+)",
-			CheckDescription: "Detects TrainJobs using podTemplateOverrides that must be migrated to " +
-				"runtimePatches before or after upgrading to OpenShift AI 3.6",
-			CheckRemediation: "Migrate TrainJobs from podTemplateOverrides to runtimePatches before upgrading. " +
-				"See " + kbArticleURL,
+			CheckDescription: "Detects TrainJobs using podTemplateOverrides that may fail pause/resume " +
+				"after upgrading to OpenShift AI 3.6",
+			CheckRemediation: "Wait for these jobs to complete before upgrading. After upgrade, recreate " +
+				"TrainJobs using runtimePatches. See " + kbArticleURL,
 		},
 	}
 }
