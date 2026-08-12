@@ -27,7 +27,7 @@ func NewRemovalCheck() *RemovalCheck {
 			CheckID:          "components.trainingoperator.removal",
 			CheckName:        "Components :: TrainingOperator :: Removal (3.6)",
 			CheckDescription: "Validates that TrainingOperator (Kubeflow Training Operator v1) is disabled before upgrading to RHOAI 3.6 (component is removed, use Trainer v2)",
-			CheckRemediation: "Set trainingoperator managementState to 'Removed' in DataScienceCluster and delete the TrainingOperator CR before upgrading. Drain active PyTorchJobs first.",
+			CheckRemediation: "Before upgrading, drain active PyTorchJobs then set trainingoperator managementState to 'Removed' in DataScienceCluster and delete the TrainingOperator CR.",
 		},
 	}
 }
