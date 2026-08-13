@@ -539,6 +539,14 @@ var (
 		Resource: "servicemeshmembers",
 	}
 
+	// VirtualService is the Istio VirtualService resource.
+	VirtualService = ResourceType{
+		Group:    "networking.istio.io",
+		Version:  "v1beta1",
+		Kind:     "VirtualService",
+		Resource: "virtualservices",
+	}
+
 	// KnativeServing is the Knative Serving operator resource.
 	KnativeServing = ResourceType{
 		Group:    "operator.knative.dev",

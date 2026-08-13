@@ -99,6 +99,44 @@ func newDeployment(namespace, name string) *unstructured.Unstructured {
 	}
 }
 
+func newISVCWithAuth(namespace, name, deploymentMode string) *unstructured.Unstructured {
+	isvc := newISVC(namespace, name, deploymentMode)
+	annotations := isvc.GetAnnotations()
+	annotations["security.opendatahub.io/enable-auth"] = "true"
+	isvc.SetAnnotations(annotations)
+
+	return isvc
+}
+
+func newISVCWithIstioAnnotations(namespace, name, deploymentMode string) *unstructured.Unstructured {
+	isvc := newISVC(namespace, name, deploymentMode)
+	annotations := isvc.GetAnnotations()
+	annotations["istio.io/rev"] = "default"
+	annotations["sidecar.istio.io/inject"] = "true"
+	annotations["serving.knative.dev/creator"] = "system"
+	isvc.SetAnnotations(annotations)
+
+	labels := make(map[string]string)
+	labels["networking.istio.io/gateway"] = "default"
+	labels["networking.knative.dev/visibility"] = "cluster-local"
+	isvc.SetLabels(labels)
+
+	return isvc
+}
+
+func newVirtualService(namespace, name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.VirtualService.APIVersion(),
+			"kind":       resources.VirtualService.Kind,
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": namespace,
+			},
+		},
+	}
+}
+
 func newTestTarget(dynamicClient *dynamicfake.FakeDynamicClient, currentVersion string, dryRun bool) action.Target {
 	v := semver.MustParse(currentVersion)
 	tv := semver.MustParse("3.0.0")

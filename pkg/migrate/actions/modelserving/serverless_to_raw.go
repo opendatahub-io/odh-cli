@@ -19,7 +19,8 @@ const (
 
 	msgServerlessConfirm    = "About to convert %d InferenceService(s) from Serverless to RawDeployment"
 	msgServerlessCancelled  = "User cancelled Serverless to RawDeployment conversion"
-	msgServerlessComplete   = "Processed %d InferenceService(s) for Serverless to RawDeployment conversion"
+	msgServerlessComplete   = "Converted %d of %d InferenceService(s) from Serverless to RawDeployment"
+	msgServerlessFailed     = "Failed to convert %d of %d InferenceService(s) from Serverless to RawDeployment"
 	msgServerlessDryRun     = "Dry-run: would convert %d InferenceService(s) from Serverless to RawDeployment"
 	msgServerlessBackupDone = "Backed up %d Serverless InferenceServices to %s"
 	msgServerlessNoISVCs    = "No Serverless InferenceServices found"
@@ -97,6 +98,7 @@ func (a *ServerlessToRawAction) convertISVCs(
 	}
 
 	convertedCount := 0
+	failedCount := 0
 
 	for _, isvc := range isvcs {
 		isvcStep := step.Child(
@@ -104,18 +106,34 @@ func (a *ServerlessToRawAction) convertISVCs(
 			fmt.Sprintf("Convert %s/%s", isvc.GetNamespace(), isvc.GetName()),
 		)
 
-		patchISVCDeploymentMode(ctx, target, isvc, deploymentModeRawDeployment, isvcStep)
+		if err := deleteAndRecreateISVC(ctx, target, isvc, isvcStep); err != nil {
+			failedCount++
 
-		// Create auth resources
-		ensureAuthResources(ctx, target, isvc, isvcStep)
+			continue
+		}
+
+		deleteIstioRoute(ctx, target, isvc, isvcStep)
+
+		if hasAuthEnabled(isvc) {
+			ensureAuthResources(ctx, target, isvc, isvcStep)
+		} else {
+			isvcStep.Recordf(
+				"auth-skip-"+isvc.GetName(),
+				msgAuthSkipped,
+				result.StepSkipped,
+				isvc.GetNamespace(), isvc.GetName(),
+			)
+		}
 
 		convertedCount++
 	}
 
 	if target.DryRun {
-		step.Completef(result.StepSkipped, msgServerlessDryRun, convertedCount)
+		step.Completef(result.StepSkipped, msgServerlessDryRun, len(isvcs))
+	} else if failedCount > 0 {
+		step.Completef(result.StepFailed, msgServerlessFailed, failedCount, len(isvcs))
 	} else {
-		step.Completef(result.StepCompleted, msgServerlessComplete, convertedCount)
+		step.Completef(result.StepCompleted, msgServerlessComplete, convertedCount, len(isvcs))
 	}
 }
 
