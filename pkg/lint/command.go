@@ -44,6 +44,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
 	trainerworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainer"
 	trainingoperatorworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainingoperator"
+	trustyaiworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trustyai"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/schema"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
@@ -137,12 +138,16 @@ func NewCommand(
 	registry.MustRegister(sharedossm.NewCheck())
 	registry.MustRegister(sharedserverless.NewCheck())
 
-	// Workloads (22)
+	// Workloads (26)
 	registry.MustRegister(ray.NewAppWrapperCleanupCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewInstructLabRemovalCheck())
 	registry.MustRegister(datasciencepipelinesworkloads.NewStoredVersionRemovalCheck())
 	registry.MustRegister(guardrails.NewImpactedWorkloadsCheck())
 	registry.MustRegister(guardrails.NewOtelMigrationCheck())
+	registry.MustRegister(trustyaiworkloads.NewImpactedWorkloadsCheck())
+	registry.MustRegister(trustyaiworkloads.NewPVCStorageMigrationCheck())
+	registry.MustRegister(trustyaiworkloads.NewDatabaseStorageMigrationCheck())
+	registry.MustRegister(trustyaiworkloads.NewScheduledMetricsBackupCheck())
 	registry.MustRegister(kserveworkloads.NewInferenceServiceConfigCheck())
 	registry.MustRegister(kserveworkloads.NewAcceleratorMigrationCheck())
 	registry.MustRegister(kserveworkloads.NewHardwareProfileMigrationCheck())
