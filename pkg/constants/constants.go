@@ -11,6 +11,7 @@ const (
 const (
 	PlatformDSCI = "dsci"
 	PlatformDSC  = "dsc"
+	PlatformCRD  = "crd"
 )
 
 // Component names used across multiple package groups.

@@ -33,6 +33,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/servicemesh"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/sharedossm"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/sharedserverless"
+	platformcrd "github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/crd"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/datasciencecluster"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/platform/dscinitialization"
 	datasciencepipelinesworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/datasciencepipelines"
@@ -107,15 +108,22 @@ func NewCommand(
 	registry := check.NewRegistry()
 
 	// Explicitly register all checks (no global state, full test isolation)
-	// Platform (2)
+	// Platform (5)
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
+	registry.MustRegister(platformcrd.NewWebhookAvailabilityCheck())
+	registry.MustRegister(platformcrd.NewStoredVersionsCheck())
+	registry.MustRegister(platformcrd.NewFinalizerOrphanCheck())
 
-	// Components (16)
+	// Components (20)
 	registry.MustRegister(aigateway.NewMaaSFieldMigrationCheck())
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
 	registry.MustRegister(dashboard.NewHardwareProfileMigrationCheck())
+	registry.MustRegister(dashboard.NewAuthModelMigrationCheck())
+	registry.MustRegister(dashboard.NewRouteMigrationCheck())
+	registry.MustRegister(dashboard.NewResourceCapacityCheck())
+	registry.MustRegister(dashboard.NewConfigCompatibilityCheck())
 	registry.MustRegister(datasciencepipelines.NewRenamingCheck())
 	registry.MustRegister(kserve.NewServerlessRemovalCheck())
 	registry.MustRegister(kserve.NewKuadrantReadinessCheck())

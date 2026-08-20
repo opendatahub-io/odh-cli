@@ -13,6 +13,13 @@ const (
 	CheckTypeDataIntegrity               CheckType = "data-integrity"
 	CheckTypeWorkloadState               CheckType = "workload-state"
 	CheckTypeAcceleratorProfileMigration CheckType = "acceleratorprofile-migration"
+	CheckTypeWebhookAvailability         CheckType = "webhook-availability"
+	CheckTypeStoredVersions              CheckType = "stored-versions"
+	CheckTypeFinalizerOrphan             CheckType = "finalizer-orphan"
+	CheckTypeAuthModelMigration          CheckType = "auth-model-migration"
+	CheckTypeRouteMigration              CheckType = "route-migration"
+	CheckTypeResourceCapacity            CheckType = "resource-capacity"
+	CheckTypeConfigCompatibility         CheckType = "config-compatibility"
 )
 
 // Annotation keys used across multiple packages.
