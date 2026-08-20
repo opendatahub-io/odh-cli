@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -47,6 +48,7 @@ type resourceLookupResult struct {
 	resources      podResources
 	containerCount int
 	found          bool
+	deployment     *unstructured.Unstructured
 }
 
 // ResourceCapacityCheck validates that cluster nodes have sufficient resources
@@ -108,11 +110,17 @@ func (c *ResourceCapacityCheck) checkCapacity(
 	}
 
 	autoscalers, autoErr := req.Client.List(ctx, resources.ClusterAutoscaler)
-	hasAutoscaler := autoErr == nil && len(autoscalers) > 0
+
+	var hasAutoscaler *bool
+
+	if autoErr == nil {
+		v := len(autoscalers) > 0
+		hasAutoscaler = &v
+	}
 
 	setCapacityCondition(req, lookup.resources, nodes, lookup.containerCount, hasAutoscaler)
 
-	return checkRolloutDeadlock(ctx, req)
+	return checkRolloutDeadlock(req, lookup.deployment)
 }
 
 func setCapacityCondition(
@@ -120,7 +128,7 @@ func setCapacityCondition(
 	podReq podResources,
 	nodes []podResources,
 	containerCount int,
-	hasAutoscaler bool,
+	hasAutoscaler *bool,
 ) {
 	cpuStr := formatCPU(podReq.cpuMillis)
 	memStr := formatMemory(podReq.memoryBytes)
@@ -148,7 +156,7 @@ func setCapacityCondition(
 		return
 	}
 
-	if !hasAutoscaler {
+	if hasAutoscaler != nil && !*hasAutoscaler {
 		req.Result.SetCondition(check.NewCondition(
 			conditionTypeResourceCapacity,
 			metav1.ConditionFalse,
@@ -193,8 +201,16 @@ func getDeploymentPodResources(
 ) (resourceLookupResult, error) {
 	deploy, err := cl.GetResource(ctx, resources.Deployment, dashboardDeploymentName,
 		client.InNamespace(namespace))
-	if err != nil || deploy == nil {
-		return resourceLookupResult{}, nil //nolint:nilerr // Not-found is expected
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return resourceLookupResult{}, nil
+		}
+
+		return resourceLookupResult{}, fmt.Errorf("getting dashboard deployment: %w", err)
+	}
+
+	if deploy == nil {
+		return resourceLookupResult{}, nil
 	}
 
 	req, count, err := sumContainerRequests(deploy, ".spec.template.spec.containers")
@@ -202,7 +218,7 @@ func getDeploymentPodResources(
 		return resourceLookupResult{}, fmt.Errorf("reading deployment container requests: %w", err)
 	}
 
-	return resourceLookupResult{resources: req, containerCount: count, found: true}, nil
+	return resourceLookupResult{resources: req, containerCount: count, found: true, deployment: deploy}, nil
 }
 
 func getPodMaxResources(
@@ -230,8 +246,15 @@ func getPodMaxResources(
 			continue
 		}
 
-		if req.cpuMillis > maxReq.cpuMillis || req.memoryBytes > maxReq.memoryBytes {
-			maxReq = req
+		if req.cpuMillis > maxReq.cpuMillis {
+			maxReq.cpuMillis = req.cpuMillis
+		}
+
+		if req.memoryBytes > maxReq.memoryBytes {
+			maxReq.memoryBytes = req.memoryBytes
+		}
+
+		if count > maxCount {
 			maxCount = count
 		}
 	}
@@ -268,16 +291,12 @@ func sumContainerRequests(
 			continue
 		}
 
-		if cpuStr, ok := requests["cpu"].(string); ok {
-			if q, pErr := resource.ParseQuantity(cpuStr); pErr == nil {
-				total.cpuMillis += q.MilliValue()
-			}
+		if q, ok := parseQuantityAny(requests["cpu"]); ok {
+			total.cpuMillis += q.MilliValue()
 		}
 
-		if memStr, ok := requests["memory"].(string); ok {
-			if q, pErr := resource.ParseQuantity(memStr); pErr == nil {
-				total.memoryBytes += q.Value()
-			}
+		if q, ok := parseQuantityAny(requests["memory"]); ok {
+			total.memoryBytes += q.Value()
 		}
 	}
 
@@ -296,21 +315,17 @@ func getNodeAllocatable(
 	capacities := make([]podResources, 0, len(nodes))
 
 	for _, node := range nodes {
-		cpuStr, _ := jq.Query[string](node, ".status.allocatable.cpu")
-		memStr, _ := jq.Query[string](node, ".status.allocatable.memory")
+		cpuRaw, _ := jq.Query[any](node, ".status.allocatable.cpu")
+		memRaw, _ := jq.Query[any](node, ".status.allocatable.memory")
 
 		var pr podResources
 
-		if cpuStr != "" {
-			if q, pErr := resource.ParseQuantity(cpuStr); pErr == nil {
-				pr.cpuMillis = q.MilliValue()
-			}
+		if q, ok := parseQuantityAny(cpuRaw); ok {
+			pr.cpuMillis = q.MilliValue()
 		}
 
-		if memStr != "" {
-			if q, pErr := resource.ParseQuantity(memStr); pErr == nil {
-				pr.memoryBytes = q.Value()
-			}
+		if q, ok := parseQuantityAny(memRaw); ok {
+			pr.memoryBytes = q.Value()
 		}
 
 		if pr.cpuMillis > 0 || pr.memoryBytes > 0 {
@@ -332,13 +347,11 @@ func anyNodeFits(podReq podResources, nodes []podResources) bool {
 }
 
 func checkRolloutDeadlock(
-	ctx context.Context,
 	req *validate.ComponentRequest,
+	deploy *unstructured.Unstructured,
 ) error {
-	deploy, err := req.Client.GetResource(ctx, resources.Deployment, dashboardDeploymentName,
-		client.InNamespace(req.ApplicationsNamespace))
-	if err != nil || deploy == nil {
-		return nil //nolint:nilerr // Not-found is fine — no rollout to check
+	if deploy == nil {
+		return nil
 	}
 
 	replicas, _ := jq.Query[float64](deploy, ".spec.replicas")
@@ -404,6 +417,21 @@ func computeEffectiveMaxUnavailable(raw any, replicas int) int {
 		return n
 	default:
 		return 1
+	}
+}
+
+func parseQuantityAny(raw any) (resource.Quantity, bool) {
+	switch v := raw.(type) {
+	case string:
+		q, err := resource.ParseQuantity(v)
+
+		return q, err == nil
+	case int64:
+		return *resource.NewQuantity(v, resource.DecimalSI), true
+	case float64:
+		return *resource.NewQuantity(int64(v), resource.DecimalSI), true
+	default:
+		return resource.Quantity{}, false
 	}
 }
 

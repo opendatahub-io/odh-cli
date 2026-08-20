@@ -97,6 +97,7 @@ func (c *FinalizerOrphanCheck) Validate(
 	resourceNames := strings.Join(resourcesWithFinalizers, ", ")
 
 	deployments, err := target.Client.List(ctx, resources.Deployment,
+		client.WithNamespace("redhat-ods-operator"),
 		client.WithLabelSelector(operatorLabelSelector))
 	if err != nil {
 		return nil, fmt.Errorf("listing operator deployments: %w", err)

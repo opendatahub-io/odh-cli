@@ -488,6 +488,99 @@ func TestResourceCapacityCheck_BlockingAndDeadlock(t *testing.T) {
 	g.Expect(rolloutCond.Impact).To(Equal(result.ImpactAdvisory))
 }
 
+func TestResourceCapacityCheck_IntegerQuantities(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	dsc := testutil.NewDSC(map[string]string{"dashboard": "Managed"})
+	dsci := testutil.NewDSCI(ns)
+	ca := newClusterAutoscaler()
+
+	deploy := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]any{"name": "rhods-dashboard", "namespace": ns},
+		"spec": map[string]any{
+			"replicas": int64(2),
+			"strategy": map[string]any{
+				"type":          "RollingUpdate",
+				"rollingUpdate": map[string]any{"maxUnavailable": "1"},
+			},
+			"template": map[string]any{
+				"spec": map[string]any{
+					"containers": []any{
+						map[string]any{
+							"name": "dashboard",
+							"resources": map[string]any{
+								"requests": map[string]any{
+									"cpu":    int64(1),
+									"memory": int64(1073741824),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	node := newNode("node-1", "8000m", "32Gi")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      resourceCapacityListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, deploy, node, ca},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	chk := dashboard.NewResourceCapacityCheck()
+	dr, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+
+	capacityCond := findCondition(dr, "ResourceCapacity")
+	g.Expect(capacityCond).ToNot(BeNil())
+	g.Expect(capacityCond.Status).To(Equal(metav1.ConditionTrue))
+	g.Expect(capacityCond.Reason).To(Equal(check.ReasonRequirementsMet))
+}
+
+func TestResourceCapacityCheck_FallbackPodsDimensionMax(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	dsc := testutil.NewDSC(map[string]string{"dashboard": "Managed"})
+	dsci := testutil.NewDSCI(ns)
+
+	podA := newDashboardPodWithResources("dashboard-a", ns, []containerSpec{
+		{name: "dashboard", cpuReq: "4000m", memoryReq: "1Gi"},
+	})
+	podB := newDashboardPodWithResources("dashboard-b", ns, []containerSpec{
+		{name: "dashboard", cpuReq: "500m", memoryReq: "8Gi"},
+	})
+
+	node := newNode("node-1", "3500m", "16Gi")
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      resourceCapacityListKinds,
+		Objects:        []*unstructured.Unstructured{dsc, dsci, podA, podB, node},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	chk := dashboard.NewResourceCapacityCheck()
+	dr, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+
+	capacityCond := findCondition(dr, "ResourceCapacity")
+	g.Expect(capacityCond).ToNot(BeNil())
+	g.Expect(capacityCond.Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(capacityCond.Reason).To(Equal(check.ReasonInsufficientCapacity))
+	g.Expect(capacityCond.Impact).To(Equal(result.ImpactBlocking))
+}
+
 func findCondition(dr *result.DiagnosticResult, condType string) *result.Condition {
 	for i := range dr.Status.Conditions {
 		if dr.Status.Conditions[i].Type == condType {

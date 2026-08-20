@@ -23,7 +23,7 @@ const (
 
 	conditionTypeAuthModel = "AuthModelMigration"
 
-	msgAuthModelMigrated = "Dashboard pods are using kube-rbac-proxy auth model (3.x)"
+	msgAuthModelMigrated = "No oauth-proxy sidecar found on dashboard pods"
 	msgAuthModelLegacy   = "Found %d dashboard pod(s) still using oauth-proxy sidecar - operator will migrate automatically"
 	msgAuthModelNoPods   = "No dashboard pods found"
 )

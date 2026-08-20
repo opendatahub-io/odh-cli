@@ -83,9 +83,11 @@ func (c *ConfigCompatibilityCheck) checkConfig(
 	if config == nil {
 		req.Result.SetCondition(check.NewCondition(
 			conditionTypeConfigCompatibility,
-			metav1.ConditionTrue,
-			check.WithReason(check.ReasonRequirementsMet),
+			metav1.ConditionFalse,
+			check.WithReason(check.ReasonInsufficientData),
 			check.WithMessage("OdhDashboardConfig access restricted - unable to verify"),
+			check.WithImpact(result.ImpactAdvisory),
+			check.WithRemediation(c.CheckRemediation),
 		))
 
 		return nil
