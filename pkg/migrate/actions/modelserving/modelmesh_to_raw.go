@@ -28,6 +28,11 @@ const (
 	msgModelMeshDryRun     = "Dry-run: would convert %d InferenceService(s) from ModelMesh to RawDeployment"
 	msgModelMeshBackupDone = "Backed up %d ModelMesh InferenceServices to %s"
 	msgModelMeshNoISVCs    = "No ModelMesh InferenceServices found"
+
+	msgModelMeshPVCSummary      = "Processed %d InferenceService(s): %d auto-converted, %d PVC-backed (skipped, manual conversion required)"
+	msgModelMeshPVCDryRun       = "Dry-run: would convert %d InferenceService(s), %d PVC-backed skipped (manual conversion required)"
+	msgModelMeshAllPVC          = "All %d ModelMesh InferenceService(s) use PVC-backed storage — none can be auto-converted"
+	msgModelMeshValidateSummary = "Found %d auto-convertible and %d PVC-backed InferenceService(s) with deploymentMode=%s"
 )
 
 // ModelMeshToRawAction converts InferenceServices from ModelMesh to RawDeployment mode.
@@ -89,10 +94,35 @@ func (a *ModelMeshToRawAction) convertISVCs(
 
 	step.Recordf("list-isvcs", msgFoundISVCs, result.StepCompleted, len(isvcs), deploymentModeModelMesh)
 
+	// Classify ISVCs by storage type
+	convertible, pvcBacked := classifyISVCsByStorage(ctx, target, isvcs, step)
+
+	// Warn about PVC-backed ISVCs
+	for _, isvc := range pvcBacked {
+		storageKey := getISVCStorageKey(isvc)
+
+		step.Recordf(
+			fmt.Sprintf("pvc-warn-%s-%s", isvc.GetNamespace(), isvc.GetName()),
+			msgPVCStorageDetected,
+			result.StepSkipped,
+			isvc.GetNamespace(), isvc.GetName(), storageKey,
+		)
+	}
+
+	if len(pvcBacked) > 0 {
+		step.Recordf("pvc-manual-steps", msgPVCManualSteps, result.StepSkipped)
+	}
+
+	if len(convertible) == 0 {
+		step.Completef(result.StepSkipped, msgModelMeshAllPVC, len(pvcBacked))
+
+		return
+	}
+
 	// Confirm with user
 	if !target.SkipConfirm && !target.DryRun {
 		target.IO.Fprintln()
-		target.IO.Errorf(msgModelMeshConfirm, len(isvcs))
+		target.IO.Errorf(msgModelMeshConfirm, len(convertible))
 
 		if !confirmation.Prompt(target.IO, "Proceed with conversion?") {
 			step.Completef(result.StepSkipped, msgModelMeshCancelled)
@@ -104,7 +134,7 @@ func (a *ModelMeshToRawAction) convertISVCs(
 	convertedCount := 0
 	processedNamespaces := make(map[string]bool)
 
-	for _, isvc := range isvcs {
+	for _, isvc := range convertible {
 		isvcStep := step.Child(
 			fmt.Sprintf("convert-%s-%s", isvc.GetNamespace(), isvc.GetName()),
 			fmt.Sprintf("Convert %s/%s", isvc.GetNamespace(), isvc.GetName()),
@@ -137,10 +167,18 @@ func (a *ModelMeshToRawAction) convertISVCs(
 		removeModelMeshLabel(ctx, target, ns, step)
 	}
 
-	if target.DryRun {
-		step.Completef(result.StepSkipped, msgModelMeshDryRun, convertedCount)
+	if len(pvcBacked) > 0 {
+		if target.DryRun {
+			step.Completef(result.StepSkipped, msgModelMeshPVCDryRun, convertedCount, len(pvcBacked))
+		} else {
+			step.Completef(result.StepCompleted, msgModelMeshPVCSummary, convertedCount+len(pvcBacked), convertedCount, len(pvcBacked))
+		}
 	} else {
-		step.Completef(result.StepCompleted, msgModelMeshComplete, convertedCount)
+		if target.DryRun {
+			step.Completef(result.StepSkipped, msgModelMeshDryRun, convertedCount)
+		} else {
+			step.Completef(result.StepCompleted, msgModelMeshComplete, convertedCount)
+		}
 	}
 }
 
@@ -307,11 +345,37 @@ func (t *modelMeshToRawRunTask) Validate(
 	isvcs, err := listISVCsByDeploymentMode(ctx, target, deploymentModeModelMesh)
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to list ModelMesh InferenceServices: %v", err)
-	} else if len(isvcs) == 0 {
-		step.Completef(result.StepSkipped, msgModelMeshNoISVCs)
-	} else {
-		step.Completef(result.StepCompleted, msgFoundISVCs, len(isvcs), deploymentModeModelMesh)
+
+		return action.BuildResult(target)
 	}
+
+	if len(isvcs) == 0 {
+		step.Completef(result.StepSkipped, msgModelMeshNoISVCs)
+
+		return action.BuildResult(target)
+	}
+
+	step.Recordf("list-isvcs", msgFoundISVCs, result.StepCompleted, len(isvcs), deploymentModeModelMesh)
+
+	// Detect PVC-backed ISVCs
+	convertible, pvcBacked := classifyISVCsByStorage(ctx, target, isvcs, step)
+
+	for _, isvc := range pvcBacked {
+		storageKey := getISVCStorageKey(isvc)
+
+		step.Recordf(
+			fmt.Sprintf("pvc-detect-%s-%s", isvc.GetNamespace(), isvc.GetName()),
+			msgPVCStorageDetected,
+			result.StepSkipped,
+			isvc.GetNamespace(), isvc.GetName(), storageKey,
+		)
+	}
+
+	if len(pvcBacked) > 0 {
+		step.Recordf("pvc-manual-steps", msgPVCManualSteps, result.StepSkipped)
+	}
+
+	step.Completef(result.StepCompleted, msgModelMeshValidateSummary, len(convertible), len(pvcBacked), deploymentModeModelMesh)
 
 	return action.BuildResult(target)
 }
