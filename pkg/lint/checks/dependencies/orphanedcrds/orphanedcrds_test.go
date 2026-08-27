@@ -1,6 +1,7 @@
 package orphanedcrds_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/blang/semver/v4"
@@ -9,13 +10,17 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/testutil"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/orphanedcrds"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -382,6 +387,95 @@ func TestOrphanedCRDsCheck_UnrelatedServiceMeshSubscription(t *testing.T) {
 		"Reason": Equal(check.ReasonDependencyUnavailable),
 	}))
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+}
+
+func TestOrphanedCRDsCheck_ListResourcesError(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	scheme := runtime.NewScheme()
+	_ = metav1.AddMetaToScheme(scheme)
+
+	crd := newIstioCRD(crdVirtualServices)
+
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+		scheme,
+		listKinds(),
+		crd,
+	)
+
+	// Inject a non-permission error when listing virtualservices to exercise
+	// the ConditionUnknown / ReasonInsufficientData path.
+	dynamicClient.PrependReactor("list", "virtualservices", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("connection refused")
+	})
+
+	currentVer := semver.MustParse("2.17.0")
+	targetVer := semver.MustParse("3.0.0")
+
+	target := check.Target{
+		Client:         client.NewForTesting(client.TestClientConfig{Dynamic: dynamicClient}),
+		CurrentVersion: &currentVer,
+		TargetVersion:  &targetVer,
+	}
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionUnknown),
+		"Reason": Equal(check.ReasonInsufficientData),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("connection refused"))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("unable to verify"))
+	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("Verify RBAC permissions"))
+	g.Expect(result.Status.Conditions[0].Remediation).ToNot(ContainSubstring("Delete the orphaned"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
+func TestOrphanedCRDsCheck_ActiveResources(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	vs := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "networking.istio.io/v1beta1",
+			"kind":       "VirtualService",
+			"metadata": map[string]any{
+				"name":      "my-virtualservice",
+				"namespace": "default",
+			},
+		},
+	}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: listKinds(),
+		Objects: []*unstructured.Unstructured{
+			newIstioCRD(crdVirtualServices),
+			vs,
+		},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonDependencyUnavailable),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("active custom resource"))
+	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("Review and remove"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
 }
 
 func TestOrphanedCRDsCheck_Metadata(t *testing.T) {

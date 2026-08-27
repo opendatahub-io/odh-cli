@@ -118,8 +118,6 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 		return dr, nil
 	}
 
-	crdNames := collectCRDNames(istioCRDs)
-
 	switch {
 	case activeCount > 0:
 		dr.SetCondition(check.NewCondition(
@@ -131,6 +129,8 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 			check.WithImpact(result.ImpactBlocking),
 		))
 	default:
+		crdNames := collectCRDNames(istioCRDs)
+
 		dr.SetCondition(check.NewCondition(
 			check.ConditionTypeAvailable,
 			metav1.ConditionFalse,
