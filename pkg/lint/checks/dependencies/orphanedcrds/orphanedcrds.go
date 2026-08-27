@@ -22,18 +22,21 @@ const (
 
 	labelMaistraVersion = "maistra-version"
 	crdSuffixIstio      = ".istio.io"
+	packageSM2Operator  = "servicemeshoperator"
 )
 
 const (
 	msgNoCRDs            = "No orphaned Service Mesh v2 *.istio.io CRDs detected"
 	msgSM2StillInstalled = "Service Mesh v2 operator subscription found; *.istio.io CRDs with label %q are managed by the operator, not orphaned"
 	msgOrphanedCRDs      = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 (label %q): %s. These stale CRDs block the Data Science Gateway post-upgrade"
-	msgActiveResources   = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 with %d active custom resource instance(s) across them. Manual review required before deletion"
+	msgActiveResources         = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 with %d active custom resource instance(s) across them. Manual review required before deletion"
+	msgResourceInspectionFailed = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 but unable to verify whether active custom resources exist: %v. Manual inspection required before deletion"
 )
 
 const (
-	remediationOrphaned        = "Delete the orphaned CRDs before upgrading: oc get crd -l maistra-version -o name | grep '.istio.io' | xargs oc delete crd"
-	remediationActiveResources = "Review and remove active custom resources before deleting the orphaned CRDs. Run: for crd in $(oc get crd -l maistra-version -o custom-columns=NAME:.metadata.name --no-headers | grep '.istio.io'); do echo \"$crd: $(oc get $crd -A --no-headers 2>/dev/null | wc -l) instances\"; done"
+	remediationOrphaned          = "Delete the orphaned CRDs before upgrading: oc get crd -l maistra-version -o name | grep '.istio.io' | xargs oc delete crd"
+	remediationActiveResources   = "Review and remove active custom resources before deleting the orphaned CRDs. Run: for crd in $(oc get crd -l maistra-version -o custom-columns=NAME:.metadata.name --no-headers | grep '.istio.io'); do echo \"$crd: $(oc get $crd -A --no-headers 2>/dev/null | wc -l) instances\"; done"
+	remediationInspectionFailed  = "Verify RBAC permissions allow listing custom resources, then re-run the check. Do not delete CRDs until active resource count is confirmed to be zero"
 )
 
 // Check detects orphaned *.istio.io CRDs from Service Mesh v2 that block the Data Science Gateway.
@@ -99,7 +102,22 @@ func (c *Check) Validate(ctx context.Context, target check.Target) (*result.Diag
 		return dr, nil
 	}
 
-	activeCount := countActiveResources(ctx, target, istioCRDs)
+	activeCount, err := countActiveResources(ctx, target, istioCRDs)
+	if err != nil {
+		dr.SetCondition(check.NewCondition(
+			check.ConditionTypeAvailable,
+			metav1.ConditionUnknown,
+			check.WithReason(check.ReasonInsufficientData),
+			check.WithMessage(msgResourceInspectionFailed, len(istioCRDs), err),
+			check.WithRemediation(remediationInspectionFailed),
+			check.WithImpact(result.ImpactBlocking),
+		))
+
+		populateImpactedObjects(dr, istioCRDs)
+
+		return dr, nil
+	}
+
 	crdNames := collectCRDNames(istioCRDs)
 
 	switch {
@@ -151,8 +169,8 @@ func isSM2OperatorInstalled(ctx context.Context, target check.Target) (bool, err
 	}
 
 	for i := range subscriptions.Items {
-		name := subscriptions.Items[i].Name
-		if strings.Contains(name, "servicemesh") && !strings.Contains(name, "servicemeshoperator3") {
+		sub := &subscriptions.Items[i]
+		if sub.Spec != nil && sub.Spec.Package == packageSM2Operator {
 			return true, nil
 		}
 	}
@@ -161,12 +179,13 @@ func isSM2OperatorInstalled(ctx context.Context, target check.Target) (bool, err
 }
 
 // countActiveResources counts custom resource instances across all orphaned CRDs.
-// Errors listing individual CRDs are silently ignored (best-effort).
+// Returns an error if any CRD's resources cannot be listed, since an incomplete
+// count could lead to recommending deletion when active resources exist.
 func countActiveResources(
 	ctx context.Context,
 	target check.Target,
 	crds []*unstructured.Unstructured,
-) int {
+) (int, error) {
 	total := 0
 
 	for _, crd := range crds {
@@ -177,13 +196,13 @@ func countActiveResources(
 
 		items, err := target.Client.ListResources(ctx, gvr)
 		if err != nil {
-			continue
+			return 0, fmt.Errorf("listing resources for CRD %q: %w", crd.GetName(), err)
 		}
 
 		total += len(items)
 	}
 
-	return total
+	return total, nil
 }
 
 // extractGVR derives the GVR from a CRD's spec fields using JQ.

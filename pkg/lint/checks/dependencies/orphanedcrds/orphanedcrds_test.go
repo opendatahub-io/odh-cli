@@ -24,6 +24,8 @@ import (
 func listKinds() map[schema.GroupVersionResource]string {
 	return map[schema.GroupVersionResource]string{
 		resources.CustomResourceDefinition.GVR(): resources.CustomResourceDefinition.ListKind(),
+		{Group: "networking.istio.io", Version: "v1beta1", Resource: "virtualservices"}:  "VirtualServiceList",
+		{Group: "networking.istio.io", Version: "v1beta1", Resource: "destinationrules"}: "DestinationRuleList",
 	}
 }
 
@@ -95,6 +97,7 @@ func newSM2Subscription() *operatorsv1alpha1.Subscription {
 		},
 		Spec: &operatorsv1alpha1.SubscriptionSpec{
 			Channel: "stable",
+			Package: "servicemeshoperator",
 		},
 	}
 }
@@ -240,6 +243,7 @@ func TestOrphanedCRDsCheck_SM3SubscriptionNotTreatedAsSM2(t *testing.T) {
 		},
 		Spec: &operatorsv1alpha1.SubscriptionSpec{
 			Channel: "stable",
+			Package: "servicemeshoperator3",
 		},
 	}
 
@@ -306,6 +310,78 @@ func TestOrphanedCRDsCheck_CanApply_NilVersions(t *testing.T) {
 	canApply, err := chk.CanApply(t.Context(), check.Target{})
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(canApply).To(BeFalse())
+}
+
+func TestOrphanedCRDsCheck_SM2CustomNameSubscription(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := &operatorsv1alpha1.Subscription{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-custom-sm-subscription",
+			Namespace: "openshift-operators",
+		},
+		Spec: &operatorsv1alpha1.SubscriptionSpec{
+			Channel: "stable",
+			Package: "servicemeshoperator",
+		},
+	}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: listKinds(),
+		Objects:   []*unstructured.Unstructured{newIstioCRD(crdVirtualServices)},
+		OLM:       operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionTrue),
+		"Reason": Equal(check.ReasonRequirementsMet),
+	}))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("managed by the operator"))
+}
+
+func TestOrphanedCRDsCheck_UnrelatedServiceMeshSubscription(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	sub := &operatorsv1alpha1.Subscription{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "servicemesh-monitoring",
+			Namespace: "openshift-operators",
+		},
+		Spec: &operatorsv1alpha1.SubscriptionSpec{
+			Channel: "stable",
+			Package: "servicemesh-monitoring-operator",
+		},
+	}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: listKinds(),
+		Objects:   []*unstructured.Unstructured{newIstioCRD(crdVirtualServices)},
+		OLM:       operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonDependencyUnavailable),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestOrphanedCRDsCheck_Metadata(t *testing.T) {
