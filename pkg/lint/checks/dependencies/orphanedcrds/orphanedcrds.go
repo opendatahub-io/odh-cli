@@ -34,8 +34,8 @@ const (
 )
 
 const (
-	remediationOrphaned          = "Delete the orphaned CRDs before upgrading: oc get crd -l maistra-version -o name | grep '.istio.io' | xargs oc delete crd"
-	remediationActiveResources   = "Review and remove active custom resources before deleting the orphaned CRDs. Run: for crd in $(oc get crd -l maistra-version -o custom-columns=NAME:.metadata.name --no-headers | grep '.istio.io'); do echo \"$crd: $(oc get $crd -A --no-headers 2>/dev/null | wc -l) instances\"; done"
+	remediationOrphaned          = "Delete the orphaned CRDs before upgrading: oc get crd -l maistra-version -o name | grep -E '\\.istio\\.io$' | xargs oc delete crd"
+	remediationActiveResources   = "Review and remove active custom resources before deleting the orphaned CRDs. Run: for crd in $(oc get crd -l maistra-version -o custom-columns=NAME:.metadata.name --no-headers | grep -E '\\.istio\\.io$'); do echo \"$crd: $(oc get $crd -A --no-headers 2>/dev/null | wc -l) instances\"; done"
 	remediationInspectionFailed  = "Verify RBAC permissions allow listing custom resources, then re-run the check. Do not delete CRDs until active resource count is confirmed to be zero"
 )
 
