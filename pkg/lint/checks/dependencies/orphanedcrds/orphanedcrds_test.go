@@ -333,9 +333,9 @@ func TestOrphanedCRDsCheck_SM2CustomNameSubscription(t *testing.T) {
 	}
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: listKinds(),
-		Objects:   []*unstructured.Unstructured{newIstioCRD(crdVirtualServices)},
-		OLM:       operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{newIstioCRD(crdVirtualServices)},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
@@ -369,9 +369,9 @@ func TestOrphanedCRDsCheck_UnrelatedServiceMeshSubscription(t *testing.T) {
 	}
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: listKinds(),
-		Objects:   []*unstructured.Unstructured{newIstioCRD(crdVirtualServices)},
-		OLM:       operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{newIstioCRD(crdVirtualServices)},
+		OLM:            operatorfake.NewSimpleClientset(sub), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
 		CurrentVersion: "2.17.0",
 		TargetVersion:  "3.0.0",
 	})
