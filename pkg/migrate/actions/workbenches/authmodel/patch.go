@@ -91,14 +91,19 @@ func removeTornadoArg(s string) string {
 	}
 }
 
-// needsAuthModelPatch returns true if the notebook still has any 2.x OAuth
-// artifacts that must be removed before 3.x.
+// needsAuthModelPatch returns true until the notebook has the 3.x auth
+// annotation and no remaining 2.x OAuth artifacts.
 func needsAuthModelPatch(nb *unstructured.Unstructured) bool {
-	return hasOAuthAnnotation(nb) ||
+	return !hasInjectAuthAnnotation(nb) ||
+		hasOAuthAnnotation(nb) ||
 		hasOAuthProxyContainer(nb) ||
 		hasOAuthFinalizer(nb) ||
 		hasOAuthVolumes(nb) ||
 		hasTornadoSettings(nb)
+}
+
+func hasInjectAuthAnnotation(nb *unstructured.Unstructured) bool {
+	return nb.GetAnnotations()[annotationInjectAuth] == "true"
 }
 
 // hasOAuthAnnotation returns true if inject-oauth or oauth-logout-url is present.
