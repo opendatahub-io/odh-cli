@@ -26,17 +26,17 @@ const (
 )
 
 const (
-	msgNoCRDs            = "No orphaned Service Mesh v2 *.istio.io CRDs detected"
-	msgSM2StillInstalled = "Service Mesh v2 operator subscription found; *.istio.io CRDs with label %q are managed by the operator, not orphaned"
-	msgOrphanedCRDs      = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 (label %q): %s. These stale CRDs block the Data Science Gateway post-upgrade"
-	msgActiveResources         = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 with %d active custom resource instance(s) across them. Manual review required before deletion"
+	msgNoCRDs                   = "No orphaned Service Mesh v2 *.istio.io CRDs detected"
+	msgSM2StillInstalled        = "Service Mesh v2 operator subscription found; *.istio.io CRDs with label %q are managed by the operator, not orphaned"
+	msgOrphanedCRDs             = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 (label %q): %s. These stale CRDs block the Data Science Gateway post-upgrade"
+	msgActiveResources          = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 with %d active custom resource instance(s) across them. Manual review required before deletion"
 	msgResourceInspectionFailed = "Found %d orphaned *.istio.io CRD(s) from Service Mesh v2 but unable to verify whether active custom resources exist: %v. Manual inspection required before deletion"
 )
 
 const (
-	remediationOrphaned          = "Delete the orphaned CRDs before upgrading: oc get crd -l maistra-version -o name | grep -E '\\.istio\\.io$' | xargs oc delete crd"
-	remediationActiveResources   = "Review and remove active custom resources before deleting the orphaned CRDs. Run: for crd in $(oc get crd -l maistra-version -o custom-columns=NAME:.metadata.name --no-headers | grep -E '\\.istio\\.io$'); do echo \"$crd: $(oc get $crd -A --no-headers 2>/dev/null | wc -l) instances\"; done"
-	remediationInspectionFailed  = "Verify RBAC permissions allow listing custom resources, then re-run the check. Do not delete CRDs until active resource count is confirmed to be zero"
+	remediationOrphaned         = "Delete the orphaned CRDs before upgrading: oc get crd -l maistra-version -o name | grep -E '\\.istio\\.io$' | xargs oc delete crd"
+	remediationActiveResources  = "Review and remove active custom resources before deleting the orphaned CRDs. Run: for crd in $(oc get crd -l maistra-version -o custom-columns=NAME:.metadata.name --no-headers | grep -E '\\.istio\\.io$'); do echo \"$crd: $(oc get $crd -A --no-headers 2>/dev/null | wc -l) instances\"; done"
+	remediationInspectionFailed = "Verify RBAC permissions allow listing custom resources, then re-run the check. Do not delete CRDs until active resource count is confirmed to be zero"
 )
 
 // Check detects orphaned *.istio.io CRDs from Service Mesh v2 that block the Data Science Gateway.

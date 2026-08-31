@@ -28,7 +28,7 @@ import (
 
 func listKinds() map[schema.GroupVersionResource]string {
 	return map[schema.GroupVersionResource]string{
-		resources.CustomResourceDefinition.GVR(): resources.CustomResourceDefinition.ListKind(),
+		resources.CustomResourceDefinition.GVR():                                         resources.CustomResourceDefinition.ListKind(),
 		{Group: "networking.istio.io", Version: "v1beta1", Resource: "virtualservices"}:  "VirtualServiceList",
 		{Group: "networking.istio.io", Version: "v1beta1", Resource: "destinationrules"}: "DestinationRuleList",
 	}
