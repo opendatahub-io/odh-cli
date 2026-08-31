@@ -563,7 +563,7 @@ func TestNeedsAuthModelPatch_AlreadyPatched(t *testing.T) {
 	g.Expect(needsAuthModelPatch(nb)).To(BeFalse())
 }
 
-func TestNeedsAuthModelPatch_CleanNotebook(t *testing.T) {
+func TestNeedsAuthModelPatch_MissingInjectAuthAnnotation(t *testing.T) {
 	g := NewWithT(t)
 
 	nb := newNotebook("wb1", "ns1",
@@ -571,7 +571,7 @@ func TestNeedsAuthModelPatch_CleanNotebook(t *testing.T) {
 		withVolumes(volume("data")),
 	)
 
-	g.Expect(needsAuthModelPatch(nb)).To(BeFalse())
+	g.Expect(needsAuthModelPatch(nb)).To(BeTrue())
 }
 
 func TestAddInjectAuthAnnotation(t *testing.T) {
