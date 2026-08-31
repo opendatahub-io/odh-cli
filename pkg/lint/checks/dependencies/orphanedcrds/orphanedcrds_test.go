@@ -36,14 +36,14 @@ func listKinds() map[schema.GroupVersionResource]string {
 }
 
 const (
-	crdVirtualServices      = "virtualservices.networking.istio.io"
-	crdDestinationRules     = "destinationrules.networking.istio.io"
-	crdMaistraIO            = "servicemeshcontrolplanes.maistra.io"
-	crdAuthorizationPolicy  = "authorizationpolicies.security.istio.io"
-	groupSecurityIstio      = "security.istio.io"
-	resourceAuthzPolicies   = "authorizationpolicies"
-	versionV1               = "v1"
-	versionV1beta1          = "v1beta1"
+	crdVirtualServices     = "virtualservices.networking.istio.io"
+	crdDestinationRules    = "destinationrules.networking.istio.io"
+	crdMaistraIO           = "servicemeshcontrolplanes.maistra.io"
+	crdAuthorizationPolicy = "authorizationpolicies.security.istio.io"
+	groupSecurityIstio     = "security.istio.io"
+	resourceAuthzPolicies  = "authorizationpolicies"
+	versionV1              = "v1"
+	versionV1beta1         = "v1beta1"
 )
 
 func newIstioCRD(name string) *unstructured.Unstructured {
