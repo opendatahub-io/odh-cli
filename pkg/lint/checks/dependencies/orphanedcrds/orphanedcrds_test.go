@@ -28,16 +28,22 @@ import (
 
 func listKinds() map[schema.GroupVersionResource]string {
 	return map[schema.GroupVersionResource]string{
-		resources.CustomResourceDefinition.GVR():                                         resources.CustomResourceDefinition.ListKind(),
-		{Group: "networking.istio.io", Version: "v1beta1", Resource: "virtualservices"}:  "VirtualServiceList",
-		{Group: "networking.istio.io", Version: "v1beta1", Resource: "destinationrules"}: "DestinationRuleList",
+		resources.CustomResourceDefinition.GVR():                                              resources.CustomResourceDefinition.ListKind(),
+		{Group: "networking.istio.io", Version: versionV1beta1, Resource: "virtualservices"}:  "VirtualServiceList",
+		{Group: "networking.istio.io", Version: versionV1beta1, Resource: "destinationrules"}: "DestinationRuleList",
+		{Group: groupSecurityIstio, Version: versionV1beta1, Resource: resourceAuthzPolicies}: "AuthorizationPolicyList",
 	}
 }
 
 const (
-	crdVirtualServices  = "virtualservices.networking.istio.io"
-	crdDestinationRules = "destinationrules.networking.istio.io"
-	crdMaistraIO        = "servicemeshcontrolplanes.maistra.io"
+	crdVirtualServices      = "virtualservices.networking.istio.io"
+	crdDestinationRules     = "destinationrules.networking.istio.io"
+	crdMaistraIO            = "servicemeshcontrolplanes.maistra.io"
+	crdAuthorizationPolicy  = "authorizationpolicies.security.istio.io"
+	groupSecurityIstio      = "security.istio.io"
+	resourceAuthzPolicies   = "authorizationpolicies"
+	versionV1               = "v1"
+	versionV1beta1          = "v1beta1"
 )
 
 func newIstioCRD(name string) *unstructured.Unstructured {
@@ -87,6 +93,93 @@ func newMaistraCRD(name string) *unstructured.Unstructured {
 					map[string]any{
 						"name":   "v2",
 						"served": true,
+					},
+				},
+			},
+		},
+	}
+}
+
+func newIstioCRDWithGroup(name, group string) *unstructured.Unstructured {
+	plural := name[:len(name)-len("."+group)]
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.CustomResourceDefinition.APIVersion(),
+			"kind":       resources.CustomResourceDefinition.Kind,
+			"metadata": map[string]any{
+				"name": name,
+				"labels": map[string]any{
+					"maistra-version": "2.6",
+				},
+			},
+			"spec": map[string]any{
+				"group": group,
+				"names": map[string]any{
+					"plural": plural,
+				},
+				"versions": []any{
+					map[string]any{
+						"name":   versionV1beta1,
+						"served": true,
+					},
+				},
+			},
+		},
+	}
+}
+
+func newIstioCRDMultiVersion(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.CustomResourceDefinition.APIVersion(),
+			"kind":       resources.CustomResourceDefinition.Kind,
+			"metadata": map[string]any{
+				"name": name,
+				"labels": map[string]any{
+					"maistra-version": "2.6",
+				},
+			},
+			"spec": map[string]any{
+				"group": "networking.istio.io",
+				"names": map[string]any{
+					"plural": name[:len(name)-len(".networking.istio.io")],
+				},
+				"versions": []any{
+					map[string]any{
+						"name":   versionV1beta1,
+						"served": true,
+					},
+					map[string]any{
+						"name":   versionV1,
+						"served": true,
+					},
+				},
+			},
+		},
+	}
+}
+
+func newIstioCRDNoServedVersion(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.CustomResourceDefinition.APIVersion(),
+			"kind":       resources.CustomResourceDefinition.Kind,
+			"metadata": map[string]any{
+				"name": name,
+				"labels": map[string]any{
+					"maistra-version": "2.6",
+				},
+			},
+			"spec": map[string]any{
+				"group": "networking.istio.io",
+				"names": map[string]any{
+					"plural": name[:len(name)-len(".networking.istio.io")],
+				},
+				"versions": []any{
+					map[string]any{
+						"name":   versionV1beta1,
+						"served": false,
 					},
 				},
 			},
@@ -475,6 +568,96 @@ func TestOrphanedCRDsCheck_ActiveResources(t *testing.T) {
 	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("active custom resource"))
 	g.Expect(result.Status.Conditions[0].Remediation).To(ContainSubstring("Review and remove"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
+func TestOrphanedCRDsCheck_MultiVersionCRD_PicksFirst(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	multiVersionCRD := newIstioCRDMultiVersion(crdVirtualServices)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{multiVersionCRD},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonDependencyUnavailable),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("1 orphaned"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
+func TestOrphanedCRDsCheck_NoServedVersion_Skipped(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	noServedCRD := newIstioCRDNoServedVersion(crdVirtualServices)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{noServedCRD},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	// The CRD is still detected as orphaned (it has the istio.io suffix and
+	// maistra-version label), but countActiveResources silently skips it
+	// because extractGVR returns false for a CRD with no served version.
+	// The result should still report it as orphaned with zero active resources.
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonDependencyUnavailable),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("1 orphaned"))
+	g.Expect(result.ImpactedObjects).To(HaveLen(1))
+}
+
+func TestOrphanedCRDsCheck_NonNetworkingIstioGroup(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	securityCRD := newIstioCRDWithGroup(crdAuthorizationPolicy, groupSecurityIstio)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds(),
+		Objects:        []*unstructured.Unstructured{securityCRD},
+		OLM:            operatorfake.NewSimpleClientset(), //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	chk := orphanedcrds.NewCheck()
+	result, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeAvailable),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonDependencyUnavailable),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring("1 orphaned"))
+	g.Expect(result.Status.Conditions[0].Message).To(ContainSubstring(crdAuthorizationPolicy))
 	g.Expect(result.ImpactedObjects).To(HaveLen(1))
 }
 

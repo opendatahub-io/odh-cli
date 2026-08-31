@@ -11,6 +11,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/shared"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
@@ -241,14 +242,8 @@ func collectCRDNames(crds []*unstructured.Unstructured) []string {
 }
 
 func populateImpactedObjects(dr *result.DiagnosticResult, crds []*unstructured.Unstructured) {
-	dr.ImpactedObjects = make([]metav1.PartialObjectMetadata, 0, len(crds))
-
-	for _, crd := range crds {
-		dr.ImpactedObjects = append(dr.ImpactedObjects, metav1.PartialObjectMetadata{
-			TypeMeta: resources.CustomResourceDefinition.TypeMeta(),
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crd.GetName(),
-			},
-		})
-	}
+	shared.AddAllImpactedObjects(dr, shared.ImpactedEntry{
+		ResourceType: resources.CustomResourceDefinition,
+		Items:        crds,
+	})
 }
