@@ -2,9 +2,11 @@ package modelserving
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -100,6 +102,16 @@ const (
 	msgDeleteIstioRouteFail = "Failed to delete Istio VirtualService %s/%s: %v (continuing)"
 	msgDeleteIstioRouteDry  = "Would delete Istio VirtualService %s/%s"
 	msgDeleteIstioRouteNF   = "Istio VirtualService %s/%s not found (already cleaned up)"
+
+	// Storage-config constants.
+	storageConfigSecretName = "storage-config"
+	storageTypePVC          = "pvc"
+
+	// OVMS single-model constants.
+	ovmsRESTPort              int64 = 8888
+	ovmsGRPCPort              int64 = 8001
+	ovmsReadinessInitialDelay int64 = 5
+	ovmsReadinessPeriod       int64 = 10
 )
 
 // inferenceServiceConfig preserves all fields in the inferenceService JSON
@@ -741,4 +753,90 @@ func deleteIstioRoute(
 	}
 
 	step.Recordf("delete-istio-route", msgDeleteIstioRoute, result.StepCompleted, istioSystemNamespace, vsName)
+}
+
+// storageConfigEntry represents a decoded entry from the storage-config secret.
+type storageConfigEntry struct {
+	Type      string `json:"type"`
+	Bucket    string `json:"bucket"`
+	LocalPath string `json:"localPath"`
+}
+
+// getStorageConfigEntry fetches the storage-config secret in the given namespace,
+// decodes the base64 value for storageKey, and parses it as JSON.
+// Returns nil with no error when the secret or key is not found.
+func getStorageConfigEntry(
+	ctx context.Context,
+	target action.Target,
+	namespace string,
+	storageKey string,
+) (*storageConfigEntry, error) {
+	secret, err := target.Client.Dynamic().Resource(resources.Secret.GVR()).
+		Namespace(namespace).
+		Get(ctx, storageConfigSecretName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("getting storage-config secret in %s: %w", namespace, err)
+	}
+
+	data, found, err := unstructured.NestedMap(secret.Object, "data")
+	if err != nil || !found {
+		return nil, nil
+	}
+
+	encodedVal, ok := data[storageKey]
+	if !ok {
+		return nil, nil
+	}
+
+	encodedStr, ok := encodedVal.(string)
+	if !ok {
+		return nil, nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(encodedStr)
+	if err != nil {
+		return nil, fmt.Errorf("decoding storage-config entry %q: %w", storageKey, err)
+	}
+
+	var entry storageConfigEntry
+	if err := json.Unmarshal(decoded, &entry); err != nil {
+		return nil, fmt.Errorf("parsing storage-config entry %q: %w", storageKey, err)
+	}
+
+	return &entry, nil
+}
+
+// getISVCStorageKey extracts the storage key from an ISVC's spec.
+func getISVCStorageKey(isvc *unstructured.Unstructured) string {
+	key, err := jq.Query[string](isvc, ".spec.predictor.model.storage.key")
+	if err != nil {
+		return ""
+	}
+
+	return key
+}
+
+// buildPVCStorageURI constructs a KServe-compatible PVC storage URI.
+// Returns an error when the storage-config entry cannot produce a valid URI.
+func buildPVCStorageURI(entry *storageConfigEntry) (string, error) {
+	if entry.Bucket == "" {
+		return "", errors.New("storage-config entry has empty bucket (PVC name)")
+	}
+
+	trimmed := strings.TrimPrefix(entry.LocalPath, "/")
+
+	if trimmed == "" {
+		return fmt.Sprintf("pvc://%s/", entry.Bucket), nil
+	}
+
+	cleaned := path.Clean(trimmed)
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("storage-config localPath %q escapes the volume root", entry.LocalPath)
+	}
+
+	return fmt.Sprintf("pvc://%s/%s", entry.Bucket, cleaned), nil
 }

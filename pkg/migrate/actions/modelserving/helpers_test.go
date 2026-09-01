@@ -1,12 +1,19 @@
 package modelserving_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"strings"
+
 	"github.com/blang/semver/v4"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
+	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 )
@@ -152,5 +159,101 @@ func newTestTarget(dynamicClient *dynamicfake.FakeDynamicClient, currentVersion 
 		DryRun:         dryRun,
 		SkipConfirm:    true,
 		Recorder:       action.NewRootRecorder(),
+	}
+}
+
+// newModelServingDynamicClient builds a fake dynamic client with list kinds used by model-serving actions.
+func newModelServingDynamicClient(objects ...runtime.Object) *dynamicfake.FakeDynamicClient {
+	listKinds := map[schema.GroupVersionResource]string{
+		resources.InferenceService.GVR(): resources.InferenceService.ListKind(),
+		resources.ServingRuntime.GVR():   resources.ServingRuntime.ListKind(),
+		resources.ServiceAccount.GVR():   resources.ServiceAccount.ListKind(),
+		resources.Role.GVR():             resources.Role.ListKind(),
+		resources.RoleBinding.GVR():      resources.RoleBinding.ListKind(),
+		resources.Namespace.GVR():        resources.Namespace.ListKind(),
+		resources.Secret.GVR():           resources.Secret.ListKind(),
+	}
+
+	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+		runtime.NewScheme(), listKinds, objects...,
+	)
+}
+
+// hasStepMessageContaining walks the step tree recursively and returns true
+// if any step with the given status has a message containing substr.
+func hasStepMessageContaining(steps []result.ActionStep, status result.StepStatus, substr string) bool {
+	for _, s := range steps {
+		if s.Status == status && strings.Contains(s.Message, substr) {
+			return true
+		}
+
+		if hasStepMessageContaining(s.Children, status, substr) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// newModelMeshISVCWithStorage creates a ModelMesh ISVC with a storage key reference.
+func newModelMeshISVCWithStorage(namespace, name, runtimeName, storageKey, storagePath string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.InferenceService.APIVersion(),
+			"kind":       resources.InferenceService.Kind,
+			"metadata": map[string]any{
+				"name":      name,
+				"namespace": namespace,
+				"uid":       "test-uid-mm-storage-123",
+				"annotations": map[string]any{
+					"serving.kserve.io/deploymentMode": "ModelMesh",
+				},
+			},
+			"spec": map[string]any{
+				"predictor": map[string]any{
+					"model": map[string]any{
+						"runtime": runtimeName,
+						"storage": map[string]any{
+							"key":  storageKey,
+							"path": storagePath,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// storageConfigEntryJSON is a helper to build storage-config secret entries.
+type storageConfigEntryJSON struct {
+	Type      string `json:"type"`
+	Bucket    string `json:"bucket,omitempty"`
+	LocalPath string `json:"localPath,omitempty"`
+}
+
+// newStorageConfigSecret creates a storage-config secret with the given entries.
+// Each key maps to a storageConfigEntryJSON that gets JSON-marshaled and base64-encoded.
+func newStorageConfigSecret(namespace string, entries map[string]storageConfigEntryJSON) *unstructured.Unstructured {
+	data := make(map[string]any, len(entries))
+
+	for key, entry := range entries {
+		jsonBytes, err := json.Marshal(entry)
+		if err != nil {
+			panic("test helper: failed to marshal storage-config entry: " + err.Error())
+		}
+
+		data[key] = base64.StdEncoding.EncodeToString(jsonBytes)
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.Secret.APIVersion(),
+			"kind":       resources.Secret.Kind,
+			"metadata": map[string]any{
+				"name":      "storage-config",
+				"namespace": namespace,
+			},
+			"data": data,
+		},
 	}
 }
