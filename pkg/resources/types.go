@@ -385,6 +385,30 @@ var (
 		Resource: "appwrappers",
 	}
 
+	// OdhDashboardConfig is the OpenShift AI OdhDashboardConfig resource.
+	OdhDashboardConfig = ResourceType{
+		Group:    "opendatahub.io",
+		Version:  "v1alpha",
+		Kind:     "OdhDashboardConfig",
+		Resource: "odhdashboardconfigs",
+	}
+
+	// ClusterAutoscaler is the OpenShift ClusterAutoscaler resource.
+	ClusterAutoscaler = ResourceType{
+		Group:    "autoscaling.openshift.io",
+		Version:  "v1",
+		Kind:     "ClusterAutoscaler",
+		Resource: "clusterautoscalers",
+	}
+
+	// Node is the core Kubernetes Node resource.
+	Node = ResourceType{
+		Group:    "",
+		Version:  "v1",
+		Kind:     "Node",
+		Resource: "nodes",
+	}
+
 	// ClusterVersion is the OpenShift cluster version resource.
 	ClusterVersion = ResourceType{
 		Group:    "config.openshift.io",
