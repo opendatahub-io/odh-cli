@@ -125,6 +125,36 @@ func TestRouteMigrationCheck_WithLegacyRoute(t *testing.T) {
 	g.Expect(dr.Status.Conditions[0].Impact).To(Equal(result.ImpactAdvisory))
 }
 
+// Both legacy names can coexist on a cluster, and each one is a URL the admin
+// has to update, so both must appear in the message.
+func TestRouteMigrationCheck_ReportsEveryLegacyRoute(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	dsc := testutil.NewDSC(map[string]string{"dashboard": "Managed"})
+	dsci := testutil.NewDSCI(ns)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: routeListKinds,
+		Objects: []*unstructured.Unstructured{
+			dsc, dsci,
+			newRoute("rhods-dashboard", ns),
+			newRoute("odh-dashboard", ns),
+		},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
+	})
+
+	dr, err := dashboard.NewRouteMigrationCheck().Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(dr.Status.Conditions).To(HaveLen(1))
+	g.Expect(dr.Status.Conditions[0].Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(dr.Status.Conditions[0].Message).To(ContainSubstring(`"odh-dashboard"`))
+	g.Expect(dr.Status.Conditions[0].Message).To(ContainSubstring(`"rhods-dashboard"`))
+}
+
 func TestRouteMigrationCheck_NoLegacyRoute(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()

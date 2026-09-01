@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	containerOAuthProxy    = "oauth-proxy"
-	containerKubeRBACProxy = "kube-rbac-proxy"
+	containerOAuthProxy = "oauth-proxy"
 
 	conditionTypeAuthModel = "AuthModelMigration"
 

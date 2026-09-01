@@ -3,11 +3,8 @@ package dashboard
 import (
 	"context"
 	"fmt"
-	"math"
 	"strconv"
-	"strings"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,7 +21,6 @@ import (
 
 const (
 	conditionTypeResourceCapacity = "ResourceCapacity"
-	conditionTypeRolloutStrategy  = "RolloutStrategy"
 
 	dashboardDeploymentName = "rhods-dashboard"
 	dashboardLabelSelector  = "app=rhods-dashboard"
@@ -33,8 +29,6 @@ const (
 	msgCapacityAdvisory         = "Dashboard pods fit on cluster nodes but no cluster autoscaler detected - ensure sufficient node capacity for %d container(s) per pod"
 	msgCapacityOK               = "Dashboard pods fit on cluster nodes (need %s CPU, %s memory)"
 	msgCapacityNoData           = "Could not determine dashboard pod resource requirements"
-	msgRolloutDeadlock          = "Deployment %q has %d replica(s) with maxUnavailable=%s which rounds to 0 - rolling update will stall if new pods cannot schedule alongside old pods"
-	msgRolloutOK                = "Deployment rollout strategy allows progress"
 	remediationCapacityBlocking = "Add nodes with at least %s CPU and %s memory allocatable, or enable cluster autoscaler with a machine pool using larger instance types"
 	remediationCapacityAdvisory = "Ensure cluster has nodes with sufficient CPU/memory for dashboard pods. Consider enabling cluster autoscaler with larger instance types"
 )
@@ -48,11 +42,10 @@ type resourceLookupResult struct {
 	resources      podResources
 	containerCount int
 	found          bool
-	deployment     *unstructured.Unstructured
 }
 
-// ResourceCapacityCheck validates that cluster nodes have sufficient resources
-// for the new dashboard pod spec and that the rollout strategy won't deadlock.
+// ResourceCapacityCheck validates that cluster nodes have sufficient allocatable
+// resources to schedule the dashboard pods.
 type ResourceCapacityCheck struct {
 	check.BaseCheck
 }
@@ -65,7 +58,7 @@ func NewResourceCapacityCheck() *ResourceCapacityCheck {
 			Type:             check.CheckTypeResourceCapacity,
 			CheckID:          "components.dashboard.resource-capacity",
 			CheckName:        "Components :: Dashboard :: Resource Capacity (3.x)",
-			CheckDescription: "Validates that cluster nodes can schedule the new dashboard pods and rollout strategy allows progress",
+			CheckDescription: "Validates that cluster nodes have enough allocatable CPU and memory to schedule the new dashboard pods",
 			CheckRemediation: remediationCapacityAdvisory,
 		},
 	}
@@ -120,7 +113,7 @@ func (c *ResourceCapacityCheck) checkCapacity(
 
 	setCapacityCondition(req, lookup.resources, nodes, lookup.containerCount, hasAutoscaler)
 
-	return checkRolloutDeadlock(req, lookup.deployment)
+	return nil
 }
 
 func setCapacityCondition(
@@ -199,26 +192,21 @@ func getDeploymentPodResources(
 	cl client.Reader,
 	namespace string,
 ) (resourceLookupResult, error) {
-	deploy, err := cl.GetResource(ctx, resources.Deployment, dashboardDeploymentName,
-		client.InNamespace(namespace))
+	deploy, err := getDashboardDeployment(ctx, cl, namespace)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return resourceLookupResult{}, nil
-		}
-
-		return resourceLookupResult{}, fmt.Errorf("getting dashboard deployment: %w", err)
+		return resourceLookupResult{}, err
 	}
 
 	if deploy == nil {
 		return resourceLookupResult{}, nil
 	}
 
-	req, count, err := sumContainerRequests(deploy, ".spec.template.spec.containers")
+	req, count, err := effectivePodRequests(deploy, ".spec.template.spec")
 	if err != nil {
 		return resourceLookupResult{}, fmt.Errorf("reading deployment container requests: %w", err)
 	}
 
-	return resourceLookupResult{resources: req, containerCount: count, found: true, deployment: deploy}, nil
+	return resourceLookupResult{resources: req, containerCount: count, found: true}, nil
 }
 
 func getPodMaxResources(
@@ -241,7 +229,7 @@ func getPodMaxResources(
 	var maxCount int
 
 	for _, pod := range pods {
-		req, count, pErr := sumContainerRequests(pod, ".spec.containers")
+		req, count, pErr := effectivePodRequests(pod, ".spec")
 		if pErr != nil {
 			continue
 		}
@@ -264,43 +252,102 @@ func getPodMaxResources(
 	return resourceLookupResult{resources: maxReq, containerCount: maxCount, found: found}, nil
 }
 
-func sumContainerRequests(
+// effectivePodRequests computes the pod-level request the scheduler actually
+// uses, which is not simply the sum of the regular containers. Init containers
+// run to completion before the regular containers start, so they never hold
+// resources at the same time: for each resource the pod request is the larger
+// of the regular-container sum and the biggest single init-container request.
+// Native sidecars (init containers with restartPolicy Always) are the exception
+// - they keep running alongside the regular containers, so they add to the sum.
+//
+// It also returns the number of containers that run concurrently, used to
+// describe the pod in the advisory message.
+func effectivePodRequests(
 	obj *unstructured.Unstructured,
-	containersPath string,
+	podSpecPath string,
 ) (podResources, int, error) {
-	containers, err := jq.Query[[]any](obj, containersPath)
+	spec, err := jq.Query[map[string]any](obj, podSpecPath)
 	if err != nil {
-		return podResources{}, 0, fmt.Errorf("querying containers at %s: %w", containersPath, err)
+		return podResources{}, 0, fmt.Errorf("querying pod spec at %s: %w", podSpecPath, err)
 	}
 
-	var total podResources
+	containers, _ := spec["containers"].([]any)
+	initContainers, _ := spec["initContainers"].([]any)
+
+	total := podResources{}
+	count := len(containers)
 
 	for _, raw := range containers {
-		ctr, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		res, _ := ctr["resources"].(map[string]any)
-		if res == nil {
-			continue
-		}
-
-		requests, _ := res["requests"].(map[string]any)
-		if requests == nil {
-			continue
-		}
-
-		if q, ok := parseQuantityAny(requests["cpu"]); ok {
-			total.cpuMillis += q.MilliValue()
-		}
-
-		if q, ok := parseQuantityAny(requests["memory"]); ok {
-			total.memoryBytes += q.Value()
-		}
+		req := containerRequests(raw)
+		total.cpuMillis += req.cpuMillis
+		total.memoryBytes += req.memoryBytes
 	}
 
-	return total, len(containers), nil
+	var maxInit podResources
+
+	for _, raw := range initContainers {
+		req := containerRequests(raw)
+
+		if isNativeSidecar(raw) {
+			total.cpuMillis += req.cpuMillis
+			total.memoryBytes += req.memoryBytes
+			count++
+
+			continue
+		}
+
+		maxInit.cpuMillis = max(maxInit.cpuMillis, req.cpuMillis)
+		maxInit.memoryBytes = max(maxInit.memoryBytes, req.memoryBytes)
+	}
+
+	return podResources{
+		cpuMillis:   max(total.cpuMillis, maxInit.cpuMillis),
+		memoryBytes: max(total.memoryBytes, maxInit.memoryBytes),
+	}, count, nil
+}
+
+// containerRequests reads spec.resources.requests off a single container,
+// returning zeroes for anything absent or malformed.
+func containerRequests(raw any) podResources {
+	ctr, ok := raw.(map[string]any)
+	if !ok {
+		return podResources{}
+	}
+
+	res, _ := ctr["resources"].(map[string]any)
+	if res == nil {
+		return podResources{}
+	}
+
+	requests, _ := res["requests"].(map[string]any)
+	if requests == nil {
+		return podResources{}
+	}
+
+	var out podResources
+
+	if q, ok := parseQuantityAny(requests["cpu"]); ok {
+		out.cpuMillis = q.MilliValue()
+	}
+
+	if q, ok := parseQuantityAny(requests["memory"]); ok {
+		out.memoryBytes = q.Value()
+	}
+
+	return out
+}
+
+// isNativeSidecar reports whether an init container is a sidecar, i.e. it keeps
+// running for the lifetime of the pod instead of completing first.
+func isNativeSidecar(raw any) bool {
+	ctr, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	policy, _ := ctr["restartPolicy"].(string)
+
+	return policy == "Always"
 }
 
 func getNodeAllocatable(
@@ -346,80 +393,6 @@ func anyNodeFits(podReq podResources, nodes []podResources) bool {
 	return false
 }
 
-func checkRolloutDeadlock(
-	req *validate.ComponentRequest,
-	deploy *unstructured.Unstructured,
-) error {
-	if deploy == nil {
-		return nil
-	}
-
-	replicas, _ := jq.Query[float64](deploy, ".spec.replicas")
-	if replicas < 2 {
-		req.Result.SetCondition(check.NewCondition(
-			conditionTypeRolloutStrategy,
-			metav1.ConditionTrue,
-			check.WithReason(check.ReasonRequirementsMet),
-			check.WithMessage(msgRolloutOK),
-		))
-
-		return nil
-	}
-
-	maxUnavailRaw, _ := jq.Query[any](deploy, ".spec.strategy.rollingUpdate.maxUnavailable")
-
-	effective := computeEffectiveMaxUnavailable(maxUnavailRaw, int(replicas))
-
-	if effective == 0 {
-		maxUnavailStr := fmt.Sprintf("%v", maxUnavailRaw)
-
-		req.Result.SetCondition(check.NewCondition(
-			conditionTypeRolloutStrategy,
-			metav1.ConditionFalse,
-			check.WithReason(check.ReasonWorkloadsImpacted),
-			check.WithMessage(msgRolloutDeadlock, dashboardDeploymentName, int(replicas), maxUnavailStr),
-			check.WithImpact(result.ImpactAdvisory),
-			check.WithRemediation("Set maxUnavailable to at least 1 in the deployment rollout strategy, or ensure new pods can schedule alongside existing pods"),
-		))
-
-		return nil
-	}
-
-	req.Result.SetCondition(check.NewCondition(
-		conditionTypeRolloutStrategy,
-		metav1.ConditionTrue,
-		check.WithReason(check.ReasonRequirementsMet),
-		check.WithMessage(msgRolloutOK),
-	))
-
-	return nil
-}
-
-func computeEffectiveMaxUnavailable(raw any, replicas int) int {
-	switch v := raw.(type) {
-	case float64:
-		return int(v)
-	case string:
-		if pctStr, ok := strings.CutSuffix(v, "%"); ok {
-			pct, err := strconv.ParseFloat(pctStr, 64)
-			if err != nil {
-				return 1
-			}
-
-			return int(math.Floor(pct / 100.0 * float64(replicas)))
-		}
-
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return 1
-		}
-
-		return n
-	default:
-		return 1
-	}
-}
-
 func parseQuantityAny(raw any) (resource.Quantity, bool) {
 	switch v := raw.(type) {
 	case string:
@@ -429,7 +402,11 @@ func parseQuantityAny(raw any) (resource.Quantity, bool) {
 	case int64:
 		return *resource.NewQuantity(v, resource.DecimalSI), true
 	case float64:
-		return *resource.NewQuantity(int64(v), resource.DecimalSI), true
+		// Format without an exponent so fractional values such as 0.5 CPU survive
+		// instead of being truncated to a whole number.
+		q, err := resource.ParseQuantity(strconv.FormatFloat(v, 'f', -1, 64))
+
+		return q, err == nil
 	default:
 		return resource.Quantity{}, false
 	}

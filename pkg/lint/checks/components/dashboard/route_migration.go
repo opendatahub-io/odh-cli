@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -25,7 +27,7 @@ var legacyDashboardRouteNames = []string{
 const (
 	conditionTypeRouteMigration = "RouteMigration"
 
-	msgRouteWillChange = "Dashboard route %q found - URL will change after upgrade to a gateway-based route"
+	msgRouteWillChange = "Dashboard route(s) %s found - URL will change after upgrade to a gateway-based route"
 	msgNoLegacyRoute   = "No legacy dashboard routes found"
 )
 
@@ -71,21 +73,29 @@ func (c *RouteMigrationCheck) checkRoute(
 		return fmt.Errorf("listing routes: %w", err)
 	}
 
+	// Report every legacy route, since a cluster can carry both the ODH and the
+	// RHOAI name and the admin needs to know about each URL that will change.
+	var found []string
+
 	for _, route := range routes {
-		name := route.GetName()
-
-		if slices.Contains(legacyDashboardRouteNames, name) {
-			req.Result.SetCondition(check.NewCondition(
-				conditionTypeRouteMigration,
-				metav1.ConditionFalse,
-				check.WithReason(check.ReasonMigrationPending),
-				check.WithMessage(msgRouteWillChange, name),
-				check.WithImpact(result.ImpactAdvisory),
-				check.WithRemediation(c.CheckRemediation),
-			))
-
-			return nil
+		if name := route.GetName(); slices.Contains(legacyDashboardRouteNames, name) {
+			found = append(found, name)
 		}
+	}
+
+	if len(found) > 0 {
+		slices.Sort(found)
+
+		req.Result.SetCondition(check.NewCondition(
+			conditionTypeRouteMigration,
+			metav1.ConditionFalse,
+			check.WithReason(check.ReasonMigrationPending),
+			check.WithMessage(msgRouteWillChange, strings.Join(quoteAll(found), ", ")),
+			check.WithImpact(result.ImpactAdvisory),
+			check.WithRemediation(c.CheckRemediation),
+		))
+
+		return nil
 	}
 
 	req.Result.SetCondition(check.NewCondition(
@@ -96,4 +106,13 @@ func (c *RouteMigrationCheck) checkRoute(
 	))
 
 	return nil
+}
+
+func quoteAll(names []string) []string {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = strconv.Quote(n)
+	}
+
+	return quoted
 }

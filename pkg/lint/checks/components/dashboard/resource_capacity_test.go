@@ -383,111 +383,6 @@ func TestResourceCapacityCheck_NoDeploymentNoPods(t *testing.T) {
 	g.Expect(capacityCond.Reason).To(Equal(check.ReasonRequirementsMet))
 }
 
-func TestResourceCapacityCheck_RolloutDeadlock(t *testing.T) {
-	g := NewWithT(t)
-	ctx := t.Context()
-
-	ns := "redhat-ods-applications"
-	dsc := testutil.NewDSC(map[string]string{"dashboard": "Managed"})
-	dsci := testutil.NewDSCI(ns)
-	ca := newClusterAutoscaler()
-
-	deploy := newDashboardDeployment(ns, []containerSpec{
-		{name: "dashboard", cpuReq: "500m", memoryReq: "1Gi"},
-	}, 2, "25%")
-
-	node := newNode("node-1", "8000m", "32Gi")
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      resourceCapacityListKinds,
-		Objects:        []*unstructured.Unstructured{dsc, dsci, deploy, node, ca},
-		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.5.0",
-	})
-
-	chk := dashboard.NewResourceCapacityCheck()
-	dr, err := chk.Validate(ctx, target)
-
-	g.Expect(err).ToNot(HaveOccurred())
-
-	rolloutCond := findCondition(dr, "RolloutStrategy")
-	g.Expect(rolloutCond).ToNot(BeNil())
-	g.Expect(rolloutCond.Status).To(Equal(metav1.ConditionFalse))
-	g.Expect(rolloutCond.Reason).To(Equal(check.ReasonWorkloadsImpacted))
-	g.Expect(rolloutCond.Impact).To(Equal(result.ImpactAdvisory))
-	g.Expect(rolloutCond.Message).To(ContainSubstring("rounds to 0"))
-}
-
-func TestResourceCapacityCheck_RolloutOK(t *testing.T) {
-	g := NewWithT(t)
-	ctx := t.Context()
-
-	ns := "redhat-ods-applications"
-	dsc := testutil.NewDSC(map[string]string{"dashboard": "Managed"})
-	dsci := testutil.NewDSCI(ns)
-	ca := newClusterAutoscaler()
-
-	deploy := newDashboardDeployment(ns, []containerSpec{
-		{name: "dashboard", cpuReq: "500m", memoryReq: "1Gi"},
-	}, 2, "1")
-
-	node := newNode("node-1", "8000m", "32Gi")
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      resourceCapacityListKinds,
-		Objects:        []*unstructured.Unstructured{dsc, dsci, deploy, node, ca},
-		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.5.0",
-	})
-
-	chk := dashboard.NewResourceCapacityCheck()
-	dr, err := chk.Validate(ctx, target)
-
-	g.Expect(err).ToNot(HaveOccurred())
-
-	rolloutCond := findCondition(dr, "RolloutStrategy")
-	g.Expect(rolloutCond).ToNot(BeNil())
-	g.Expect(rolloutCond.Status).To(Equal(metav1.ConditionTrue))
-	g.Expect(rolloutCond.Reason).To(Equal(check.ReasonRequirementsMet))
-}
-
-func TestResourceCapacityCheck_BlockingAndDeadlock(t *testing.T) {
-	g := NewWithT(t)
-	ctx := t.Context()
-
-	ns := "redhat-ods-applications"
-	dsc := testutil.NewDSC(map[string]string{"dashboard": "Managed"})
-	dsci := testutil.NewDSCI(ns)
-
-	deploy := newDashboardDeployment(ns, []containerSpec{
-		{name: "dashboard", cpuReq: "2000m", memoryReq: "1Gi"},
-		{name: "proxy", cpuReq: "2000m", memoryReq: "1Gi"},
-	}, 2, "25%")
-
-	node := newNode("node-1", "3500m", "16Gi")
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      resourceCapacityListKinds,
-		Objects:        []*unstructured.Unstructured{dsc, dsci, deploy, node},
-		CurrentVersion: "2.25.0",
-		TargetVersion:  "3.5.0",
-	})
-
-	chk := dashboard.NewResourceCapacityCheck()
-	dr, err := chk.Validate(ctx, target)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(dr.Status.Conditions).To(HaveLen(2))
-
-	capacityCond := findCondition(dr, "ResourceCapacity")
-	g.Expect(capacityCond).ToNot(BeNil())
-	g.Expect(capacityCond.Impact).To(Equal(result.ImpactBlocking))
-
-	rolloutCond := findCondition(dr, "RolloutStrategy")
-	g.Expect(rolloutCond).ToNot(BeNil())
-	g.Expect(rolloutCond.Impact).To(Equal(result.ImpactAdvisory))
-}
-
 func TestResourceCapacityCheck_IntegerQuantities(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
@@ -589,4 +484,191 @@ func findCondition(dr *result.DiagnosticResult, condType string) *result.Conditi
 	}
 
 	return nil
+}
+
+// newDashboardDeploymentWithInit builds a dashboard deployment carrying both
+// regular and init containers, using raw maps so restartPolicy can be set.
+func newDashboardDeploymentWithInit(namespace string, containers, initContainers []any) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]any{"name": "rhods-dashboard", "namespace": namespace},
+		"spec": map[string]any{
+			"replicas": int64(2),
+			"template": map[string]any{
+				"spec": map[string]any{
+					"containers":     containers,
+					"initContainers": initContainers,
+				},
+			},
+		},
+	}}
+}
+
+func newContainerMap(name, cpu, memory string, restartPolicy string) map[string]any {
+	ctr := map[string]any{
+		"name": name,
+		"resources": map[string]any{
+			"requests": map[string]any{"cpu": cpu, "memory": memory},
+		},
+	}
+
+	if restartPolicy != "" {
+		ctr["restartPolicy"] = restartPolicy
+	}
+
+	return ctr
+}
+
+// An init container larger than every regular container sets the pod's
+// scheduling floor, so it must be able to block on capacity grounds.
+func TestResourceCapacityCheck_InitContainerExceedsNodeCapacity(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	deploy := newDashboardDeploymentWithInit(ns,
+		[]any{newContainerMap("dashboard", "500m", "1Gi", "")},
+		[]any{newContainerMap("migration", "6000m", "2Gi", "")},
+	)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: resourceCapacityListKinds,
+		Objects: []*unstructured.Unstructured{
+			testutil.NewDSC(map[string]string{"dashboard": "Managed"}),
+			testutil.NewDSCI(ns),
+			deploy,
+			newNode("node-1", "4000m", "32Gi"),
+		},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	dr, err := dashboard.NewResourceCapacityCheck().Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	cond := findCondition(dr, "ResourceCapacity")
+	g.Expect(cond).ToNot(BeNil())
+	g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(cond.Reason).To(Equal(check.ReasonInsufficientCapacity))
+	g.Expect(cond.Impact).To(Equal(result.ImpactBlocking))
+	g.Expect(cond.Message).To(ContainSubstring("6"))
+}
+
+// A plain init container runs before the regular containers, so it must not be
+// added to their sum.
+func TestResourceCapacityCheck_InitContainerNotSummed(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	deploy := newDashboardDeploymentWithInit(ns,
+		[]any{newContainerMap("dashboard", "2000m", "1Gi", "")},
+		[]any{newContainerMap("migration", "2000m", "1Gi", "")},
+	)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: resourceCapacityListKinds,
+		Objects: []*unstructured.Unstructured{
+			testutil.NewDSC(map[string]string{"dashboard": "Managed"}),
+			testutil.NewDSCI(ns),
+			deploy,
+			newNode("node-1", "3000m", "16Gi"),
+			newClusterAutoscaler(),
+		},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	dr, err := dashboard.NewResourceCapacityCheck().Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	cond := findCondition(dr, "ResourceCapacity")
+	g.Expect(cond).ToNot(BeNil())
+	g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+	g.Expect(cond.Reason).To(Equal(check.ReasonRequirementsMet))
+}
+
+// A native sidecar keeps running alongside the regular containers, so its
+// request does add to the sum.
+func TestResourceCapacityCheck_NativeSidecarIsSummed(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	deploy := newDashboardDeploymentWithInit(ns,
+		[]any{newContainerMap("dashboard", "2000m", "1Gi", "")},
+		[]any{newContainerMap("kube-rbac-proxy", "2000m", "1Gi", "Always")},
+	)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: resourceCapacityListKinds,
+		Objects: []*unstructured.Unstructured{
+			testutil.NewDSC(map[string]string{"dashboard": "Managed"}),
+			testutil.NewDSCI(ns),
+			deploy,
+			newNode("node-1", "3000m", "16Gi"),
+		},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	dr, err := dashboard.NewResourceCapacityCheck().Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	cond := findCondition(dr, "ResourceCapacity")
+	g.Expect(cond).ToNot(BeNil())
+	g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(cond.Reason).To(Equal(check.ReasonInsufficientCapacity))
+	g.Expect(cond.Impact).To(Equal(result.ImpactBlocking))
+}
+
+// Fractional quantities decoded as float64 must not be truncated to a whole
+// core, which would understate the pod's request.
+func TestResourceCapacityCheck_FractionalCPUNotTruncated(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	ns := "redhat-ods-applications"
+	deploy := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]any{"name": "rhods-dashboard", "namespace": ns},
+		"spec": map[string]any{
+			"replicas": int64(2),
+			"template": map[string]any{
+				"spec": map[string]any{
+					"containers": []any{
+						map[string]any{
+							"name": "dashboard",
+							"resources": map[string]any{
+								"requests": map[string]any{"cpu": 1.5, "memory": "1Gi"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds: resourceCapacityListKinds,
+		Objects: []*unstructured.Unstructured{
+			testutil.NewDSC(map[string]string{"dashboard": "Managed"}),
+			testutil.NewDSCI(ns),
+			deploy,
+			newNode("node-1", "1200m", "16Gi"),
+		},
+		CurrentVersion: "2.25.0",
+		TargetVersion:  "3.5.0",
+	})
+
+	dr, err := dashboard.NewResourceCapacityCheck().Validate(ctx, target)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	cond := findCondition(dr, "ResourceCapacity")
+	g.Expect(cond).ToNot(BeNil())
+	g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(cond.Reason).To(Equal(check.ReasonInsufficientCapacity))
+	g.Expect(cond.Message).To(ContainSubstring("1500m"))
 }
