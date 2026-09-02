@@ -98,7 +98,7 @@ func (a *AddOwnerReferencesAction) addOwnerReferences(
 		)
 
 		a.patchAuthResourceOwnerRefs(ctx, target, isvc, isvcStep)
-		isvcStep.Complete(result.StepCompleted, "Processed owner references for %s/%s", isvc.GetNamespace(), isvc.GetName())
+		isvcStep.Completef(result.StepCompleted, "Processed owner references for %s/%s", isvc.GetNamespace(), isvc.GetName())
 		patchedCount++
 	}
 

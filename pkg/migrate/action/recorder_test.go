@@ -104,7 +104,7 @@ func TestRecorder_NonTerminalSteps(t *testing.T) {
 		parent := recorder.Child("parent", "Parent Step")
 		// Leave child in running state (default state when created)
 		parent.Child("child1", "Child 1")
-		parent.Complete(result.StepCompleted, "Parent completed but child running")
+		parent.Completef(result.StepCompleted, "Parent completed but child running")
 
 		actionResult := recorder.Build()
 		g.Expect(actionResult).To(HaveField("Status.Steps", HaveLen(1)))
@@ -116,7 +116,7 @@ func TestRecorder_NonTerminalSteps(t *testing.T) {
 
 		recorder := action.NewRootRecorder()
 		pendingChild := recorder.Child("pending", "Pending Step")
-		pendingChild.Complete(result.StepPending, "Explicitly pending")
+		pendingChild.Completef(result.StepPending, "Explicitly pending")
 
 		actionResult := recorder.Build()
 		g.Expect(actionResult).To(HaveField("Status.Completed", BeFalse()))
@@ -131,9 +131,9 @@ func TestRecorder_NonTerminalSteps(t *testing.T) {
 		child1 := parent.Child("child1", "Child 1")
 		child2 := parent.Child("child2", "Child 2")
 
-		child1.Complete(result.StepCompleted, "Child 1 done")
-		child2.Complete(result.StepSkipped, "Child 2 skipped")
-		parent.Complete(result.StepCompleted, "Parent completed")
+		child1.Completef(result.StepCompleted, "Child 1 done")
+		child2.Completef(result.StepSkipped, "Child 2 skipped")
+		parent.Completef(result.StepCompleted, "Parent completed")
 
 		actionResult := recorder.Build()
 		g.Expect(actionResult).To(HaveField("Status.Completed", BeTrue()))
