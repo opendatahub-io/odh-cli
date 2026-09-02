@@ -787,7 +787,9 @@ func TestRunTask_Validate_WithMismatch(t *testing.T) {
 	result, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeFalse())
+	// Only the (informational) auth-model check flags this notebook; the mismatch
+	// detection itself succeeds, so the action still completes.
+	g.Expect(result.Status.Completed).To(BeTrue())
 }
 
 func TestRunTask_Execute_NoNotebooks(t *testing.T) {
@@ -824,7 +826,8 @@ func TestRunTask_Execute_AllCorrectNames(t *testing.T) {
 	result, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeFalse())
+	// Auth-model check is informational only; no fixable mismatch here either.
+	g.Expect(result.Status.Completed).To(BeTrue())
 }
 
 func TestRunTask_Execute_FixContainerNameMismatch(t *testing.T) {
@@ -845,7 +848,9 @@ func TestRunTask_Execute_FixContainerNameMismatch(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	// Container name fix succeeds; the informational auth-model check is the
+	// only outstanding item and does not block completion.
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	updated, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
@@ -875,7 +880,9 @@ func TestRunTask_Execute_DryRun_NoChanges(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	// Dry-run "would fix" is a Skipped step, and the auth-model check is
+	// informational, so nothing here should block completion.
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	original, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
@@ -909,7 +916,7 @@ func TestRunTask_Execute_SkipsNonStoppedNotebooks(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	stoppedUpdated, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "stopped-nb", metav1.GetOptions{})
@@ -947,7 +954,7 @@ func TestRunTask_Execute_MultipleNamespaces(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	updated1, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns-alpha").Get(context.Background(), "nb1", metav1.GetOptions{})
@@ -982,7 +989,7 @@ func TestRunTask_Execute_MultipleWorkloadContainers_Skipped(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	updated, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
@@ -1080,7 +1087,7 @@ func TestRunTask_Execute_NoDashboardAnnotation_NoChange(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	original, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
@@ -1132,7 +1139,7 @@ func TestRunTask_Execute_CustomImages(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	updated, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "custom-nb", metav1.GetOptions{})
@@ -1356,7 +1363,7 @@ func TestRunTask_Execute_DryRun_WithMismatch(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	original, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-nb", metav1.GetOptions{})
@@ -1382,7 +1389,7 @@ func TestRunTask_Validate_AllCorrectNames(t *testing.T) {
 	result, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeFalse())
+	g.Expect(result.Status.Completed).To(BeTrue())
 }
 
 func TestRunTask_Validate_WithNonStopped(t *testing.T) {
@@ -1434,7 +1441,7 @@ func TestRunTask_Execute_NonSkipConfirm_UserConfirms(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	updated, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-nb", metav1.GetOptions{})
@@ -1465,7 +1472,7 @@ func TestRunTask_Execute_NonSkipConfirm_UserCancels(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	original, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-nb", metav1.GetOptions{})
@@ -1807,7 +1814,7 @@ func TestRunTask_Validate_MixedNonStoppedWithMismatch(t *testing.T) {
 	result, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeFalse())
+	g.Expect(result.Status.Completed).To(BeTrue())
 }
 
 func TestExtractWorkloadContainers_NonMapEntry(t *testing.T) {
@@ -1904,15 +1911,18 @@ func TestRunTask_Validate_DetectsLegacyAuthModel(t *testing.T) {
 	actionResult, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	// The auth-model check is informational only: it flags notebooks needing
+	// workbenches.patch-auth-model, but must not fail this action or block
+	// the migrate run/prepare loop.
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
 
 	hasAuthModelStep := false
 
 	for _, step := range actionResult.Status.Steps {
 		if step.Name == "verify-auth-model" {
 			hasAuthModelStep = true
-			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Status).To(Equal(result.StepSkipped))
 			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
 		}
 	}
@@ -1941,15 +1951,16 @@ func TestRunTask_Execute_DetectsLegacyAuthModel(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	// The auth-model check is informational only and must not fail this action.
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
 
 	hasAuthModelStep := false
 
 	for _, step := range actionResult.Status.Steps {
 		if step.Name == "verify-auth-model" {
 			hasAuthModelStep = true
-			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Status).To(Equal(result.StepSkipped))
 			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
 		}
 	}
@@ -2009,8 +2020,10 @@ func TestRunTask_Execute_FixesNamesAndDetectsAuthModel(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeFalse())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	// Container name fix succeeds; the informational auth-model check must not
+	// fail this action.
+	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
 
 	updated, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
@@ -2023,7 +2036,7 @@ func TestRunTask_Execute_FixesNamesAndDetectsAuthModel(t *testing.T) {
 
 	for _, step := range actionResult.Status.Steps {
 		if step.Name == "verify-auth-model" {
-			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Status).To(Equal(result.StepSkipped))
 			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
 		}
 	}
