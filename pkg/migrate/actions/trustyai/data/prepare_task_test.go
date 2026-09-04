@@ -289,8 +289,13 @@ func TestRunTask_Execute_DryRun_Database(t *testing.T) {
 	a := &DataAction{BackupFile: backupDir}
 	result, err := a.Run().Execute(ctx, target)
 
+	// target.RESTConfig is unset (no SPDY executor available), but a dry-run
+	// must still succeed without requiring a live executor or remote client
+	// command detection.
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeFalse())
+	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Steps).To(HaveLen(1))
+	g.Expect(result.Status.Steps[0].Message).To(ContainSubstring("Would restore"))
 }
 
 func TestRunTask_Execute_UnsupportedBackupType(t *testing.T) {

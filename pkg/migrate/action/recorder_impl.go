@@ -140,26 +140,15 @@ func (r *stepRecorderImpl) Build() *result.ActionResult {
 	steps := r.buildSteps()
 	actionResult := &result.ActionResult{
 		Status: result.ActionStatus{
-			Steps:     steps,
-			Completed: !hasFailedSteps(steps) && !hasNonTerminalSteps(steps),
+			Steps: steps,
 		},
 	}
 
+	// Use the canonical failure check from result.ActionResult instead of
+	// duplicating the traversal here.
+	actionResult.Status.Completed = !actionResult.HasFailedSteps() && !hasNonTerminalSteps(steps)
+
 	return actionResult
-}
-
-// hasFailedSteps recursively checks if any step in the tree has failed.
-func hasFailedSteps(steps []result.ActionStep) bool {
-	for i := range steps {
-		if steps[i].Status == result.StepFailed {
-			return true
-		}
-		if len(steps[i].Children) > 0 && hasFailedSteps(steps[i].Children) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // hasNonTerminalSteps recursively checks if any step in the tree is pending or running.
