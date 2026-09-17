@@ -2,6 +2,7 @@ package modelserving
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
@@ -100,6 +102,15 @@ const (
 	msgDeleteIstioRouteFail = "Failed to delete Istio VirtualService %s/%s: %v (continuing)"
 	msgDeleteIstioRouteDry  = "Would delete Istio VirtualService %s/%s"
 	msgDeleteIstioRouteNF   = "Istio VirtualService %s/%s not found (already cleaned up)"
+
+	// Storage config constants.
+	storageConfigSecretName = "storage-config"
+	storageTypePVC          = "pvc"
+
+	// PVC storage detection messages.
+	msgPVCStorageDetected = "InferenceService %s/%s uses PVC-backed storage (key %q) — skipped (manual conversion required)"
+	msgPVCManualSteps     = "PVC-backed models require manual conversion: rewrite storageUri, update OVMS args, add port/probe. See https://access.redhat.com/articles/7134025"
+	msgStorageConfigError = "Failed to read storage-config in namespace %s: %v"
 )
 
 // inferenceServiceConfig preserves all fields in the inferenceService JSON
@@ -543,6 +554,116 @@ func groupByNamespace(objs []*unstructured.Unstructured) map[string][]*unstructu
 	}
 
 	return grouped
+}
+
+// storageConfigEntry represents a decoded entry from the storage-config secret.
+type storageConfigEntry struct {
+	Type string `json:"type"`
+}
+
+// getPVCStorageKeys reads the storage-config secret in the given namespace and returns
+// the set of storage keys backed by PVC storage.
+func getPVCStorageKeys(
+	ctx context.Context,
+	target action.Target,
+	namespace string,
+) (sets.Set[string], error) {
+	pvcKeys := sets.New[string]()
+
+	secret, err := target.Client.Dynamic().Resource(resources.Secret.GVR()).
+		Namespace(namespace).
+		Get(ctx, storageConfigSecretName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return pvcKeys, nil
+		}
+
+		return nil, fmt.Errorf("getting storage-config secret in namespace %s: %w", namespace, err)
+	}
+
+	data, err := jq.Query[map[string]any](secret, ".data")
+	if err != nil {
+		return pvcKeys, nil
+	}
+
+	for key, val := range data {
+		strVal, ok := val.(string)
+		if !ok {
+			continue
+		}
+
+		decoded, decErr := base64.StdEncoding.DecodeString(strVal)
+		if decErr != nil {
+			continue
+		}
+
+		var entry storageConfigEntry
+		if unmarshalErr := json.Unmarshal(decoded, &entry); unmarshalErr != nil {
+			continue
+		}
+
+		if strings.EqualFold(entry.Type, storageTypePVC) {
+			pvcKeys.Insert(key)
+		}
+	}
+
+	return pvcKeys, nil
+}
+
+// getISVCStorageKey extracts the storage key from an InferenceService's model spec.
+func getISVCStorageKey(isvc *unstructured.Unstructured) string {
+	key, err := jq.Query[string](isvc, ".spec.predictor.model.storage.key")
+	if err != nil {
+		return ""
+	}
+
+	return key
+}
+
+// classifyISVCsByStorage separates ISVCs into convertible and PVC-backed lists
+// by checking the storage-config secret in each namespace.
+func classifyISVCsByStorage(
+	ctx context.Context,
+	target action.Target,
+	isvcs []*unstructured.Unstructured,
+	step action.StepRecorder,
+) (convertible []*unstructured.Unstructured, pvcBacked []*unstructured.Unstructured) {
+	namespacePVCKeys := make(map[string]sets.Set[string])
+
+	for _, isvc := range isvcs {
+		ns := isvc.GetNamespace()
+		if _, ok := namespacePVCKeys[ns]; !ok {
+			keys, err := getPVCStorageKeys(ctx, target, ns)
+			if err != nil {
+				step.Recordf(
+					"pvc-detect-"+ns,
+					msgStorageConfigError,
+					result.StepFailed,
+					ns, err,
+				)
+
+				namespacePVCKeys[ns] = sets.New[string]()
+
+				continue
+			}
+
+			namespacePVCKeys[ns] = keys
+		}
+	}
+
+	for _, isvc := range isvcs {
+		ns := isvc.GetNamespace()
+		storageKey := getISVCStorageKey(isvc)
+		pvcKeys := namespacePVCKeys[ns]
+
+		if storageKey != "" && pvcKeys.Has(storageKey) {
+			pvcBacked = append(pvcBacked, isvc)
+		} else {
+			convertible = append(convertible, isvc)
+		}
+	}
+
+	return convertible, pvcBacked
 }
 
 // deleteAndRecreateISVC deletes an InferenceService and recreates it with RawDeployment mode.
