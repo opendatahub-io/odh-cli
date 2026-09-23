@@ -2,13 +2,23 @@ package version
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+
+	platformcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	platformolm "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/olm"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+)
+
+const (
+	rhoaiOperatorPackage = "rhods-operator"
+	odhOperatorPackage   = "opendatahub-operator"
 )
 
 // DetectFromDataScienceCluster attempts to detect version from DataScienceCluster resource.
@@ -61,39 +71,38 @@ func DetectFromDSCInitialization(ctx context.Context, c client.Client) (string, 
 	return versionStr, true, nil
 }
 
-// DetectFromOLM attempts to detect version from OLM ClusterServiceVersion
+// DetectFromOLM attempts to detect version from the installed ODH/RHOAI operator.
 // Returns version string and true if found, empty string and false otherwise.
-func DetectFromOLM(ctx context.Context, c client.Reader) (string, bool, error) {
-	// Check if OLM client is available
-	if !c.OLM().Available() {
+func DetectFromOLM(ctx context.Context, c client.Client) (string, bool, error) {
+	reader := c.ControllerRuntime()
+	if reader == nil {
 		return "", false, nil
 	}
 
-	// List ClusterServiceVersions with label selector for OpenShift AI operator
-	csvList, err := c.OLM().ClusterServiceVersions("").List(ctx, metav1.ListOptions{
-		LabelSelector: "operators.coreos.com/rhods-operator.redhat-ods-operator",
-	})
+	platform, err := platformcluster.DetectPlatform(ctx, reader, "", "")
 	if err != nil {
-		if apierrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
 			return "", false, nil
 		}
 
-		return "", false, fmt.Errorf("listing ClusterServiceVersion: %w", err)
+		return "", false, fmt.Errorf("detecting platform from OLM: %w", err)
 	}
 
-	if len(csvList.Items) == 0 {
+	packageName := odhOperatorPackage
+	if platform == platformcluster.ManagedRhoai || platform == platformcluster.SelfManagedRhoai {
+		packageName = rhoaiOperatorPackage
+	}
+
+	info, err := platformolm.OperatorExists(ctx, reader, packageName)
+	if errors.Is(err, platformolm.ErrOperatorNotInstalled) || meta.IsNoMatchError(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("detecting %s version from OLM: %w", packageName, err)
+	}
+	if info == nil || info.Version == "" {
 		return "", false, nil
 	}
 
-	// Use the first CSV found
-	csv := &csvList.Items[0]
-
-	// Access .spec.version directly
-	versionStr := csv.Spec.Version.String()
-
-	if versionStr == "" {
-		return "", false, nil
-	}
-
-	return versionStr, true, nil
+	return strings.TrimPrefix(info.Version, "v"), true, nil
 }

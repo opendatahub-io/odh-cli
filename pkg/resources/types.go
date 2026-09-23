@@ -267,6 +267,14 @@ var (
 		Resource: "subscriptions",
 	}
 
+	// ClusterExtension is the OLM v1 installation request resource.
+	ClusterExtension = ResourceType{
+		Group:    "olm.operatorframework.io",
+		Version:  "v1",
+		Kind:     "ClusterExtension",
+		Resource: "clusterextensions",
+	}
+
 	InstallPlan = ResourceType{
 		Group:    "operators.coreos.com",
 		Version:  "v1alpha1",

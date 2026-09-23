@@ -12,6 +12,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 )
 
 type prepareTask struct {
@@ -22,7 +23,14 @@ func (t *prepareTask) Validate(
 	ctx context.Context,
 	target action.Target,
 ) (*result.ActionResult, error) {
-	t.action.verifyRBAC(ctx, target, preparePermissions())
+	if err := t.action.selectOLMMode(ctx, target); err != nil {
+		return nil, err
+	}
+	if t.action.selectedOLMMode == olm.ModeV1 {
+		t.action.verifyRBAC(ctx, target, preparePermissionsV1())
+	} else {
+		t.action.verifyRBAC(ctx, target, preparePermissions())
+	}
 	t.action.checkCertManager(ctx, target)
 	t.action.checkCurrentKueueState(ctx, target)
 	t.action.verifyKueueResources(ctx, target)

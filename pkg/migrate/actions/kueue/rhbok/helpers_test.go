@@ -8,6 +8,8 @@ import (
 	"github.com/blang/semver/v4"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	discoveryfake "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
@@ -54,12 +57,16 @@ type targetOpts struct {
 	skipConfirm    bool
 	outputDir      string
 	olmObjects     []runtime.Object
+	controllerObjs []crclient.Object
 	kubeObjects    []runtime.Object
 	apiExtObjects  []runtime.Object
 	noPods         bool
 	rbacAllowed    bool
+	olmV1Only      bool
+	olmMixed       bool
 	dynamicReactor func(k8stesting.Action) (bool, runtime.Object, error)
 	olmReactor     func(k8stesting.Action) (bool, runtime.Object, error)
+	rbacReactor    func(k8stesting.Action) (bool, runtime.Object, error)
 }
 
 func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOpts) action.Target {
@@ -69,6 +76,7 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
 
 	dynamicObjs := make([]runtime.Object, 0, len(objects)+1)
 	for _, obj := range objects {
@@ -122,14 +130,30 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 
 	kubeObjs = append(kubeObjs, opts.kubeObjects...)
 
-	kubeClient := kubefake.NewSimpleClientset(kubeObjs...) //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
-	kubeClient.PrependReactor("create", "selfsubjectaccessreviews",
-		func(_ k8stesting.Action) (bool, runtime.Object, error) {
+	kubeClient := kubefake.NewSimpleClientset(kubeObjs...)
+	rbacReactor := opts.rbacReactor
+	if rbacReactor == nil {
+		rbacReactor = func(_ k8stesting.Action) (bool, runtime.Object, error) {
 			return true, &authorizationv1.SelfSubjectAccessReview{
 				Status: authorizationv1.SubjectAccessReviewStatus{Allowed: opts.rbacAllowed},
 			}, nil
-		},
-	)
+		}
+	}
+	kubeClient.PrependReactor("create", "selfsubjectaccessreviews", rbacReactor)
+
+	discoveryClient := &discoveryfake.FakeDiscovery{Fake: &k8stesting.Fake{}}
+	if !opts.olmV1Only {
+		discoveryClient.Resources = append(discoveryClient.Resources, &metav1.APIResourceList{
+			GroupVersion: "operators.coreos.com/v1alpha1",
+			APIResources: []metav1.APIResource{{Name: "subscriptions"}},
+		})
+	}
+	if opts.olmV1Only || opts.olmMixed {
+		discoveryClient.Resources = append(discoveryClient.Resources, &metav1.APIResourceList{
+			GroupVersion: "olm.operatorframework.io/v1",
+			APIResources: []metav1.APIResource{{Name: "clusterextensions"}},
+		})
+	}
 
 	metadataClient := metadatafake.NewSimpleMetadataClient(
 		scheme,
@@ -140,12 +164,34 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 	apiExtObjs = append(apiExtObjs, certManagerCRD())
 	apiExtObjs = append(apiExtObjs, opts.apiExtObjects...)
 
+	var controllerRuntimeClient crclient.Client
+	if opts.controllerObjs != nil {
+		for _, gvk := range []schema.GroupVersionKind{
+			{Group: "operators.coreos.com", Version: "v2", Kind: "OperatorCondition"},
+			{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "Subscription"},
+			{Group: "olm.operatorframework.io", Version: "v1", Kind: "ClusterExtension"},
+		} {
+			scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+			scheme.AddKnownTypeWithName(
+				gvk.GroupVersion().WithKind(gvk.Kind+"List"),
+				&unstructured.UnstructuredList{},
+			)
+		}
+
+		controllerRuntimeClient = crfake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(opts.controllerObjs...).
+			Build()
+	}
+
 	testClient := client.NewForTesting(client.TestClientConfig{
-		Dynamic:       dynamicClient,
-		OLM:           olmClient,
-		Kubernetes:    kubeClient,
-		APIExtensions: apiextensionsfake.NewSimpleClientset(apiExtObjs...), //nolint:staticcheck // apply configs not available for apiextensions fake
-		Metadata:      metadataClient,
+		Dynamic:           dynamicClient,
+		Discovery:         discoveryClient,
+		OLM:               olmClient,
+		Kubernetes:        kubeClient,
+		APIExtensions:     apiextensionsfake.NewSimpleClientset(apiExtObjs...),
+		Metadata:          metadataClient,
+		ControllerRuntime: controllerRuntimeClient,
 	})
 
 	outputDir := opts.outputDir

@@ -16,7 +16,7 @@ import (
 )
 
 func TestCheckPermissions_AllAllowed(t *testing.T) {
-	client := kubefake.NewSimpleClientset() //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
+	client := kubefake.NewSimpleClientset()
 	client.PrependReactor("create", "selfsubjectaccessreviews",
 		func(action k8stesting.Action) (bool, runtime.Object, error) {
 			return true, &authorizationv1.SelfSubjectAccessReview{
@@ -36,7 +36,7 @@ func TestCheckPermissions_AllAllowed(t *testing.T) {
 }
 
 func TestCheckPermissions_SomeDenied(t *testing.T) {
-	client := kubefake.NewSimpleClientset() //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
+	client := kubefake.NewSimpleClientset()
 	client.PrependReactor("create", "selfsubjectaccessreviews",
 		func(action k8stesting.Action) (bool, runtime.Object, error) {
 			createAction := action.(k8stesting.CreateAction)
@@ -63,7 +63,7 @@ func TestCheckPermissions_SomeDenied(t *testing.T) {
 }
 
 func TestCheckPermissions_AllDenied(t *testing.T) {
-	client := kubefake.NewSimpleClientset() //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
+	client := kubefake.NewSimpleClientset()
 	client.PrependReactor("create", "selfsubjectaccessreviews",
 		func(action k8stesting.Action) (bool, runtime.Object, error) {
 			return true, &authorizationv1.SelfSubjectAccessReview{
@@ -83,7 +83,7 @@ func TestCheckPermissions_AllDenied(t *testing.T) {
 }
 
 func TestCheckPermissions_APIError(t *testing.T) {
-	client := kubefake.NewSimpleClientset() //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
+	client := kubefake.NewSimpleClientset()
 	client.PrependReactor("create", "selfsubjectaccessreviews",
 		func(action k8stesting.Action) (bool, runtime.Object, error) {
 			return true, nil, assert.AnError
@@ -101,7 +101,7 @@ func TestCheckPermissions_APIError(t *testing.T) {
 }
 
 func TestCheckPermissions_EmptyChecks(t *testing.T) {
-	client := kubefake.NewSimpleClientset() //nolint:staticcheck // Need PrependReactor for SelfSubjectAccessReview responses
+	client := kubefake.NewSimpleClientset()
 
 	denied, err := rbac.CheckPermissions(context.Background(), client.AuthorizationV1(), nil)
 	require.NoError(t, err)

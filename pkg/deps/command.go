@@ -234,7 +234,7 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 	}
 
-	statuses, err := CheckDependencies(ctx, c.client.OLM(), result.Manifest)
+	statuses, err := CheckDependencies(ctx, c.client, result.Manifest)
 	if err != nil {
 		return fmt.Errorf(msgCheckDeps, err)
 	}

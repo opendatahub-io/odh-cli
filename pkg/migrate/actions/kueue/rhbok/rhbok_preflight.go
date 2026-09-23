@@ -4,8 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	platformcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	platformolm "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/olm"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
@@ -17,13 +24,20 @@ import (
 )
 
 func preparePermissions() []rbac.PermissionCheck {
+	checks := preparePermissionsV1()
+
+	return append(checks,
+		rbac.PermissionCheck{Verb: "list", Group: resources.PackageManifest.Group, Resource: resources.PackageManifest.Resource},
+	)
+}
+
+func preparePermissionsV1() []rbac.PermissionCheck {
 	return []rbac.PermissionCheck{
 		{Verb: "get", Group: resources.DataScienceClusterV1.Group, Resource: resources.DataScienceClusterV1.Resource},
 		{Verb: "list", Group: resources.DataScienceClusterV1.Group, Resource: resources.DataScienceClusterV1.Resource},
 		{Verb: "list", Group: resources.ClusterQueue.Group, Resource: resources.ClusterQueue.Resource},
 		{Verb: "list", Group: resources.LocalQueue.Group, Resource: resources.LocalQueue.Resource},
 		{Verb: "get", Group: resources.ConfigMap.Group, Resource: resources.ConfigMap.Resource, Namespace: applicationsNamespace},
-		{Verb: "list", Group: resources.PackageManifest.Group, Resource: resources.PackageManifest.Resource},
 	}
 }
 
@@ -37,6 +51,34 @@ func runPermissions() []rbac.PermissionCheck {
 		rbac.PermissionCheck{Verb: "create", Group: resources.OperatorGroup.Group, Resource: resources.OperatorGroup.Resource, Namespace: operatorNamespace},
 		rbac.PermissionCheck{Verb: "list", Group: resources.ClusterServiceVersion.Group, Resource: resources.ClusterServiceVersion.Resource, Namespace: operatorNamespace},
 		rbac.PermissionCheck{Verb: "create", Group: resources.Namespace.Group, Resource: resources.Namespace.Resource},
+		rbac.PermissionCheck{Verb: "get", Group: resources.Namespace.Group, Resource: resources.Namespace.Resource},
+		rbac.PermissionCheck{Verb: "patch", Group: resources.Namespace.Group, Resource: resources.Namespace.Resource},
+		rbac.PermissionCheck{Verb: "update", Group: resources.ConfigMap.Group, Resource: resources.ConfigMap.Resource, Namespace: applicationsNamespace},
+		rbac.PermissionCheck{Verb: "get", Group: resources.Deployment.Group, Resource: resources.Deployment.Resource, Namespace: applicationsNamespace},
+		rbac.PermissionCheck{Verb: "list", Group: resources.Deployment.Group, Resource: resources.Deployment.Resource, Namespace: applicationsNamespace},
+		rbac.PermissionCheck{Verb: "get", Group: resources.CustomResourceDefinition.Group, Resource: resources.CustomResourceDefinition.Resource},
+		rbac.PermissionCheck{Verb: "delete", Group: resources.CustomResourceDefinition.Group, Resource: resources.CustomResourceDefinition.Resource},
+		rbac.PermissionCheck{Verb: "list", Group: resources.Pod.Group, Resource: resources.Pod.Resource, Namespace: operatorNamespace},
+	)
+
+	for _, rt := range monitoredWorkloadResourceTypes() {
+		checks = append(checks,
+			rbac.PermissionCheck{Verb: "list", Group: rt.Group, Resource: rt.Resource},
+			rbac.PermissionCheck{Verb: "patch", Group: rt.Group, Resource: rt.Resource},
+		)
+	}
+
+	return checks
+}
+
+func runPermissionsV1() []rbac.PermissionCheck {
+	checks := preparePermissionsV1()
+	checks = append(checks,
+		rbac.PermissionCheck{Verb: "update", Group: resources.DataScienceClusterV1.Group, Resource: resources.DataScienceClusterV1.Resource},
+		rbac.PermissionCheck{Verb: "list", Group: resources.ClusterExtension.Group, Resource: resources.ClusterExtension.Resource},
+		rbac.PermissionCheck{Verb: "get", Group: resources.ClusterExtension.Group, Resource: resources.ClusterExtension.Resource},
+		rbac.PermissionCheck{Verb: "create", Group: resources.ClusterExtension.Group, Resource: resources.ClusterExtension.Resource},
+		rbac.PermissionCheck{Verb: "get", Group: resources.ServiceAccount.Group, Resource: resources.ServiceAccount.Resource, Namespace: operatorNamespace},
 		rbac.PermissionCheck{Verb: "get", Group: resources.Namespace.Group, Resource: resources.Namespace.Resource},
 		rbac.PermissionCheck{Verb: "patch", Group: resources.Namespace.Group, Resource: resources.Namespace.Resource},
 		rbac.PermissionCheck{Verb: "update", Group: resources.ConfigMap.Group, Resource: resources.ConfigMap.Resource, Namespace: applicationsNamespace},
@@ -201,10 +243,215 @@ func (a *RHBOKMigrationAction) checkNoRHBOKConflicts(
 
 		return
 	}
+	if a.selectedOLMMode == olm.ModeV1 {
+		a.checkNoRHBOKConflictsV1(ctx, target, step, state)
 
+		return
+	}
+	a.checkNoRHBOKConflictsV0(ctx, target, step, state)
+}
+
+func (a *RHBOKMigrationAction) checkNoRHBOKConflictsV1(
+	ctx context.Context,
+	target action.Target,
+	step action.StepRecorder,
+	state string,
+) {
+	v0Requested, err := rhbokV0SubscriptionRequested(ctx, target.Client.ControllerRuntime())
+	if err != nil {
+		step.Completef(result.StepFailed, "Failed to check RHBOK OLM v0 Subscriptions: %v", err)
+
+		return
+	}
+	if v0Requested {
+		step.Completef(result.StepFailed,
+			"Conflict: RHBOK is already requested through OLM v0; select --kueue-olm-mode=v0")
+
+		return
+	}
+
+	requested, err := platformcluster.ClusterExtensionInstallsPackage(
+		ctx, target.Client.ControllerRuntime(), subscriptionPackage, operatorNamespace,
+	)
+	if err != nil {
+		step.Completef(result.StepFailed, "Failed to check RHBOK ClusterExtension: %v", err)
+
+		return
+	}
+	if state == constants.ManagementStateManaged && requested {
+		step.Completef(result.StepFailed,
+			"Conflict: embedded Kueue is Managed but RHBOK operator is already requested")
+
+		return
+	}
+	if requested {
+		step.Completef(result.StepCompleted, "Red Hat build of Kueue ClusterExtension already requested")
+	} else {
+		step.Completef(result.StepCompleted, "No Red Hat build of Kueue conflicts detected")
+	}
+}
+
+func rhbokV0SubscriptionRequested(ctx context.Context, reader crclient.Reader) (bool, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(resources.Subscription.GVK().GroupVersion().WithKind(resources.Subscription.ListKind()))
+
+	err := reader.List(ctx, list)
+	if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("list OLM v0 Subscriptions: %w", err)
+	}
+
+	for i := range list.Items {
+		packageName, _, err := unstructured.NestedString(list.Items[i].Object, "spec", "name")
+		if err != nil {
+			return false, fmt.Errorf("read Subscription %s package: %w", list.Items[i].GetName(), err)
+		}
+		if packageName == subscriptionPackage {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (a *RHBOKMigrationAction) checkV1ServiceAccount(ctx context.Context, target action.Target) {
+	step := target.Recorder.Child("check-rhbok-service-account", "Verify OLM v1 installer ServiceAccount")
+	extension, err := findRHBOKClusterExtension(ctx, target.Client.ControllerRuntime())
+	if err != nil {
+		step.Completef(result.StepFailed, "Failed to check RHBOK ClusterExtension: %v", err)
+
+		return
+	}
+
+	accountName := a.serviceAccountName()
+	if extension != nil {
+		installed, conditionErr := clusterExtensionInstalled(extension)
+		if conditionErr != nil {
+			step.Completef(result.StepFailed, "Failed to check RHBOK ClusterExtension status: %v", conditionErr)
+
+			return
+		}
+		if installed {
+			step.Completef(result.StepSkipped, "RHBOK ClusterExtension is already installed")
+
+			return
+		}
+
+		accountName, _, err = unstructured.NestedString(extension.Object, "spec", "serviceAccount", "name")
+		if err != nil {
+			step.Completef(result.StepFailed,
+				"Failed to read RHBOK ClusterExtension %s ServiceAccount: %v",
+				extension.GetName(), err)
+
+			return
+		}
+		if accountName == "" {
+			step.Completef(result.StepSkipped,
+				"Pending RHBOK ClusterExtension %s does not reference an installer ServiceAccount",
+				extension.GetName())
+
+			return
+		}
+	}
+
+	account := &corev1.ServiceAccount{}
+	err = target.Client.ControllerRuntime().Get(ctx, crclient.ObjectKey{
+		Name: accountName, Namespace: operatorNamespace,
+	}, account)
+	if err != nil {
+		step.Completef(result.StepFailed,
+			"OLM v1 requires ServiceAccount %s in namespace %s: %v",
+			accountName, operatorNamespace, err)
+
+		return
+	}
+
+	step.Completef(result.StepCompleted, "OLM v1 installer ServiceAccount %s exists", accountName)
+}
+
+func findRHBOKClusterExtension(ctx context.Context, reader crclient.Reader) (*unstructured.Unstructured, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(resources.ClusterExtension.GVK().GroupVersion().WithKind(resources.ClusterExtension.ListKind()))
+	if err := reader.List(ctx, list); err != nil {
+		return nil, fmt.Errorf("list ClusterExtensions: %w", err)
+	}
+
+	for i := range list.Items {
+		extension := &list.Items[i]
+		namespace, _, err := unstructured.NestedString(extension.Object, "spec", "namespace")
+		if err != nil {
+			return nil, fmt.Errorf("read ClusterExtension %s namespace: %w", extension.GetName(), err)
+		}
+		if namespace != operatorNamespace {
+			continue
+		}
+
+		sourceType, _, err := unstructured.NestedString(extension.Object, "spec", "source", "sourceType")
+		if err != nil {
+			return nil, fmt.Errorf("read ClusterExtension %s source type: %w", extension.GetName(), err)
+		}
+		if sourceType != "Catalog" {
+			continue
+		}
+
+		packageName, _, err := unstructured.NestedString(extension.Object, "spec", "source", "catalog", "packageName")
+		if err != nil {
+			return nil, fmt.Errorf("read ClusterExtension %s package: %w", extension.GetName(), err)
+		}
+		if packageName == subscriptionPackage {
+			return extension, nil
+		}
+	}
+
+	return nil, nil //nolint:nilnil // No RHBOK ClusterExtension request exists.
+}
+
+func clusterExtensionInstalled(extension *unstructured.Unstructured) (bool, error) {
+	conditions, _, err := unstructured.NestedSlice(extension.Object, "status", "conditions")
+	if err != nil {
+		return false, fmt.Errorf("read ClusterExtension %s conditions: %w", extension.GetName(), err)
+	}
+	for _, condition := range conditions {
+		values, ok := condition.(map[string]any)
+		if !ok {
+			return false, fmt.Errorf("ClusterExtension %s has malformed condition", extension.GetName())
+		}
+		if values["type"] == "Installed" {
+			return values["status"] == "True" && values["reason"] == "Succeeded", nil
+		}
+	}
+
+	return false, nil
+}
+
+func (a *RHBOKMigrationAction) checkNoRHBOKConflictsV0(
+	ctx context.Context,
+	target action.Target,
+	step action.StepRecorder,
+	state string,
+) {
 	info, err := olm.FindOperator(ctx, target.Client, func(sub *olm.SubscriptionInfo) bool {
 		return sub.Name == subscriptionName
 	})
+	if apierrors.IsForbidden(err) && rhbokRequestedViaClusterExtension(ctx, target.Client) {
+		info = &olm.SubscriptionInfo{Name: subscriptionName}
+		err = nil
+	}
+	if err != nil && (apierrors.IsNotFound(err) || meta.IsNoMatchError(err)) && target.Client.ControllerRuntime() != nil {
+		requested, requestErr := platformolm.OperatorPackageRequested(
+			ctx,
+			target.Client.ControllerRuntime(),
+			subscriptionPackage,
+		)
+		if requestErr == nil && requested {
+			info = &olm.SubscriptionInfo{Name: subscriptionName}
+			err = nil
+		} else {
+			err = requestErr
+		}
+	}
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to check Red Hat build of Kueue subscription: %v", err)
 
@@ -236,7 +483,7 @@ func (a *RHBOKMigrationAction) checkOperatorChannel(
 		"Resolve Red Hat build of Kueue operator channel",
 	)
 
-	channel, err := a.resolveSubscriptionChannel(ctx, target)
+	channel, err := a.operatorChannel(ctx, target)
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to resolve operator channel: %v", err)
 

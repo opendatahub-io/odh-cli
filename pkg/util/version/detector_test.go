@@ -4,9 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/blang/semver/v4"
-	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
-	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
+	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -51,6 +49,12 @@ var listKinds = map[schema.GroupVersionResource]string{
 	resources.DSCInitializationV1.GVR():   resources.DSCInitializationV1.ListKind(),
 	resources.ClusterServiceVersion.GVR(): resources.ClusterServiceVersion.ListKind(),
 }
+
+const (
+	testOLMV1ExtensionName = "rhoai-operator"
+	testOLMV1PackageName   = "rhods-operator"
+	testOLMV1Version       = "2.22.1"
+)
 
 func TestDetect_FromDataScienceCluster(t *testing.T) {
 	g := NewWithT(t)
@@ -252,31 +256,44 @@ func TestDetect_FromDSCInitialization_V2(t *testing.T) {
 	g.Expect(clusterVersion.Minor).To(Equal(uint64(6)))
 }
 
-func TestDetect_FromOLM(t *testing.T) {
+func TestDetect_FromOLMV0(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 
-	// Create fake ClusterServiceVersion with version (no DSC/DSCI)
-	v := semver.MustParse("2.15.0")
-	csv := &operatorsv1alpha1.ClusterServiceVersion{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rhods-operator.v2.15.0",
-			Namespace: "redhat-ods-operator",
-			Labels: map[string]string{
-				"operators.coreos.com/rhods-operator.redhat-ods-operator": "",
-			},
-		},
+	operatorConditionGVK := schema.GroupVersionKind{
+		Group: "operators.coreos.com", Version: "v2", Kind: "OperatorCondition",
 	}
-	// Manually set the version field using reflection-free approach
-	csv.Spec.Version.Version = v
+	operatorCondition := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": operatorConditionGVK.GroupVersion().String(),
+		"kind":       operatorConditionGVK.Kind,
+		"metadata": map[string]any{
+			"name": "rhods-operator.2.15.0",
+		},
+	}}
 
 	scheme := runtime.NewScheme()
+	for _, gvk := range []schema.GroupVersionKind{
+		operatorConditionGVK,
+		{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "CatalogSource"},
+		{Group: "olm.operatorframework.io", Version: "v1", Kind: "ClusterCatalog"},
+		{Group: "olm.operatorframework.io", Version: "v1", Kind: "ClusterExtension"},
+	} {
+		scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+		scheme.AddKnownTypeWithName(
+			gvk.GroupVersion().WithKind(gvk.Kind+"List"),
+			&unstructured.UnstructuredList{},
+		)
+	}
+
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
-	olmClient := operatorfake.NewSimpleClientset(csv) //nolint:staticcheck // NewClientset requires generated apply configs not available in OLM
+	controllerRuntimeClient := crfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(operatorCondition).
+		Build()
 
 	c := client.NewForTesting(client.TestClientConfig{
-		Dynamic: dynamicClient,
-		OLM:     olmClient,
+		Dynamic:           dynamicClient,
+		ControllerRuntime: controllerRuntimeClient,
 	})
 
 	clusterVersion, err := version.Detect(ctx, c)
@@ -286,6 +303,69 @@ func TestDetect_FromOLM(t *testing.T) {
 	g.Expect(clusterVersion.Major).To(Equal(uint64(2)))
 	g.Expect(clusterVersion.Minor).To(Equal(uint64(15)))
 	g.Expect(clusterVersion.Patch).To(Equal(uint64(0)))
+}
+
+func TestDetect_FromOLMV1(t *testing.T) {
+	g := NewWithT(t)
+
+	clusterExtension := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "olm.operatorframework.io/v1",
+		"kind":       "ClusterExtension",
+		"metadata": map[string]any{
+			"name": testOLMV1ExtensionName,
+		},
+		"spec": map[string]any{
+			"source": map[string]any{
+				"sourceType": "Catalog",
+				"catalog": map[string]any{
+					"packageName": testOLMV1PackageName,
+				},
+			},
+		},
+		"status": map[string]any{
+			"conditions": []any{
+				map[string]any{
+					"type":   "Installed",
+					"status": "True",
+					"reason": "Succeeded",
+				},
+			},
+			"install": map[string]any{
+				"bundle": map[string]any{
+					"version": testOLMV1Version,
+				},
+			},
+		},
+	}}
+
+	scheme := runtime.NewScheme()
+	for _, gvk := range []schema.GroupVersionKind{
+		{Group: "operators.coreos.com", Version: "v2", Kind: "OperatorCondition"},
+		{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "CatalogSource"},
+		{Group: "olm.operatorframework.io", Version: "v1", Kind: "ClusterCatalog"},
+		{Group: "olm.operatorframework.io", Version: "v1", Kind: "ClusterExtension"},
+	} {
+		scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+		scheme.AddKnownTypeWithName(
+			gvk.GroupVersion().WithKind(gvk.Kind+"List"),
+			&unstructured.UnstructuredList{},
+		)
+	}
+
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
+	controllerRuntimeClient := crfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(clusterExtension).
+		Build()
+	testClient := client.NewForTesting(client.TestClientConfig{
+		Dynamic:           dynamicClient,
+		ControllerRuntime: controllerRuntimeClient,
+	})
+
+	clusterVersion, err := version.Detect(t.Context(), testClient)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(clusterVersion).ToNot(BeNil())
+	g.Expect(clusterVersion.String()).To(Equal(testOLMV1Version))
 }
 
 func TestDetect_PriorityOrder(t *testing.T) {

@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,7 +25,169 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+func denyOLMV0Permissions(action k8stesting.Action) (bool, runtime.Object, error) {
+	review := action.(k8stesting.CreateAction).GetObject().(*authorizationv1.SelfSubjectAccessReview)
+	attributes := review.Spec.ResourceAttributes
+	allowed := attributes.Group != resources.Subscription.Group &&
+		attributes.Resource != resources.PackageManifest.Resource
+
+	return true, &authorizationv1.SelfSubjectAccessReview{
+		Status: authorizationv1.SubjectAccessReviewStatus{Allowed: allowed},
+	}, nil
+}
+
+func denyNamespacePatchPermission(action k8stesting.Action) (bool, runtime.Object, error) {
+	review := action.(k8stesting.CreateAction).GetObject().(*authorizationv1.SelfSubjectAccessReview)
+	attributes := review.Spec.ResourceAttributes
+	allowed := attributes.Verb != "patch" || attributes.Group != resources.Namespace.Group ||
+		attributes.Resource != resources.Namespace.Resource
+
+	return true, &authorizationv1.SelfSubjectAccessReview{
+		Status: authorizationv1.SubjectAccessReviewStatus{Allowed: allowed},
+	}, nil
+}
+
+const (
+	testRHBOKDefaultServiceAccount = "odh-cli-dependency-installer"
+	testRHBOKDSCName               = "default-dsc"
+	testRHBOKKueueName             = "kueue"
+	testRHBOKUnmanagedState        = "Unmanaged"
+	testRHBOKNamespacePatchStep    = "denied-patch-namespaces"
+	testRHBOKExistingAccount       = "existing-rhbok-installer"
+	testRHBOKExistingExtension     = "custom-rhbok-extension"
+)
+
 func TestRunTask_Validate(t *testing.T) {
+	t.Run("explicit v1 rejects an existing v0 RHBOK subscription", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		sub := makeSubscription(rhbok.ExportSubscriptionName, inNamespace(rhbok.ExportApplicationsNamespace))
+		g.Expect(unstructured.SetNestedField(sub.Object, rhbok.ExportSubscriptionName, "spec", "name")).To(Succeed())
+		account := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+			Name: testRHBOKDefaultServiceAccount, Namespace: rhbok.ExportOperatorNamespace,
+		}}
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmMixed:       true,
+			rbacAllowed:    true,
+			controllerObjs: []crclient.Object{sub, account},
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{OLMMode: "v1"}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-rhbok-conflicts")).To(HaveField("Status", result.StepFailed))
+	})
+
+	t.Run("pending v1 extension requires its referenced ServiceAccount", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		extension := newInstalledClusterExtension(
+			testRHBOKExistingExtension, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+		)
+		unstructured.RemoveNestedField(extension.Object, "status")
+		g.Expect(unstructured.SetNestedField(extension.Object,
+			map[string]any{"name": testRHBOKExistingAccount}, "spec", "serviceAccount")).To(Succeed())
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:      true,
+			rbacAllowed:    true,
+			controllerObjs: []crclient.Object{extension},
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-rhbok-service-account")).To(HaveField("Status", result.StepFailed))
+	})
+
+	t.Run("pending v1 extension without ServiceAccount skips account check", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		extension := newInstalledClusterExtension(
+			testRHBOKExistingExtension, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+		)
+		unstructured.RemoveNestedField(extension.Object, "status")
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:      true,
+			rbacAllowed:    true,
+			controllerObjs: []crclient.Object{extension},
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-rhbok-service-account")).To(HaveField("Status", result.StepSkipped))
+	})
+
+	t.Run("pending v1 extension uses its own ServiceAccount", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		extension := newInstalledClusterExtension(
+			testRHBOKExistingExtension, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+		)
+		unstructured.RemoveNestedField(extension.Object, "status")
+		g.Expect(unstructured.SetNestedField(extension.Object,
+			map[string]any{"name": testRHBOKExistingAccount}, "spec", "serviceAccount")).To(Succeed())
+		account := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+			Name: testRHBOKExistingAccount, Namespace: rhbok.ExportOperatorNamespace,
+		}}
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:      true,
+			rbacAllowed:    true,
+			controllerObjs: []crclient.Object{extension, account},
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-rhbok-service-account")).To(HaveField("Status", result.StepCompleted))
+	})
+
+	t.Run("v1 preflight rejects missing namespace patch permission before migration", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only: true,
+			controllerObjs: []crclient.Object{&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+				Name: testRHBOKDefaultServiceAccount, Namespace: rhbok.ExportOperatorNamespace,
+			}}},
+			rbacReactor: denyNamespacePatchPermission,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Execute(t.Context(), target)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStepRecursive(res.Status.Steps, testRHBOKNamespacePatchStep)).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "delete-legacy-crds")).To(BeNil())
+	})
+
+	t.Run("v1-only preflight does not require OLM v0 permissions", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only: true,
+			controllerObjs: []crclient.Object{&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+				Name: testRHBOKDefaultServiceAccount, Namespace: rhbok.ExportOperatorNamespace,
+			}}},
+			rbacReactor: denyOLMV0Permissions,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepCompleted))
+		g.Expect(findStep(res.Status.Steps, "check-rhbok-service-account")).To(HaveField("Status", result.StepCompleted))
+	})
+
+	t.Run("v1-only install requires ServiceAccount before migration changes", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:      true,
+			controllerObjs: []crclient.Object{},
+			rbacReactor:    denyOLMV0Permissions,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Execute(t.Context(), target)
+		g.Expect(err).To(MatchError("preflight checks failed"))
+		g.Expect(findStep(res.Status.Steps, "check-rhbok-service-account")).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "delete-legacy-crds")).To(BeNil())
+	})
+
 	t.Run("runs all preflight checks", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
@@ -120,6 +285,23 @@ func TestRunTask_Validate(t *testing.T) {
 }
 
 func TestRunTask_Execute(t *testing.T) {
+	t.Run("v1-only installed operator completes without OLM v0 permissions", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1("default-dsc", withComponent("kueue", "Unmanaged"))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only: true,
+			controllerObjs: []crclient.Object{newInstalledClusterExtension(
+				rhbok.ExportSubscriptionName, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+			)},
+			rbacReactor: denyOLMV0Permissions,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Execute(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepCompleted))
+		g.Expect(findStep(res.Status.Steps, "migration-complete")).To(HaveField("Status", result.StepSkipped))
+	})
+
 	t.Run("dry-run reports all steps as skipped", func(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()

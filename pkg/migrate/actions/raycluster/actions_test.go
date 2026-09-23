@@ -58,7 +58,7 @@ func newTestTarget(t *testing.T, objects ...*unstructured.Unstructured) action.T
 		}
 	}
 
-	apiExtClient := fakeapiextensions.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in apiextensions
+	apiExtClient := fakeapiextensions.NewSimpleClientset()
 
 	testClient := client.NewForTesting(client.TestClientConfig{
 		Dynamic:       dynamicClient,

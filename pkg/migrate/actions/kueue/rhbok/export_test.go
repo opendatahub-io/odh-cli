@@ -21,6 +21,7 @@ var (
 	ExportRemoveEmbeddedKueue    = (*RHBOKMigrationAction).removeEmbeddedKueue
 	ExportActivateRHBOK          = (*RHBOKMigrationAction).activateRHBOK
 	ExportInstallRHBOKOperator   = (*RHBOKMigrationAction).installRHBOKOperator
+	ExportCreateRHBOKExtension   = (*RHBOKMigrationAction).createRHBOKClusterExtension
 	ExportDeleteLegacyCRDs       = (*RHBOKMigrationAction).deleteLegacyCRDs
 	ExportLabelKueueNamespaces   = (*RHBOKMigrationAction).labelKueueNamespaces
 	ExportLabelKueueWorkloads    = (*RHBOKMigrationAction).labelKueueWorkloads

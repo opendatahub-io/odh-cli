@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	olmclientset "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -32,13 +33,14 @@ var _ Client = (*defaultClient)(nil)
 
 // defaultClient is the concrete implementation of Client, Reader, and Writer.
 type defaultClient struct {
-	dynamic       dynamic.Interface
-	discovery     discovery.DiscoveryInterface
-	apiExtensions apiextensionsclientset.Interface
-	olm           olmclientset.Interface
-	metadata      metadata.Interface
-	kubernetes    kubernetes.Interface
-	restMapper    meta.RESTMapper
+	dynamic           dynamic.Interface
+	discovery         discovery.DiscoveryInterface
+	apiExtensions     apiextensionsclientset.Interface
+	olm               olmclientset.Interface
+	metadata          metadata.Interface
+	kubernetes        kubernetes.Interface
+	restMapper        meta.RESTMapper
+	controllerRuntime crclient.Client
 
 	olmReader OLMReader
 }
@@ -48,6 +50,7 @@ func (c *defaultClient) Discovery() discovery.DiscoveryInterface         { retur
 func (c *defaultClient) APIExtensions() apiextensionsclientset.Interface { return c.apiExtensions }
 func (c *defaultClient) Metadata() metadata.Interface                    { return c.metadata }
 func (c *defaultClient) RESTMapper() meta.RESTMapper                     { return c.restMapper }
+func (c *defaultClient) ControllerRuntime() crclient.Client              { return c.controllerRuntime }
 func (c *defaultClient) OLM() OLMReader                                  { return c.olmReader }
 func (c *defaultClient) OLMClient() olmclientset.Interface               { return c.olm }
 func (c *defaultClient) CoreV1() corev1client.CoreV1Interface {
@@ -99,20 +102,26 @@ func NewClientWithConfig(restConfig *rest.Config) (Client, error) {
 		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
+	controllerRuntimeClient, err := NewControllerRuntimeClient(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create RESTMapper with caching for efficient GVK->GVR mapping.
 	restMapper := restmapper.NewDeferredDiscoveryRESTMapper(
 		memory.NewMemCacheClient(discoveryClient),
 	)
 
 	return &defaultClient{
-		dynamic:       dynamicClient,
-		discovery:     discoveryClient,
-		apiExtensions: apiExtensionsClient,
-		olm:           olmClient,
-		metadata:      metadataClient,
-		kubernetes:    kubeClient,
-		restMapper:    restMapper,
-		olmReader:     newOLMReader(olmClient),
+		dynamic:           dynamicClient,
+		discovery:         discoveryClient,
+		apiExtensions:     apiExtensionsClient,
+		olm:               olmClient,
+		metadata:          metadataClient,
+		kubernetes:        kubeClient,
+		restMapper:        restMapper,
+		controllerRuntime: controllerRuntimeClient,
+		olmReader:         newOLMReader(olmClient),
 	}, nil
 }
 

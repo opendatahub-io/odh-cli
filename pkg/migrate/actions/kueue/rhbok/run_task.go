@@ -7,6 +7,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 )
 
 type runTask struct {
@@ -17,10 +18,20 @@ func (t *runTask) Validate(
 	ctx context.Context,
 	target action.Target,
 ) (*result.ActionResult, error) {
-	t.action.verifyRBAC(ctx, target, runPermissions())
+	if err := t.action.selectOLMMode(ctx, target); err != nil {
+		return nil, err
+	}
+	if t.action.selectedOLMMode == olm.ModeV1 {
+		t.action.verifyRBAC(ctx, target, runPermissionsV1())
+	} else {
+		t.action.verifyRBAC(ctx, target, runPermissions())
+	}
 	t.action.checkCertManager(ctx, target)
 	t.action.checkCurrentKueueState(ctx, target)
 	t.action.checkNoRHBOKConflicts(ctx, target)
+	if t.action.selectedOLMMode == olm.ModeV1 {
+		t.action.checkV1ServiceAccount(ctx, target)
+	}
 	t.action.checkOperatorChannel(ctx, target)
 	t.action.verifyKueueResources(ctx, target)
 	t.action.reportLabelingPlan(ctx, target)

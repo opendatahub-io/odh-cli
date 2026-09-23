@@ -30,7 +30,7 @@ func TestEnsureNamespace(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
-		kubeClient := kubefake.NewSimpleClientset() //nolint:staticcheck // fake client without apply configs
+		kubeClient := kubefake.NewSimpleClientset()
 		k8sClient := client.NewForTesting(client.TestClientConfig{
 			Kubernetes: kubeClient,
 		})
@@ -47,7 +47,7 @@ func TestEnsureNamespace(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
-		kubeClient := kubefake.NewSimpleClientset(&corev1.Namespace{ //nolint:staticcheck // fake client without apply configs
+		kubeClient := kubefake.NewSimpleClientset(&corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{Name: testOperatorNamespace},
 		})
 		k8sClient := client.NewForTesting(client.TestClientConfig{
@@ -62,7 +62,7 @@ func TestEnsureNamespace(t *testing.T) {
 		g := NewWithT(t)
 		ctx := t.Context()
 
-		kubeClient := kubefake.NewSimpleClientset() //nolint:staticcheck // fake client without apply configs
+		kubeClient := kubefake.NewSimpleClientset()
 		kubeClient.PrependReactor("get", "namespaces", func(_ k8stesting.Action) (bool, runtime.Object, error) {
 			return true, nil, errors.New("connection refused")
 		})

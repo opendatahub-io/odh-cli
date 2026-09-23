@@ -5,6 +5,7 @@ import (
 
 	olmclientset "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned"
 	"github.com/stretchr/testify/mock"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -175,6 +176,17 @@ func (m *MockClient) Metadata() metadata.Interface {
 
 func (m *MockClient) RESTMapper() meta.RESTMapper {
 	return nil
+}
+
+func (m *MockClient) ControllerRuntime() crclient.Client {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+
+	result, _ := args.Get(0).(crclient.Client)
+
+	return result
 }
 
 func (m *MockClient) OLMClient() olmclientset.Interface {
