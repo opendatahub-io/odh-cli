@@ -774,15 +774,11 @@ type storageConfigEntry struct {
 	Name string `json:"name"`
 }
 
-// getStorageConfigEntry fetches the storage-config secret in the given namespace,
-// decodes the base64 value for storageKey, and parses it as JSON.
-// Returns nil with no error when the secret or key is not found.
-func getStorageConfigEntry(
+func getStorageConfigSecretData(
 	ctx context.Context,
 	target action.Target,
 	namespace string,
-	storageKey string,
-) (*storageConfigEntry, error) {
+) (map[string]any, error) {
 	secret, err := target.Client.Dynamic().Resource(resources.Secret.GVR()).
 		Namespace(namespace).
 		Get(ctx, storageConfigSecretName, metav1.GetOptions{})
@@ -799,6 +795,10 @@ func getStorageConfigEntry(
 		return nil, nil
 	}
 
+	return data, nil
+}
+
+func decodeStorageConfigEntry(data map[string]any, storageKey string) (*storageConfigEntry, error) {
 	encodedVal, ok := data[storageKey]
 	if !ok {
 		return nil, nil

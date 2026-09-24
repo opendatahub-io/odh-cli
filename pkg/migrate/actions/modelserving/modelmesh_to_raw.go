@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -46,7 +47,11 @@ const (
 	msgPVCStorageURIDryRun          = "Would set storageUri=%s and deploymentMode=RawDeployment on InferenceService %s/%s"
 	msgPVCStorageURIFailed          = "Failed to update InferenceService %s/%s for PVC conversion: %v"
 	msgPVCConversionAborted         = "Skipping remaining steps for InferenceService %s/%s due to PVC conversion failure"
-	msgPVCConflictingRuntime        = "Cannot convert PVC-backed InferenceServices sharing ServingRuntime(s): %s; assign each model a dedicated ServingRuntime"
+	msgPVCConflictingRuntime        = "Cannot convert InferenceServices sharing ServingRuntime(s): %s; assign each model a dedicated ServingRuntime"
+	msgRuntimeNotFound              = "ServingRuntime %s/%s not found (skipped)"
+	msgRuntimeGetFailed             = "Failed to get ServingRuntime %s/%s: %v"
+	msgRuntimeRollback              = "Restored ServingRuntime %s/%s after conversion failure"
+	msgRuntimeRollbackFailed        = "Failed to restore ServingRuntime %s/%s after conversion failure: %v"
 )
 
 // ModelMeshToRawAction converts InferenceServices from ModelMesh to RawDeployment mode.
@@ -114,8 +119,8 @@ func (a *ModelMeshToRawAction) convertISVCs(
 		"Detect PVC-backed InferenceServices",
 	)
 
-	standardISVCs, pvcISVCs := a.classifyISVCsByStorageType(ctx, target, isvcs, detectionStep)
-	skippedCount := len(isvcs) - len(standardISVCs) - len(pvcISVCs)
+	standardISVCs, pvcISVCs, skippedISVCs := a.classifyISVCsByStorageType(ctx, target, isvcs, detectionStep)
+	skippedCount := len(skippedISVCs)
 
 	if skippedCount > 0 {
 		detectionStep.Completef(result.StepFailed, "Detected %d standard, %d PVC-backed, %d skipped (detection failed) InferenceService(s)", len(standardISVCs), len(pvcISVCs), skippedCount)
@@ -123,7 +128,7 @@ func (a *ModelMeshToRawAction) convertISVCs(
 		detectionStep.Completef(result.StepCompleted, "Detected %d standard and %d PVC-backed InferenceService(s)", len(standardISVCs), len(pvcISVCs))
 	}
 
-	if !validatePVCServingRuntimeAssignments(ctx, target, standardISVCs, pvcISVCs, step) {
+	if !validatePVCServingRuntimeAssignments(ctx, target, standardISVCs, pvcISVCs, skippedISVCs, step) {
 		return
 	}
 
@@ -144,11 +149,20 @@ func (a *ModelMeshToRawAction) convertISVCs(
 	}
 
 	processedNamespaces := make(map[string]bool)
-	standardCount, standardFailedCount := a.convertStandardISVCs(ctx, target, standardISVCs, step, processedNamespaces)
-	pvcCount, pvcFailedCount := a.convertPVCISVCs(ctx, target, pvcISVCs, step, processedNamespaces)
+	blockedNamespaces := sets.New[string]()
+	for _, isvc := range skippedISVCs {
+		blockedNamespaces.Insert(isvc.GetNamespace())
+	}
+
+	standardCount, standardFailedCount := a.convertStandardISVCs(ctx, target, standardISVCs, step, processedNamespaces, blockedNamespaces)
+	pvcCount, pvcFailedCount := a.convertPVCISVCs(ctx, target, pvcISVCs, step, processedNamespaces, blockedNamespaces)
 
 	// Remove modelmesh-enabled label from processed namespaces
 	for ns := range processedNamespaces {
+		if blockedNamespaces.Has(ns) {
+			continue
+		}
+
 		removeModelMeshLabel(ctx, target, ns, step)
 	}
 
@@ -170,6 +184,7 @@ func (a *ModelMeshToRawAction) convertStandardISVCs(
 	isvcs []*unstructured.Unstructured,
 	parentStep action.StepRecorder,
 	processedNamespaces map[string]bool,
+	blockedNamespaces sets.Set[string],
 ) (int, int) {
 	var converted, failed int
 
@@ -179,16 +194,31 @@ func (a *ModelMeshToRawAction) convertStandardISVCs(
 			fmt.Sprintf("Convert %s/%s", isvc.GetNamespace(), isvc.GetName()),
 		)
 
-		runtimeOK := a.updateServingRuntime(ctx, target, isvc, isvcStep)
-		deploymentModeOK := patchISVCDeploymentMode(ctx, target, isvc, deploymentModeRawDeployment, isvcStep)
-		authOK := finalizeISVCConversion(ctx, target, isvc, isvcStep)
-
-		if runtimeOK && deploymentModeOK && authOK {
-			processedNamespaces[isvc.GetNamespace()] = true
-			converted++
-		} else {
+		if !finalizeISVCConversion(ctx, target, isvc, isvcStep) {
+			blockedNamespaces.Insert(isvc.GetNamespace())
 			failed++
+
+			continue
 		}
+
+		runtimeSnapshot, runtimeOK := a.updateServingRuntime(ctx, target, isvc, isvcStep)
+		if !runtimeOK {
+			blockedNamespaces.Insert(isvc.GetNamespace())
+			failed++
+
+			continue
+		}
+
+		if !patchISVCDeploymentMode(ctx, target, isvc, deploymentModeRawDeployment, isvcStep) {
+			restoreServingRuntime(ctx, target, runtimeSnapshot, isvcStep)
+			blockedNamespaces.Insert(isvc.GetNamespace())
+			failed++
+
+			continue
+		}
+
+		processedNamespaces[isvc.GetNamespace()] = true
+		converted++
 	}
 
 	return converted, failed
@@ -200,6 +230,7 @@ func (a *ModelMeshToRawAction) convertPVCISVCs(
 	pvcISVCs []pvcISVCInfo,
 	parentStep action.StepRecorder,
 	processedNamespaces map[string]bool,
+	blockedNamespaces sets.Set[string],
 ) (int, int) {
 	var converted, failed int
 
@@ -216,7 +247,7 @@ func (a *ModelMeshToRawAction) convertPVCISVCs(
 			pi.isvc.GetNamespace(), pi.isvc.GetName(), pi.entry.Name, pi.storageKey,
 		)
 
-		if !a.convertPVCISVC(ctx, target, pi, isvcStep) || !finalizeISVCConversion(ctx, target, pi.isvc, isvcStep) {
+		if !finalizeISVCConversion(ctx, target, pi.isvc, isvcStep) || !a.convertPVCISVC(ctx, target, pi, isvcStep) {
 			failed++
 			isvcStep.Recordf(
 				"pvc-aborted-"+pi.isvc.GetName(),
@@ -224,6 +255,7 @@ func (a *ModelMeshToRawAction) convertPVCISVCs(
 				result.StepFailed,
 				pi.isvc.GetNamespace(), pi.isvc.GetName(),
 			)
+			blockedNamespaces.Insert(pi.isvc.GetNamespace())
 
 			continue
 		}
@@ -240,9 +272,10 @@ func validatePVCServingRuntimeAssignments(
 	target action.Target,
 	standardISVCs []*unstructured.Unstructured,
 	pvcISVCs []pvcISVCInfo,
+	skippedISVCs []*unstructured.Unstructured,
 	parentStep action.StepRecorder,
 ) bool {
-	if len(pvcISVCs) == 0 {
+	if len(pvcISVCs) == 0 && len(skippedISVCs) == 0 {
 		return true
 	}
 
@@ -250,7 +283,7 @@ func validatePVCServingRuntimeAssignments(
 		"validate-pvc-runtimes",
 		"Validate ServingRuntime assignments for PVC-backed InferenceServices",
 	)
-	conflictingRuntimes := findPVCServingRuntimeConflicts(standardISVCs, pvcISVCs)
+	conflictingRuntimes := findPVCServingRuntimeConflicts(standardISVCs, skippedISVCs, pvcISVCs)
 	if len(conflictingRuntimes) > 0 {
 		message := fmt.Sprintf(msgPVCConflictingRuntime, strings.Join(conflictingRuntimes, ", "))
 		runtimeValidationStep.Completef(result.StepFailed, "%s", message)
@@ -301,7 +334,7 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 	target action.Target,
 	isvc *unstructured.Unstructured,
 	parentStep action.StepRecorder,
-) bool {
+) (*unstructured.Unstructured, bool) {
 	runtimeName, err := jq.Query[string](isvc, ".spec.predictor.model.runtime")
 	if err != nil {
 		parentStep.Recordf(
@@ -311,7 +344,7 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 			isvc.GetNamespace(), isvc.GetName(), err,
 		)
 
-		return false
+		return nil, false
 	}
 
 	ns := isvc.GetNamespace()
@@ -326,9 +359,15 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 		Get(ctx, runtimeName, metav1.GetOptions{})
 
 	if err != nil {
-		step.Completef(result.StepSkipped, "ServingRuntime %s/%s not found (skipped)", ns, runtimeName)
+		if apierrors.IsNotFound(err) {
+			step.Completef(result.StepSkipped, msgRuntimeNotFound, ns, runtimeName)
 
-		return true
+			return nil, true
+		}
+
+		step.Completef(result.StepFailed, msgRuntimeGetFailed, ns, runtimeName, err)
+
+		return nil, false
 	}
 
 	// Check if multi-model
@@ -336,26 +375,28 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 	if err != nil || !multiModel {
 		step.Completef(result.StepSkipped, "ServingRuntime %s/%s is not multi-model (skipped)", ns, runtimeName)
 
-		return true
+		return nil, true
 	}
 
 	if target.DryRun {
 		step.Completef(result.StepSkipped, "Would update ServingRuntime %s/%s for RawDeployment (multiModel=false, rename container to %s)", ns, runtimeName, kserveContainerName)
 
-		return true
+		return nil, true
 	}
+
+	runtimeSnapshot := runtime.DeepCopy()
 
 	if err := jq.Transform(runtime, ".spec.multiModel = false"); err != nil {
 		step.Completef(result.StepFailed, "Failed to update ServingRuntime %s/%s: %v", ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	// KServe RawDeployment requires a container named "kserve-container"
 	if err := jq.Transform(runtime, ".spec.containers[0].name = %q", kserveContainerName); err != nil {
 		step.Completef(result.StepFailed, "Failed to rename container in ServingRuntime %s/%s: %v", ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	_, err = target.Client.Dynamic().Resource(resources.ServingRuntime.GVR()).
@@ -365,12 +406,45 @@ func (a *ModelMeshToRawAction) updateServingRuntime(
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to update ServingRuntime %s/%s: %v", ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	step.Completef(result.StepCompleted, "Updated ServingRuntime %s/%s (multiModel=false, container renamed to %s)", ns, runtimeName, kserveContainerName)
 
-	return true
+	return runtimeSnapshot, true
+}
+
+func restoreServingRuntime(
+	ctx context.Context,
+	target action.Target,
+	runtimeSnapshot *unstructured.Unstructured,
+	step action.StepRecorder,
+) {
+	if runtimeSnapshot == nil || target.DryRun {
+		return
+	}
+
+	ns := runtimeSnapshot.GetNamespace()
+	name := runtimeSnapshot.GetName()
+	runtime, err := target.Client.Dynamic().Resource(resources.ServingRuntime.GVR()).
+		Namespace(ns).
+		Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		step.Recordf("rollback-runtime-"+name, msgRuntimeRollbackFailed, result.StepFailed, ns, name, err)
+
+		return
+	}
+
+	runtime.Object["spec"] = runtimeSnapshot.Object["spec"]
+	if _, err = target.Client.Dynamic().Resource(resources.ServingRuntime.GVR()).
+		Namespace(ns).
+		Update(ctx, runtime, metav1.UpdateOptions{}); err != nil {
+		step.Recordf("rollback-runtime-"+name, msgRuntimeRollbackFailed, result.StepFailed, ns, name, err)
+
+		return
+	}
+
+	step.Recordf("rollback-runtime-"+name, msgRuntimeRollback, result.StepCompleted, ns, name)
 }
 
 // finalizeISVCConversion handles auth resources and namespace tracking common to all ISVC conversions.
@@ -402,17 +476,24 @@ type pvcISVCInfo struct {
 	entry       *storageConfigEntry
 }
 
-// classifyISVCsByStorageType splits ISVCs into standard (S3/HDFS) and PVC-backed.
+// classifyISVCsByStorageType splits ISVCs into standard (S3/HDFS), PVC-backed, and skipped.
 func (a *ModelMeshToRawAction) classifyISVCsByStorageType(
 	ctx context.Context,
 	target action.Target,
 	isvcs []*unstructured.Unstructured,
 	step action.StepRecorder,
-) ([]*unstructured.Unstructured, []pvcISVCInfo) {
+) ([]*unstructured.Unstructured, []pvcISVCInfo, []*unstructured.Unstructured) {
+	type storageConfigCacheEntry struct {
+		data map[string]any
+		err  error
+	}
+
 	var (
 		standard  []*unstructured.Unstructured
 		pvcBacked []pvcISVCInfo
+		skipped   []*unstructured.Unstructured
 	)
+	storageConfigCache := make(map[string]storageConfigCacheEntry)
 
 	for _, isvc := range isvcs {
 		storageKey := getISVCStorageKey(isvc)
@@ -422,7 +503,19 @@ func (a *ModelMeshToRawAction) classifyISVCsByStorageType(
 			continue
 		}
 
-		entry, err := getStorageConfigEntry(ctx, target, isvc.GetNamespace(), storageKey)
+		cacheEntry, found := storageConfigCache[isvc.GetNamespace()]
+		if !found {
+			cacheEntry.data, cacheEntry.err = getStorageConfigSecretData(ctx, target, isvc.GetNamespace())
+			storageConfigCache[isvc.GetNamespace()] = cacheEntry
+		}
+
+		var entry *storageConfigEntry
+		var err error
+		if cacheEntry.err == nil && cacheEntry.data != nil {
+			entry, err = decodeStorageConfigEntry(cacheEntry.data, storageKey)
+		} else {
+			err = cacheEntry.err
+		}
 		if err != nil {
 			step.Recordf(
 				"classify-"+isvc.GetName(),
@@ -430,6 +523,7 @@ func (a *ModelMeshToRawAction) classifyISVCsByStorageType(
 				result.StepFailed,
 				isvc.GetNamespace(), isvc.GetName(), err,
 			)
+			skipped = append(skipped, isvc)
 
 			continue
 		}
@@ -448,17 +542,25 @@ func (a *ModelMeshToRawAction) classifyISVCsByStorageType(
 		})
 	}
 
-	return standard, pvcBacked
+	return standard, pvcBacked, skipped
 }
 
 func findPVCServingRuntimeConflicts(
 	standardISVCs []*unstructured.Unstructured,
+	skippedISVCs []*unstructured.Unstructured,
 	pvcISVCs []pvcISVCInfo,
 ) []string {
 	standardRuntimes := sets.New[string]()
 	for _, isvc := range standardISVCs {
 		if runtimeKey := getServingRuntimeKey(isvc); runtimeKey != "" {
 			standardRuntimes.Insert(runtimeKey)
+		}
+	}
+
+	skippedRuntimes := sets.New[string]()
+	for _, isvc := range skippedISVCs {
+		if runtimeKey := getServingRuntimeKey(isvc); runtimeKey != "" {
+			skippedRuntimes.Insert(runtimeKey)
 		}
 	}
 
@@ -470,8 +572,14 @@ func findPVCServingRuntimeConflicts(
 	}
 
 	conflicts := sets.New[string]()
+	for runtimeKey := range standardRuntimes {
+		if skippedRuntimes.Has(runtimeKey) {
+			conflicts.Insert(runtimeKey)
+		}
+	}
+
 	for runtimeKey, count := range pvcRuntimeCounts {
-		if count > 1 || standardRuntimes.Has(runtimeKey) {
+		if count > 1 || standardRuntimes.Has(runtimeKey) || skippedRuntimes.Has(runtimeKey) {
 			conflicts.Insert(runtimeKey)
 		}
 	}
@@ -509,11 +617,19 @@ func (a *ModelMeshToRawAction) convertPVCISVC(
 	if target.DryRun {
 		step.Recordf("pvc-storageuri-"+name, msgPVCStorageURIDryRun, result.StepSkipped, storageURI, ns, name)
 
-		return a.updateServingRuntimeForPVC(ctx, target, pi.isvc, step)
+		_, runtimeOK := a.updateServingRuntimeForPVC(ctx, target, pi.isvc, step)
+
+		return runtimeOK
+	}
+
+	runtimeSnapshot, runtimeOK := a.updateServingRuntimeForPVC(ctx, target, pi.isvc, step)
+	if !runtimeOK {
+		return false
 	}
 
 	if err := jq.Transform(pi.isvc, ".spec.predictor.model.storageUri = %q", storageURI); err != nil {
 		step.Recordf("pvc-storageuri-"+name, msgPVCStorageURIFailed, result.StepFailed, ns, name, err)
+		restoreServingRuntime(ctx, target, runtimeSnapshot, step)
 
 		return false
 	}
@@ -535,13 +651,14 @@ func (a *ModelMeshToRawAction) convertPVCISVC(
 		Update(ctx, pi.isvc, metav1.UpdateOptions{})
 	if err != nil {
 		step.Recordf("pvc-storageuri-"+name, msgPVCStorageURIFailed, result.StepFailed, ns, name, err)
+		restoreServingRuntime(ctx, target, runtimeSnapshot, step)
 
 		return false
 	}
 
 	step.Recordf("pvc-storageuri-"+name, msgPVCStorageURISet, result.StepCompleted, storageURI, ns, name)
 
-	return a.updateServingRuntimeForPVC(ctx, target, pi.isvc, step)
+	return true
 }
 
 // updateServingRuntimeForPVC patches a ServingRuntime for PVC single-model OVMS deployment:
@@ -551,7 +668,7 @@ func (a *ModelMeshToRawAction) updateServingRuntimeForPVC(
 	target action.Target,
 	isvc *unstructured.Unstructured,
 	parentStep action.StepRecorder,
-) bool {
+) (*unstructured.Unstructured, bool) {
 	runtimeName, err := jq.Query[string](isvc, ".spec.predictor.model.runtime")
 	if err != nil {
 		parentStep.Recordf(
@@ -561,7 +678,7 @@ func (a *ModelMeshToRawAction) updateServingRuntimeForPVC(
 			isvc.GetNamespace(), isvc.GetName(), err,
 		)
 
-		return false
+		return nil, false
 	}
 
 	ns := isvc.GetNamespace()
@@ -578,27 +695,29 @@ func (a *ModelMeshToRawAction) updateServingRuntimeForPVC(
 	if err != nil {
 		step.Completef(result.StepFailed, msgPVCRuntimeFailed, ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	if target.DryRun {
 		step.Completef(result.StepSkipped, msgPVCRuntimeDryRun, ns, runtimeName)
 
-		return true
+		return nil, true
 	}
+
+	runtimeSnapshot := runtime.DeepCopy()
 
 	// Set multiModel=false
 	if err := jq.Transform(runtime, ".spec.multiModel = false"); err != nil {
 		step.Completef(result.StepFailed, msgPVCRuntimeFailed, ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	// Rename container to kserve-container
 	if err := jq.Transform(runtime, ".spec.containers[0].name = %q", kserveContainerName); err != nil {
 		step.Completef(result.StepFailed, msgPVCRuntimeFailed, ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	// Replace container args with single-model OVMS args
@@ -606,14 +725,14 @@ func (a *ModelMeshToRawAction) updateServingRuntimeForPVC(
 	if len(containers) == 0 {
 		step.Completef(result.StepFailed, msgPVCRuntimeNoContainer, ns, runtimeName)
 
-		return false
+		return nil, false
 	}
 
 	container, ok := containers[0].(map[string]any)
 	if !ok {
 		step.Completef(result.StepFailed, msgPVCRuntimeInvalidContainer, ns, runtimeName)
 
-		return false
+		return nil, false
 	}
 
 	containerArgs, _ := container["args"].([]any)
@@ -639,7 +758,7 @@ func (a *ModelMeshToRawAction) updateServingRuntimeForPVC(
 	if err := unstructured.SetNestedSlice(runtime.Object, containers, "spec", "containers"); err != nil {
 		step.Completef(result.StepFailed, msgPVCRuntimeFailed, ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	_, err = target.Client.Dynamic().Resource(resources.ServingRuntime.GVR()).
@@ -648,17 +767,24 @@ func (a *ModelMeshToRawAction) updateServingRuntimeForPVC(
 	if err != nil {
 		step.Completef(result.StepFailed, msgPVCRuntimeFailed, ns, runtimeName, err)
 
-		return false
+		return nil, false
 	}
 
 	step.Completef(result.StepCompleted, msgPVCRuntimeUpdate, ns, runtimeName)
 
-	return true
+	return runtimeSnapshot, true
 }
 
 func buildSingleModelOVMSArgs(existingArgs []any, isvcName string) []any {
 	args := make([]any, 0, len(existingArgs)+ovmsSingleModelArgCount)
+	skipValue := false
 	for _, arg := range existingArgs {
+		if skipValue {
+			skipValue = false
+
+			continue
+		}
+
 		argString, ok := arg.(string)
 		if !ok {
 			args = append(args, arg)
@@ -670,7 +796,20 @@ func buildSingleModelOVMSArgs(existingArgs []any, isvcName string) []any {
 		case strings.HasPrefix(argString, "--model_name="),
 			strings.HasPrefix(argString, "--model_path="),
 			strings.HasPrefix(argString, "--port="),
-			strings.HasPrefix(argString, "--rest_port="):
+			strings.HasPrefix(argString, "--rest_port="),
+			strings.HasPrefix(argString, "--config_path="),
+			strings.HasPrefix(argString, "--grpc_bind_address="),
+			strings.HasPrefix(argString, "--rest_bind_address="):
+			continue
+		case argString == "--model_name",
+			argString == "--model_path",
+			argString == "--port",
+			argString == "--rest_port",
+			argString == "--config_path",
+			argString == "--grpc_bind_address",
+			argString == "--rest_bind_address":
+			skipValue = true
+
 			continue
 		default:
 			args = append(args, arg)
