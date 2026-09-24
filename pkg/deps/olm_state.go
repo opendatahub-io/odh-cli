@@ -46,33 +46,42 @@ func requestedV0Subscription(
 	return nil, nil //nolint:nilnil // No package request exists in this namespace.
 }
 
-func installedClusterExtension(
+type clusterExtensionInstallState struct {
+	version   string
+	requested bool
+	installed bool
+}
+
+func findClusterExtensionInstallState(
 	ctx context.Context, reader crclient.Reader, packageName, namespace string,
-) (string, bool, error) {
+) (clusterExtensionInstallState, error) {
+	var state clusterExtensionInstallState
+
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(resources.ClusterExtension.GVK().GroupVersion().WithKind(resources.ClusterExtension.ListKind()))
 
 	err := reader.List(ctx, list)
 	if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
-		return "", false, nil
+		return state, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("list ClusterExtensions: %w", err)
+		return state, fmt.Errorf("list ClusterExtensions: %w", err)
 	}
 
 	for i := range list.Items {
 		extension := &list.Items[i]
 		matches, matchErr := clusterExtensionMatches(extension, packageName, namespace)
 		if matchErr != nil {
-			return "", false, matchErr
+			return state, matchErr
 		}
 		if !matches {
 			continue
 		}
+		state.requested = true
 
 		installed, conditionErr := clusterExtensionInstalled(extension)
 		if conditionErr != nil {
-			return "", false, conditionErr
+			return state, conditionErr
 		}
 		if !installed {
 			continue
@@ -80,13 +89,16 @@ func installedClusterExtension(
 
 		version, _, versionErr := unstructured.NestedString(extension.Object, "status", "install", "bundle", "version")
 		if versionErr != nil {
-			return "", false, fmt.Errorf("read ClusterExtension %s version: %w", extension.GetName(), versionErr)
+			return state, fmt.Errorf("read ClusterExtension %s version: %w", extension.GetName(), versionErr)
 		}
 
-		return version, true, nil
+		state.version = version
+		state.installed = true
+
+		return state, nil
 	}
 
-	return "", false, nil
+	return state, nil
 }
 
 func clusterExtensionMatches(extension *unstructured.Unstructured, packageName, namespace string) (bool, error) {
@@ -126,6 +138,16 @@ func clusterExtensionInstalled(extension *unstructured.Unstructured) (bool, erro
 			return false, fmt.Errorf("ClusterExtension %s has malformed condition", extension.GetName())
 		}
 		if values["type"] == "Installed" {
+			reason, _ := values["reason"].(string)
+			if values["status"] == "False" && reason == "Failed" {
+				message, _ := values["message"].(string)
+
+				return false, fmt.Errorf(
+					"ClusterExtension %s installation failed (%s): %s",
+					extension.GetName(), reason, message,
+				)
+			}
+
 			return values["status"] == "True" && values["reason"] == "Succeeded", nil
 		}
 	}

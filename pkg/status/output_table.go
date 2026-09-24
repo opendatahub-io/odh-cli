@@ -643,7 +643,7 @@ func dependencyStatusSymbol(status deps.Status) string {
 		return utilcolor.StatusPass()
 	case deps.StatusMissing:
 		return utilcolor.StatusFail()
-	case deps.StatusOptional:
+	case deps.StatusOptional, deps.StatusPending:
 		return utilcolor.StatusWarn()
 	case deps.StatusUnknown:
 		return utilcolor.StatusUnknown()

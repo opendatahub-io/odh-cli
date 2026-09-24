@@ -2,8 +2,12 @@ package olm
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/blang/semver/v4"
@@ -73,17 +77,76 @@ func resolveChannelFromManifest(pm *unstructured.Unstructured) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("querying channels: %w", err)
 	}
-
-	bestChannel := ""
-	bestVersion := semver.Version{}
-
+	channelNames := make([]string, 0, len(channels))
 	for _, ch := range channels {
 		chMap, ok := ch.(map[string]any)
 		if !ok {
 			continue
 		}
+		if name, ok := chMap["name"].(string); ok {
+			channelNames = append(channelNames, name)
+		}
+	}
 
-		name, _ := chMap["name"].(string)
+	defaultChannel, _ := jq.Query[string](pm, ".status.defaultChannel")
+	channel, err := selectChannel(channelNames, defaultChannel)
+	if err != nil {
+		return "", fmt.Errorf("PackageManifest %s: %w", pm.GetName(), err)
+	}
+
+	return channel, nil
+}
+
+// ResolveCatalogChannel chooses a channel for a package from the OLM v1
+// ClusterCatalog's JSON Lines content. It follows PackageManifest channel
+// selection: highest stable-v* channel, then the package's default channel.
+func ResolveCatalogChannel(content io.Reader, packageName string) (string, error) {
+	var channels []string
+	var defaultChannel string
+	packageFound := false
+	decoder := json.NewDecoder(content)
+	for {
+		var entry struct {
+			Schema         string `json:"schema"`
+			Name           string `json:"name"`
+			Package        string `json:"package"`
+			DefaultChannel string `json:"defaultChannel"`
+		}
+		if err := decoder.Decode(&entry); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return "", fmt.Errorf("decode ClusterCatalog content: %w", err)
+		}
+		switch {
+		case entry.Schema == "olm.package" && entry.Name == packageName:
+			packageFound = true
+			defaultChannel = entry.DefaultChannel
+		case entry.Schema == "olm.channel" && entry.Package == packageName:
+			channels = append(channels, entry.Name)
+		}
+	}
+	if !packageFound {
+		return "", fmt.Errorf("package %q not found in ClusterCatalog", packageName)
+	}
+
+	channel, err := selectChannel(channels, defaultChannel)
+	if err != nil {
+		return "", fmt.Errorf("package %q: %w", packageName, err)
+	}
+	if !slices.Contains(channels, channel) {
+		return "", fmt.Errorf("channel %q for package %q not found in ClusterCatalog", channel, packageName)
+	}
+
+	return channel, nil
+}
+
+func selectChannel(channels []string, defaultChannel string) (string, error) {
+	bestChannel := ""
+	bestVersion := semver.Version{}
+
+	for _, name := range channels {
 		if name == "" {
 			continue
 		}
@@ -108,9 +171,8 @@ func resolveChannelFromManifest(pm *unstructured.Unstructured) (string, error) {
 		return bestChannel, nil
 	}
 
-	defaultChannel, err := jq.Query[string](pm, ".status.defaultChannel")
-	if err != nil || strings.TrimSpace(defaultChannel) == "" {
-		return "", fmt.Errorf("no stable-v* or defaultChannel found in PackageManifest %s", pm.GetName())
+	if strings.TrimSpace(defaultChannel) == "" {
+		return "", errors.New("no stable-v* or defaultChannel found")
 	}
 
 	return defaultChannel, nil

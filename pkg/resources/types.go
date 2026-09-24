@@ -275,6 +275,14 @@ var (
 		Resource: "clusterextensions",
 	}
 
+	// ClusterCatalog serves OLM v1 package and channel metadata.
+	ClusterCatalog = ResourceType{
+		Group:    "olm.operatorframework.io",
+		Version:  "v1",
+		Kind:     "ClusterCatalog",
+		Resource: "clustercatalogs",
+	}
+
 	InstallPlan = ResourceType{
 		Group:    "operators.coreos.com",
 		Version:  "v1alpha1",

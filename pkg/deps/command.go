@@ -370,6 +370,12 @@ func (c *Command) statusToIcon(status Status) string {
 		}
 
 		return "✓ installed"
+	case StatusPending:
+		if c.useColor {
+			return colorYellow + "… pending" + colorReset
+		}
+
+		return "… pending"
 	case StatusMissing:
 		if c.useColor {
 			return colorRed + "✗ MISSING" + colorReset

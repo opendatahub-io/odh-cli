@@ -41,7 +41,7 @@ func preparePermissionsV1() []rbac.PermissionCheck {
 	}
 }
 
-func runPermissions() []rbac.PermissionCheck {
+func runPermissions(forceDeleteLegacyCRDs bool) []rbac.PermissionCheck {
 	checks := append([]rbac.PermissionCheck{}, preparePermissions()...)
 	checks = append(checks,
 		rbac.PermissionCheck{Verb: "update", Group: resources.DataScienceClusterV1.Group, Resource: resources.DataScienceClusterV1.Resource},
@@ -60,6 +60,12 @@ func runPermissions() []rbac.PermissionCheck {
 		rbac.PermissionCheck{Verb: "delete", Group: resources.CustomResourceDefinition.Group, Resource: resources.CustomResourceDefinition.Resource},
 		rbac.PermissionCheck{Verb: "list", Group: resources.Pod.Group, Resource: resources.Pod.Resource, Namespace: operatorNamespace},
 	)
+	if !forceDeleteLegacyCRDs {
+		checks = append(checks,
+			rbac.PermissionCheck{Verb: "list", Group: legacyCohortGroup, Resource: legacyCohortResource},
+			rbac.PermissionCheck{Verb: "list", Group: legacyCohortGroup, Resource: legacyTopologyResource},
+		)
+	}
 
 	for _, rt := range monitoredWorkloadResourceTypes() {
 		checks = append(checks,
@@ -71,7 +77,7 @@ func runPermissions() []rbac.PermissionCheck {
 	return checks
 }
 
-func runPermissionsV1() []rbac.PermissionCheck {
+func runPermissionsV1(forceDeleteLegacyCRDs bool) []rbac.PermissionCheck {
 	checks := preparePermissionsV1()
 	checks = append(checks,
 		rbac.PermissionCheck{Verb: "update", Group: resources.DataScienceClusterV1.Group, Resource: resources.DataScienceClusterV1.Resource},
@@ -88,6 +94,12 @@ func runPermissionsV1() []rbac.PermissionCheck {
 		rbac.PermissionCheck{Verb: "delete", Group: resources.CustomResourceDefinition.Group, Resource: resources.CustomResourceDefinition.Resource},
 		rbac.PermissionCheck{Verb: "list", Group: resources.Pod.Group, Resource: resources.Pod.Resource, Namespace: operatorNamespace},
 	)
+	if !forceDeleteLegacyCRDs {
+		checks = append(checks,
+			rbac.PermissionCheck{Verb: "list", Group: legacyCohortGroup, Resource: legacyCohortResource},
+			rbac.PermissionCheck{Verb: "list", Group: legacyCohortGroup, Resource: legacyTopologyResource},
+		)
+	}
 
 	for _, rt := range monitoredWorkloadResourceTypes() {
 		checks = append(checks,
@@ -486,6 +498,11 @@ func (a *RHBOKMigrationAction) checkOperatorChannel(
 	channel, err := a.operatorChannel(ctx, target)
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to resolve operator channel: %v", err)
+
+		return
+	}
+	if a.selectedOLMMode == olm.ModeV1 && channel == "" {
+		step.Completef(result.StepCompleted, "Existing RHBOK ClusterExtension has no single channel restriction")
 
 		return
 	}

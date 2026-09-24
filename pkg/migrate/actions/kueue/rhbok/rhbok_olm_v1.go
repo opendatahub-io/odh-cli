@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
+	"strings"
 
 	platformcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,7 +40,7 @@ func (a *RHBOKMigrationAction) selectOLMMode(ctx context.Context, target action.
 
 				return nil
 			}
-			if err != nil && !meta.IsNoMatchError(err) && !apierrors.IsNotFound(err) && !apierrors.IsForbidden(err) {
+			if err != nil && !meta.IsNoMatchError(err) && !apierrors.IsNotFound(err) {
 				return fmt.Errorf("check existing RHBOK ClusterExtension: %w", err)
 			}
 		}
@@ -63,15 +66,124 @@ func (a *RHBOKMigrationAction) selectOLMMode(ctx context.Context, target action.
 }
 
 func (a *RHBOKMigrationAction) operatorChannel(ctx context.Context, target action.Target) (string, error) {
-	if a.selectedOLMMode == olm.ModeV1 {
-		if a.Channel != "" {
-			return a.Channel, nil
-		}
-
-		return olm.FallbackKueueOperatorChannel, nil
+	if a.selectedOLMMode != olm.ModeV1 {
+		return a.resolveSubscriptionChannel(ctx, target)
 	}
 
-	return a.resolveSubscriptionChannel(ctx, target)
+	channel, found, err := existingClusterExtensionChannel(ctx, target, a.Channel)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		return channel, nil
+	}
+	if a.Channel != "" {
+		return a.Channel, nil
+	}
+
+	return resolveClusterCatalogChannel(ctx, target)
+}
+
+func existingClusterExtensionChannel(ctx context.Context, target action.Target, requested string) (string, bool, error) {
+	existing, err := findRHBOKClusterExtension(ctx, target.Client.ControllerRuntime())
+	if err != nil {
+		return "", false, fmt.Errorf("check existing RHBOK ClusterExtension channel: %w", err)
+	}
+	if existing == nil {
+		return "", false, nil
+	}
+
+	channels, _, err := unstructured.NestedStringSlice(existing.Object, "spec", "source", "catalog", "channels")
+	if err != nil {
+		return "", true, fmt.Errorf("read RHBOK ClusterExtension %s channels: %w", existing.GetName(), err)
+	}
+	if len(channels) == 1 && channels[0] != "" {
+		if requested != "" && requested != channels[0] {
+			return "", true, fmt.Errorf("--channel %q differs from existing RHBOK ClusterExtension channel %q",
+				requested, channels[0])
+		}
+
+		return channels[0], true, nil
+	}
+	if requested != "" {
+		return "", true, fmt.Errorf("--channel %q cannot change existing RHBOK ClusterExtension %s",
+			requested, existing.GetName())
+	}
+
+	return "", true, nil // Existing request has no single channel restriction.
+}
+
+func resolveClusterCatalogChannel(ctx context.Context, target action.Target) (string, error) {
+	catalog := &unstructured.Unstructured{}
+	catalog.SetGroupVersionKind(resources.ClusterCatalog.GVK())
+	if err := target.Client.ControllerRuntime().Get(ctx, client.ObjectKey{Name: rhbokClusterCatalog}, catalog); err != nil {
+		return "", fmt.Errorf("get RHBOK ClusterCatalog: %w", err)
+	}
+
+	baseURL, found, err := unstructured.NestedString(catalog.Object, "status", "urls", "base")
+	if err != nil {
+		return "", fmt.Errorf("read RHBOK ClusterCatalog content URL: %w", err)
+	}
+	if !found || baseURL == "" {
+		return "", errors.New("RHBOK ClusterCatalog has no content URL at status.urls.base")
+	}
+
+	proxy, err := catalogProxyLocation(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("RHBOK ClusterCatalog content URL: %w", err)
+	}
+	content, err := target.Client.CoreV1().Services(proxy.namespace).
+		ProxyGet(proxy.scheme, proxy.service, proxy.port, proxy.path, nil).Stream(ctx)
+	if err != nil {
+		return "", fmt.Errorf("read RHBOK ClusterCatalog content: %w", err)
+	}
+	defer func() { _ = content.Close() }()
+
+	channel, err := olm.ResolveCatalogChannel(content, subscriptionPackage)
+	if err != nil {
+		return "", fmt.Errorf("resolve RHBOK channel from ClusterCatalog: %w", err)
+	}
+
+	return channel, nil
+}
+
+type catalogProxyTarget struct {
+	service   string
+	namespace string
+	scheme    string
+	port      string
+	path      string
+}
+
+func catalogProxyLocation(baseURL string) (catalogProxyTarget, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return catalogProxyTarget{}, fmt.Errorf("parse URL: %w", err)
+	}
+	scheme := u.Scheme
+	if (scheme != "https" && scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return catalogProxyTarget{}, fmt.Errorf("unsupported catalog URL %q", baseURL)
+	}
+
+	hostParts := strings.Split(u.Hostname(), ".")
+	if len(hostParts) < 3 || hostParts[0] == "" || hostParts[1] == "" || hostParts[2] != "svc" {
+		return catalogProxyTarget{}, fmt.Errorf("catalog URL host %q is not a Kubernetes Service", u.Hostname())
+	}
+
+	port := u.Port()
+	if port == "" && scheme == "https" {
+		port = "443"
+	} else if port == "" {
+		port = "80"
+	}
+
+	return catalogProxyTarget{
+		service:   hostParts[0],
+		namespace: hostParts[1],
+		scheme:    scheme,
+		port:      port,
+		path:      path.Join("/", u.Path, "api/v1/all"),
+	}, nil
 }
 
 func (a *RHBOKMigrationAction) serviceAccountName() string {
@@ -98,7 +210,17 @@ func (a *RHBOKMigrationAction) installRHBOKClusterExtension(
 	}
 
 	if target.DryRun {
-		step.Completef(result.StepSkipped, "Would ensure RHBOK ClusterExtension is installed from channel %s", channel)
+		if requested {
+			step.Completef(result.StepSkipped, "Would use existing RHBOK ClusterExtension")
+		} else {
+			step.Completef(result.StepSkipped, "Would ensure RHBOK ClusterExtension is installed from channel %s", channel)
+		}
+
+		return
+	}
+
+	if !requested && channel == "" {
+		step.Completef(result.StepFailed, "Existing RHBOK ClusterExtension disappeared before installation; rerun migration")
 
 		return
 	}

@@ -414,7 +414,9 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 		return
 	}
 
-	step.AddDetail("channel", channel)
+	if channel != "" {
+		step.AddDetail("channel", channel)
+	}
 	if a.selectedOLMMode == olm.ModeV1 {
 		a.installRHBOKClusterExtension(ctx, target, channel, step)
 

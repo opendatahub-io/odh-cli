@@ -1382,12 +1382,12 @@ func (c *InstallCommand) waitForOperator(
 	}
 
 	for {
-		version, installed, err := installedClusterExtension(
+		state, err := findClusterExtensionInstallState(
 			ctx, c.client.ControllerRuntime(), packageName, installNamespace,
 		)
 		switch {
-		case err == nil && installed:
-			return strings.TrimPrefix(version, "v"), nil
+		case err == nil && state.installed:
+			return strings.TrimPrefix(state.version, "v"), nil
 		case err == nil:
 			elapsed := time.Since(startTime).Round(time.Second)
 			_, _ = fmt.Fprintf(w, msgWaitingForOperator, elapsed)

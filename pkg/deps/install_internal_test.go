@@ -52,6 +52,11 @@ const (
 	testV0SubscriptionAPI     = "apiVersion: operators.coreos.com/v1alpha1"
 	testV1ExtensionAPI        = "apiVersion: olm.operatorframework.io/v1"
 	testV1DryRunModeHint      = "Use --olm-mode=v0 or --olm-mode=v1 to render active manifests."
+	testV1FailureReason       = "Failed"
+	testV1FailureMessage      = "bundle resolution failed"
+	testV1PendingReason       = "Installing"
+	testV1InstalledType       = "Installed"
+	testV1FalseStatus         = "False"
 )
 
 func TestInstallValidateOLMMode(t *testing.T) {
@@ -960,4 +965,61 @@ func TestWaitForOperatorWithOLMV1(t *testing.T) {
 	version, err := command.waitForOperator(t.Context(), &bytes.Buffer{}, testV1DependencyPackage)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(version).To(Equal(testV1DependencyVersion))
+}
+
+func TestWaitForOperatorFailsOnOLMV1InstallationFailure(t *testing.T) {
+	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	gvk := resources.ClusterExtension.GVK()
+	scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(gvk.GroupVersion().WithKind(resources.ClusterExtension.ListKind()), &unstructured.UnstructuredList{})
+	extension := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": resources.ClusterExtension.APIVersion(),
+		"kind":       resources.ClusterExtension.Kind,
+		"metadata":   map[string]any{"name": testV1DependencyName},
+		"spec": map[string]any{
+			"source": map[string]any{
+				"sourceType": testV1CatalogSourceType,
+				"catalog":    map[string]any{"packageName": testV1DependencyPackage},
+			},
+		},
+		"status": map[string]any{
+			"conditions": []any{map[string]any{
+				"type": testV1InstalledType, "status": testV1FalseStatus,
+				"reason": testV1FailureReason, "message": testV1FailureMessage,
+			}},
+		},
+	}}
+	controllerRuntimeClient := crfake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(extension).Build()
+	command := &InstallCommand{
+		client:  client.NewForTesting(client.TestClientConfig{ControllerRuntime: controllerRuntimeClient}),
+		Timeout: time.Minute,
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	_, err := command.waitForOperator(ctx, &bytes.Buffer{}, testV1DependencyPackage)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(And(
+		ContainSubstring(testV1DependencyName),
+		ContainSubstring(testV1FailureReason),
+		ContainSubstring(testV1FailureMessage),
+	))
+}
+
+func TestClusterExtensionInstalledKeepsOLMV1InstallationInProgress(t *testing.T) {
+	g := NewWithT(t)
+	extension := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": testV1DependencyName},
+		"status": map[string]any{
+			"conditions": []any{map[string]any{
+				"type": testV1InstalledType, "status": testV1FalseStatus,
+				"reason": testV1PendingReason,
+			}},
+		},
+	}}
+
+	installed, err := clusterExtensionInstalled(extension)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(installed).To(BeFalse())
 }

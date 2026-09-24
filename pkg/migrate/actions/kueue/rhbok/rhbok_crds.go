@@ -14,12 +14,14 @@ import (
 )
 
 const (
-	legacyCohortCRD     = "cohorts.kueue.x-k8s.io"
-	legacyTopologyCRD   = "topologies.kueue.x-k8s.io"
-	legacyCohortGroup   = "kueue.x-k8s.io"
-	legacyCohortVersion = "v1alpha1"
-	legacyCohortKind    = "Cohort"
-	legacyTopologyKind  = "Topology"
+	legacyCohortCRD        = "cohorts.kueue.x-k8s.io"
+	legacyTopologyCRD      = "topologies.kueue.x-k8s.io"
+	legacyCohortGroup      = "kueue.x-k8s.io"
+	legacyCohortVersion    = "v1alpha1"
+	legacyCohortKind       = "Cohort"
+	legacyTopologyKind     = "Topology"
+	legacyCohortResource   = "cohorts"
+	legacyTopologyResource = "topologies"
 )
 
 //nolint:gochecknoglobals // static legacy CRD names for migration
@@ -106,12 +108,12 @@ func (a *RHBOKMigrationAction) legacyCRDHasInstances(
 	case legacyCohortCRD:
 		gvr = resources.ResourceType{
 			Group: legacyCohortGroup, Version: legacyCohortVersion,
-			Kind: legacyCohortKind, Resource: "cohorts",
+			Kind: legacyCohortKind, Resource: legacyCohortResource,
 		}
 	case legacyTopologyCRD:
 		gvr = resources.ResourceType{
 			Group: legacyCohortGroup, Version: legacyCohortVersion,
-			Kind: legacyTopologyKind, Resource: "topologies",
+			Kind: legacyTopologyKind, Resource: legacyTopologyResource,
 		}
 	default:
 		return false, ""

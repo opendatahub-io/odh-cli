@@ -47,17 +47,142 @@ func denyNamespacePatchPermission(action k8stesting.Action) (bool, runtime.Objec
 	}, nil
 }
 
+func denyLegacyInstanceListPermissions(action k8stesting.Action) (bool, runtime.Object, error) {
+	review := action.(k8stesting.CreateAction).GetObject().(*authorizationv1.SelfSubjectAccessReview)
+	attributes := review.Spec.ResourceAttributes
+	allowed := attributes.Verb != "list" || attributes.Group != testRHBOKLegacyGroup ||
+		(attributes.Resource != testRHBOKCohortResource && attributes.Resource != testRHBOKTopologyResource)
+
+	return true, &authorizationv1.SelfSubjectAccessReview{
+		Status: authorizationv1.SubjectAccessReviewStatus{Allowed: allowed},
+	}, nil
+}
+
 const (
 	testRHBOKDefaultServiceAccount = "odh-cli-dependency-installer"
 	testRHBOKDSCName               = "default-dsc"
 	testRHBOKKueueName             = "kueue"
 	testRHBOKUnmanagedState        = "Unmanaged"
 	testRHBOKNamespacePatchStep    = "denied-patch-namespaces"
+	testRHBOKLegacyGroup           = "kueue.x-k8s.io"
+	testRHBOKCohortResource        = "cohorts"
+	testRHBOKTopologyResource      = "topologies"
+	testRHBOKCohortListStep        = "denied-list-cohorts"
+	testRHBOKTopologyListStep      = "denied-list-topologies"
 	testRHBOKExistingAccount       = "existing-rhbok-installer"
 	testRHBOKExistingExtension     = "custom-rhbok-extension"
+	testRHBOKExistingChannel       = "stable-v1.1"
+	testRHBOKCatalogInvalidContent = "invalid catalog content"
+	testRHBOKNewCatalogContent     = `{"schema":"olm.package","name":"kueue-operator","defaultChannel":"stable-v1.2"}
+{"schema":"olm.channel","package":"kueue-operator","name":"stable-v1.2"}
+{"schema":"olm.channel","package":"kueue-operator","name":"stable-v1.3"}
+{"schema":"olm.channel","package":"kueue-operator","name":"candidate"}
+`
 )
 
 func TestRunTask_Validate(t *testing.T) {
+	t.Run("v1 reuses the channel of an existing ClusterExtension", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		extension := newInstalledClusterExtension(
+			testRHBOKExistingExtension, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+		)
+		g.Expect(unstructured.SetNestedStringSlice(extension.Object, []string{testRHBOKExistingChannel},
+			"spec", "source", "catalog", "channels")).To(Succeed())
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:           true,
+			rbacAllowed:         true,
+			controllerObjs:      []crclient.Object{extension},
+			catalogProxyContent: testRHBOKCatalogInvalidContent,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-operator-channel")).To(And(
+			HaveField("Status", result.StepCompleted),
+			HaveField("Message", "Will install from channel "+testRHBOKExistingChannel),
+		))
+	})
+
+	t.Run("v1 existing ClusterExtension without channel does not query catalog", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		extension := newInstalledClusterExtension(
+			testRHBOKExistingExtension, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+		)
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:           true,
+			rbacAllowed:         true,
+			controllerObjs:      []crclient.Object{extension},
+			catalogProxyContent: testRHBOKCatalogInvalidContent,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-operator-channel")).To(And(
+			HaveField("Status", result.StepCompleted),
+			HaveField("Message", "Existing RHBOK ClusterExtension has no single channel restriction"),
+		))
+	})
+
+	t.Run("v1 rejects a channel override that differs from the existing request", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		extension := newInstalledClusterExtension(
+			testRHBOKExistingExtension, rhbok.ExportSubscriptionName, testRHBOKOLMV1Version,
+		)
+		g.Expect(unstructured.SetNestedStringSlice(extension.Object, []string{testRHBOKExistingChannel},
+			"spec", "source", "catalog", "channels")).To(Succeed())
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:      true,
+			rbacAllowed:    true,
+			controllerObjs: []crclient.Object{extension},
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{Channel: "stable-v1.3"}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-operator-channel")).To(HaveField("Status", result.StepFailed))
+	})
+
+	t.Run("v1 selects the highest stable channel from ClusterCatalog", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		account := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+			Name: testRHBOKDefaultServiceAccount, Namespace: rhbok.ExportOperatorNamespace,
+		}}
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only:           true,
+			rbacAllowed:         true,
+			controllerObjs:      []crclient.Object{account},
+			catalogProxyContent: testRHBOKNewCatalogContent,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "check-operator-channel")).To(And(
+			HaveField("Status", result.StepCompleted),
+			HaveField("Message", "Will install from channel stable-v1.3"),
+		))
+	})
+
+	t.Run("auto mode fails when ClusterExtensions cannot be listed", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		listError := apierrors.NewForbidden(
+			resources.ClusterExtension.GVR().GroupResource(), "", errors.New("list denied"),
+		)
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmMixed:            true,
+			controllerObjs:      []crclient.Object{},
+			controllerListError: listError,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(apierrors.IsForbidden(err)).To(BeTrue())
+		g.Expect(res).To(BeNil())
+	})
+
 	t.Run("explicit v1 rejects an existing v0 RHBOK subscription", func(t *testing.T) {
 		g := NewWithT(t)
 		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
@@ -154,6 +279,55 @@ func TestRunTask_Validate(t *testing.T) {
 		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepFailed))
 		g.Expect(findStepRecursive(res.Status.Steps, testRHBOKNamespacePatchStep)).To(HaveField("Status", result.StepFailed))
 		g.Expect(findStep(res.Status.Steps, "delete-legacy-crds")).To(BeNil())
+	})
+
+	t.Run("v1 preflight rejects missing legacy instance list permissions", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only: true,
+			controllerObjs: []crclient.Object{&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+				Name: testRHBOKDefaultServiceAccount, Namespace: rhbok.ExportOperatorNamespace,
+			}}},
+			rbacReactor: denyLegacyInstanceListPermissions,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Execute(t.Context(), target)
+		g.Expect(err).To(MatchError("preflight checks failed"))
+		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStepRecursive(res.Status.Steps, testRHBOKCohortListStep)).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStepRecursive(res.Status.Steps, testRHBOKTopologyListStep)).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStep(res.Status.Steps, "delete-legacy-crds")).To(BeNil())
+	})
+
+	t.Run("v0 preflight rejects missing legacy instance list permissions", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			rbacReactor: denyLegacyInstanceListPermissions,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStepRecursive(res.Status.Steps, testRHBOKCohortListStep)).To(HaveField("Status", result.StepFailed))
+		g.Expect(findStepRecursive(res.Status.Steps, testRHBOKTopologyListStep)).To(HaveField("Status", result.StepFailed))
+	})
+
+	t.Run("forced legacy CRD deletion skips instance list permissions", func(t *testing.T) {
+		g := NewWithT(t)
+		dsc := makeDSCV1(testRHBOKDSCName, withComponent(testRHBOKKueueName, testRHBOKUnmanagedState))
+		target := newTarget(t, []*unstructured.Unstructured{dsc}, targetOpts{
+			olmV1Only: true,
+			controllerObjs: []crclient.Object{&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+				Name: testRHBOKDefaultServiceAccount, Namespace: rhbok.ExportOperatorNamespace,
+			}}},
+			rbacReactor: denyLegacyInstanceListPermissions,
+		})
+
+		res, err := (&rhbok.RHBOKMigrationAction{ForceDeleteLegacyCRDs: true}).Run().Validate(t.Context(), target)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(findStep(res.Status.Steps, "verify-rbac")).To(HaveField("Status", result.StepCompleted))
 	})
 
 	t.Run("v1-only preflight does not require OLM v0 permissions", func(t *testing.T) {

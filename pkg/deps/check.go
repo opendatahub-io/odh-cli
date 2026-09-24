@@ -30,6 +30,7 @@ type Status string
 
 const (
 	StatusInstalled Status = "installed"
+	StatusPending   Status = "pending"
 	StatusMissing   Status = "missing"
 	StatusOptional  Status = "optional"
 	StatusUnknown   Status = "unknown"
@@ -37,14 +38,14 @@ const (
 
 // DependencyStatus represents the checked status of a dependency on the cluster.
 type DependencyStatus struct {
-	Name         string   `json:"name"                 jsonschema:"description=Operator package name"                                                      yaml:"name"`
-	DisplayName  string   `json:"displayName"          jsonschema:"description=Human-readable operator name"                                               yaml:"displayName"`
-	Status       Status   `json:"status"               jsonschema:"description=Installation status,enum=installed,enum=missing,enum=optional,enum=unknown" yaml:"status"`
-	Version      string   `json:"version,omitempty"    jsonschema:"description=Installed operator version"                                                 yaml:"version,omitempty"`
-	Namespace    string   `json:"namespace"            jsonschema:"description=Operator namespace"                                                         yaml:"namespace"`
-	Subscription string   `json:"subscription"         jsonschema:"description=OLM operator package request name"                                          yaml:"subscription"`
-	RequiredBy   []string `json:"requiredBy,omitempty" jsonschema:"description=Components that require this dependency"                                    yaml:"requiredBy,omitempty"`
-	Error        string   `json:"error,omitempty"      jsonschema:"description=Error message if status check failed"                                       yaml:"error,omitempty"`
+	Name         string   `json:"name"                 jsonschema:"description=Operator package name"                                                                   yaml:"name"`
+	DisplayName  string   `json:"displayName"          jsonschema:"description=Human-readable operator name"                                                            yaml:"displayName"`
+	Status       Status   `json:"status"               jsonschema:"description=Installation status,enum=installed,enum=pending,enum=missing,enum=optional,enum=unknown" yaml:"status"`
+	Version      string   `json:"version,omitempty"    jsonschema:"description=Installed operator version"                                                              yaml:"version,omitempty"`
+	Namespace    string   `json:"namespace"            jsonschema:"description=Operator namespace"                                                                      yaml:"namespace"`
+	Subscription string   `json:"subscription"         jsonschema:"description=OLM operator package request name"                                                       yaml:"subscription"`
+	RequiredBy   []string `json:"requiredBy,omitempty" jsonschema:"description=Components that require this dependency"                                                 yaml:"requiredBy,omitempty"`
+	Error        string   `json:"error,omitempty"      jsonschema:"description=Error message if status check failed"                                                    yaml:"error,omitempty"`
 }
 
 // DependencyList wraps dependency statuses with a self-describing envelope.
@@ -79,7 +80,7 @@ func (l *DependencyList) computeStatus() {
 		switch d.Status {
 		case StatusMissing:
 			errs++
-		case StatusUnknown:
+		case StatusUnknown, StatusPending:
 			warnings++
 		case StatusInstalled, StatusOptional:
 			// No action needed for installed or optional dependencies.
@@ -175,24 +176,34 @@ func checkSingleDependencyV1(ctx context.Context, kubeClient client.Client, dep 
 		RequiredBy:   dep.RequiredBy,
 	}
 
-	version, installed, extensionErr := installedClusterExtension(
+	extensionState, extensionErr := findClusterExtensionInstallState(
 		ctx, kubeClient.ControllerRuntime(), dep.Subscription, dep.Namespace,
 	)
-	if installed {
+	if extensionState.installed {
 		status.Status = StatusInstalled
-		status.Version = strings.TrimPrefix(version, "v")
+		status.Version = strings.TrimPrefix(extensionState.version, "v")
 
 		return status
 	}
 
-	sub, v0Err := requestedV0Subscription(ctx, kubeClient.OLM(), dep.Subscription, dep.Namespace)
+	olmReader := kubeClient.OLM()
+	var sub *operatorsv1alpha1.Subscription
+	var v0Err error
+	if olmReader != nil {
+		sub, v0Err = requestedV0Subscription(ctx, olmReader, dep.Subscription, dep.Namespace)
+	}
 	if sub != nil {
-		return v0SubscriptionStatus(ctx, kubeClient.OLM(), dep, status, sub)
+		return v0SubscriptionStatus(ctx, olmReader, dep, status, sub)
 	}
 
 	if err := errors.Join(extensionErr, v0Err); err != nil {
 		status.Status = StatusUnknown
 		status.Error = err.Error()
+
+		return status
+	}
+	if extensionState.requested {
+		status.Status = StatusPending
 
 		return status
 	}

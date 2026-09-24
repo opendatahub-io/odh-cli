@@ -2,6 +2,9 @@ package rhbok_test
 
 import (
 	"bytes"
+	"context"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +13,7 @@ import (
 	operatorfake "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned/fake"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -21,8 +25,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	discoveryfake "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	metadatafake "k8s.io/client-go/metadata/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
@@ -53,20 +60,22 @@ var testListKinds = map[schema.GroupVersionResource]string{
 }
 
 type targetOpts struct {
-	dryRun         bool
-	skipConfirm    bool
-	outputDir      string
-	olmObjects     []runtime.Object
-	controllerObjs []crclient.Object
-	kubeObjects    []runtime.Object
-	apiExtObjects  []runtime.Object
-	noPods         bool
-	rbacAllowed    bool
-	olmV1Only      bool
-	olmMixed       bool
-	dynamicReactor func(k8stesting.Action) (bool, runtime.Object, error)
-	olmReactor     func(k8stesting.Action) (bool, runtime.Object, error)
-	rbacReactor    func(k8stesting.Action) (bool, runtime.Object, error)
+	dryRun              bool
+	skipConfirm         bool
+	outputDir           string
+	olmObjects          []runtime.Object
+	controllerObjs      []crclient.Object
+	kubeObjects         []runtime.Object
+	apiExtObjects       []runtime.Object
+	noPods              bool
+	rbacAllowed         bool
+	olmV1Only           bool
+	olmMixed            bool
+	controllerListError error
+	catalogProxyContent string
+	dynamicReactor      func(k8stesting.Action) (bool, runtime.Object, error)
+	olmReactor          func(k8stesting.Action) (bool, runtime.Object, error)
+	rbacReactor         func(k8stesting.Action) (bool, runtime.Object, error)
 }
 
 func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOpts) action.Target {
@@ -170,6 +179,7 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 			{Group: "operators.coreos.com", Version: "v2", Kind: "OperatorCondition"},
 			{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "Subscription"},
 			{Group: "olm.operatorframework.io", Version: "v1", Kind: "ClusterExtension"},
+			resources.ClusterCatalog.GVK(),
 		} {
 			scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
 			scheme.AddKnownTypeWithName(
@@ -178,17 +188,31 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 			)
 		}
 
-		controllerRuntimeClient = crfake.NewClientBuilder().
+		controllerObjects := append([]crclient.Object{makeRHBOKClusterCatalog()}, opts.controllerObjs...)
+		builder := crfake.NewClientBuilder().
 			WithScheme(scheme).
-			WithObjects(opts.controllerObjs...).
-			Build()
+			WithObjects(controllerObjects...)
+		if opts.controllerListError != nil {
+			builder = builder.WithInterceptorFuncs(interceptor.Funcs{
+				List: func(_ context.Context, _ crclient.WithWatch, _ crclient.ObjectList, _ ...crclient.ListOption) error {
+					return opts.controllerListError
+				},
+			})
+		}
+		controllerRuntimeClient = builder.Build()
 	}
+
+	content := opts.catalogProxyContent
+	if content == "" {
+		content = testRHBOKCatalogContent
+	}
+	var kubernetesClient kubernetes.Interface = &catalogProxyKubeClient{Interface: kubeClient, content: content}
 
 	testClient := client.NewForTesting(client.TestClientConfig{
 		Dynamic:           dynamicClient,
 		Discovery:         discoveryClient,
 		OLM:               olmClient,
-		Kubernetes:        kubeClient,
+		Kubernetes:        kubernetesClient,
 		APIExtensions:     apiextensionsfake.NewSimpleClientset(apiExtObjs...),
 		Metadata:          metadataClient,
 		ControllerRuntime: controllerRuntimeClient,
@@ -212,6 +236,67 @@ func newTarget(t *testing.T, objects []*unstructured.Unstructured, opts targetOp
 		Recorder:       action.NewRootRecorder(),
 		IO:             iostreams.NewIOStreams(&bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}),
 	}
+}
+
+const testRHBOKCatalogContent = `{"schema":"olm.package","name":"kueue-operator","defaultChannel":"stable-v1.2"}
+{"schema":"olm.channel","package":"kueue-operator","name":"stable-v1.2"}
+`
+
+func makeRHBOKClusterCatalog() *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": resources.ClusterCatalog.APIVersion(),
+		"kind":       resources.ClusterCatalog.Kind,
+		"metadata":   map[string]any{"name": "openshift-redhat-operators"},
+		"status": map[string]any{"urls": map[string]any{
+			"base": "https://catalogd-service.olmv1-system.svc/catalogs/openshift-redhat-operators",
+		}},
+	}}
+}
+
+type catalogProxyKubeClient struct {
+	kubernetes.Interface
+
+	content string
+}
+
+func (c *catalogProxyKubeClient) CoreV1() corev1client.CoreV1Interface {
+	return &catalogProxyCoreV1Client{CoreV1Interface: c.Interface.CoreV1(), content: c.content}
+}
+
+type catalogProxyCoreV1Client struct {
+	corev1client.CoreV1Interface
+
+	content string
+}
+
+func (c *catalogProxyCoreV1Client) Services(namespace string) corev1client.ServiceInterface {
+	return &catalogProxyServices{ServiceInterface: c.CoreV1Interface.Services(namespace), namespace: namespace, content: c.content}
+}
+
+type catalogProxyServices struct {
+	corev1client.ServiceInterface
+
+	namespace string
+	content   string
+}
+
+func (s *catalogProxyServices) ProxyGet(scheme, name, port, path string, _ map[string]string) rest.ResponseWrapper {
+	if s.namespace != "olmv1-system" || scheme != "https" || name != "catalogd-service" || port != "443" ||
+		path != "/catalogs/openshift-redhat-operators/api/v1/all" {
+		return catalogProxyResponse("unexpected catalog service proxy request")
+	}
+
+	return catalogProxyResponse(s.content)
+}
+
+type catalogProxyResponse string
+
+func (r catalogProxyResponse) DoRaw(context.Context) ([]byte, error) {
+	return []byte(r), nil
+}
+
+func (r catalogProxyResponse) Stream(context.Context) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader(string(r))), nil
 }
 
 type objOption func(*unstructured.Unstructured)

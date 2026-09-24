@@ -33,6 +33,7 @@ const (
 	testOLMV1DependencyNamespace = "cert-manager"
 	testOLMV1ExtensionName       = "cert-manager-extension"
 	testOLMV1DependencyVersion   = "1.14.0"
+	testOLMV1PendingStatus       = "pending"
 	testV0DependencyCSV          = "cert-manager.v1.14.0"
 )
 
@@ -363,6 +364,45 @@ func TestCheckDependencies_InstalledWithOLMV1(t *testing.T) {
 		"Status":  Equal(deps.StatusInstalled),
 		"Version": Equal(testOLMV1DependencyVersion),
 	}))
+}
+
+func TestCheckDependencies_PendingWithOLMV1(t *testing.T) {
+	g := NewWithT(t)
+	extension := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "olm.operatorframework.io/v1",
+		"kind":       "ClusterExtension",
+		"metadata": map[string]any{
+			"name": testOLMV1ExtensionName,
+		},
+		"spec": map[string]any{
+			"namespace": testOLMV1DependencyNamespace,
+			"source": map[string]any{
+				"sourceType": "Catalog",
+				"catalog": map[string]any{
+					"packageName": testOLMV1DependencyPackage,
+				},
+			},
+		},
+	}}
+	manifest := &deps.Manifest{Dependencies: map[string]deps.Dependency{
+		testOLMV1DependencyKey: {
+			Enabled: "true",
+			OLM: deps.OLMConfig{
+				Name:      testOLMV1DependencyPackage,
+				Namespace: testOLMV1DependencyNamespace,
+			},
+		},
+	}}
+
+	statuses, err := deps.CheckDependencies(t.Context(), newV1DependencyCheckClient(extension), manifest)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(statuses).To(HaveLen(1))
+	g.Expect(statuses[0]).To(MatchFields(IgnoreExtras, Fields{
+		"Status":  Equal(deps.Status(testOLMV1PendingStatus)),
+		"Version": BeEmpty(),
+		"Error":   BeEmpty(),
+	}))
+	g.Expect(deps.NewDependencyList(statuses).Status.Result).To(Equal("warning"))
 }
 
 func TestCheckDependencies_EmptyNamespace(t *testing.T) {

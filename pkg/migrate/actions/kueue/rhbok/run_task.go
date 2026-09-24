@@ -22,9 +22,9 @@ func (t *runTask) Validate(
 		return nil, err
 	}
 	if t.action.selectedOLMMode == olm.ModeV1 {
-		t.action.verifyRBAC(ctx, target, runPermissionsV1())
+		t.action.verifyRBAC(ctx, target, runPermissionsV1(t.action.ForceDeleteLegacyCRDs))
 	} else {
-		t.action.verifyRBAC(ctx, target, runPermissions())
+		t.action.verifyRBAC(ctx, target, runPermissions(t.action.ForceDeleteLegacyCRDs))
 	}
 	t.action.checkCertManager(ctx, target)
 	t.action.checkCurrentKueueState(ctx, target)
