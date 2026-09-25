@@ -193,7 +193,7 @@ func TestVerifyWorkloadsAction_RunCategorizesBlockers(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.Status.Completed).To(BeFalse())
 
 	readiness := findStep(actionResult.Status.Steps, "migration-readiness")
 	g.Expect(readiness).ToNot(BeNil())
@@ -471,7 +471,7 @@ func TestVerifyWorkloadsAction_RunPartialFailure(t *testing.T) {
 
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.Status.Completed).To(BeFalse())
 
 	pytorchStep := findStep(actionResult.Status.Steps, "pytorchjobs")
 	g.Expect(pytorchStep).ToNot(BeNil())

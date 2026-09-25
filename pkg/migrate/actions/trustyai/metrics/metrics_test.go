@@ -802,7 +802,7 @@ func TestPrepareTask_Execute_HTTPError(t *testing.T) {
 	result, err := a.Prepare().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestPrepareTask_Execute_NoRESTConfig(t *testing.T) {
@@ -819,7 +819,7 @@ func TestPrepareTask_Execute_NoRESTConfig(t *testing.T) {
 	result, err := a.Prepare().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 // ---------------------------------------------------------------------------
@@ -849,7 +849,7 @@ func TestRunTask_Validate_FileNotFound(t *testing.T) {
 	result, err := a.Run().Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Validate_NoRoutes(t *testing.T) {
@@ -865,7 +865,7 @@ func TestRunTask_Validate_NoRoutes(t *testing.T) {
 	result, err := a.Run().Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Validate_Ready(t *testing.T) {
@@ -934,7 +934,7 @@ func TestRunTask_Execute_InvalidBackup(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_NoRoutes(t *testing.T) {
@@ -950,7 +950,7 @@ func TestRunTask_Execute_NoRoutes(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_DryRun(t *testing.T) {
@@ -1093,7 +1093,7 @@ func TestRunTask_Execute_UnknownMetricType(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_HTTPError(t *testing.T) {
@@ -1127,7 +1127,7 @@ func TestRunTask_Execute_HTTPError(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_NoRESTConfig(t *testing.T) {
@@ -1147,7 +1147,7 @@ func TestRunTask_Execute_NoRESTConfig(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_UserCancels(t *testing.T) {
@@ -1228,7 +1228,7 @@ func TestRunTask_Execute_MissingRequestField(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestPrepareTask_Execute_InvalidResponse(t *testing.T) {
@@ -1255,7 +1255,7 @@ func TestPrepareTask_Execute_InvalidResponse(t *testing.T) {
 	result, err := a.Prepare().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestParseBackupEntries(t *testing.T) {

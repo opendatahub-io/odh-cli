@@ -301,7 +301,7 @@ func TestRunTask_Execute_PatchesMissingProbe(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 
 	updated, err := k8sClient.Dynamic().Resource(resources.Deployment.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-gorch", metav1.GetOptions{})
@@ -360,7 +360,7 @@ func TestRunTask_Execute_GorchNameFilter(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_MultiNamespace(t *testing.T) {
@@ -380,7 +380,7 @@ func TestRunTask_Execute_MultiNamespace(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestCheckProbe(t *testing.T) {
