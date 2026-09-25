@@ -49,7 +49,7 @@ func newTestClient(scheme *runtime.Scheme, k8sObjects []runtime.Object, dynamicO
 	}
 
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dynamicObjects...)
-	k8sClient := k8sfake.NewSimpleClientset(k8sObjects...) //nolint:staticcheck // NewClientset requires generated apply configs
+	k8sClient := k8sfake.NewSimpleClientset(k8sObjects...)
 
 	return client.NewForTesting(client.TestClientConfig{
 		Dynamic:    dynamicClient,

@@ -43,7 +43,7 @@ func (sr *StatusReport) computeStatus() {
 		switch dep.Status {
 		case deps.StatusMissing:
 			errors++
-		case deps.StatusUnknown:
+		case deps.StatusUnknown, deps.StatusPending:
 			warnings++
 		case deps.StatusInstalled, deps.StatusOptional:
 			// No action needed

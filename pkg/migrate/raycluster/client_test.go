@@ -107,7 +107,7 @@ func newFakeClientWithAPIExtensions(t *testing.T, crds []runtime.Object, objects
 		}
 	}
 
-	apiextClient := fakeapiextensions.NewSimpleClientset(crds...) //nolint:staticcheck // NewClientset requires generated apply configs not available in apiextensions
+	apiextClient := fakeapiextensions.NewSimpleClientset(crds...)
 
 	return client.NewForTesting(client.TestClientConfig{
 		Dynamic:       dynamicClient,
@@ -594,7 +594,7 @@ func TestRunPreUpgradeChecks_PermissionsDenied(t *testing.T) {
 		return true, nil, errors.New("forbidden: namespaces is forbidden")
 	})
 
-	apiextClient := fakeapiextensions.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in apiextensions
+	apiextClient := fakeapiextensions.NewSimpleClientset()
 
 	c := client.NewForTesting(client.TestClientConfig{
 		Dynamic:       dynamicClient,
@@ -613,7 +613,7 @@ func TestRunPreUpgradeChecks_CertManagerNotFound(t *testing.T) {
 	ns := makeNamespace("ns-a")
 	rc := makeRayCluster("cluster-1", "ns-a")
 
-	apiextClient := fakeapiextensions.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in apiextensions
+	apiextClient := fakeapiextensions.NewSimpleClientset()
 
 	dsc := makeDSC("default-dsc", map[string]any{
 		"codeflare": map[string]any{"managementState": "Removed"},
@@ -645,7 +645,7 @@ func TestRunPreUpgradeChecks_CertManagerNamespaceFound(t *testing.T) {
 		"codeflare": map[string]any{"managementState": "Removed"},
 	})
 
-	apiextClient := fakeapiextensions.NewSimpleClientset() //nolint:staticcheck // NewClientset requires generated apply configs not available in apiextensions
+	apiextClient := fakeapiextensions.NewSimpleClientset()
 
 	scheme := runtime.NewScheme()
 	_ = metav1.AddMetaToScheme(scheme)

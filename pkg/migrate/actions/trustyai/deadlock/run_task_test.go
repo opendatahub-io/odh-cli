@@ -20,7 +20,7 @@ import (
 )
 
 func newTestClient(objects ...runtime.Object) client.Client {
-	k8sClient := k8sfake.NewSimpleClientset(objects...) //nolint:staticcheck // NewClientset requires generated apply configs
+	k8sClient := k8sfake.NewSimpleClientset(objects...)
 
 	return client.NewForTesting(client.TestClientConfig{
 		Kubernetes: k8sClient,
@@ -143,7 +143,7 @@ func TestRunTask_Execute_FixesDeadlocks(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires generated apply configs
+	k8sClient := k8sfake.NewSimpleClientset(
 		newPredictorPod("model-a-running", "ns1", "model-a", corev1.PodRunning),
 		newPredictorPod("model-a-pending", "ns1", "model-a", corev1.PodPending),
 	)
@@ -169,7 +169,7 @@ func TestRunTask_Execute_DryRun(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires generated apply configs
+	k8sClient := k8sfake.NewSimpleClientset(
 		newPredictorPod("model-a-running", "ns1", "model-a", corev1.PodRunning),
 		newPredictorPod("model-a-pending", "ns1", "model-a", corev1.PodPending),
 	)
@@ -194,7 +194,7 @@ func TestRunTask_Execute_MultiNamespace(t *testing.T) {
 	g := NewWithT(t)
 	ctx := t.Context()
 
-	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires generated apply configs
+	k8sClient := k8sfake.NewSimpleClientset(
 		newPredictorPod("model-a-running", "ns1", "model-a", corev1.PodRunning),
 		newPredictorPod("model-a-pending", "ns1", "model-a", corev1.PodPending),
 		newPredictorPod("model-b-running", "ns2", "model-b", corev1.PodRunning),

@@ -2,12 +2,15 @@ package rhbok
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	platformolm "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/olm"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/opendatahub-io/odh-cli/pkg/constants"
@@ -16,6 +19,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 )
 
 func (a *RHBOKMigrationAction) verifyMigrationComplete(
@@ -108,8 +112,40 @@ func (a *RHBOKMigrationAction) verifyManagementState(ctx context.Context, target
 }
 
 func (a *RHBOKMigrationAction) verifyOperatorReady(ctx context.Context, target action.Target) string {
+	if a.selectedOLMMode == olm.ModeV1 {
+		if rhbokInstalledViaClusterExtension(ctx, target.Client) {
+			return ""
+		}
+
+		return "RHBOK ClusterExtension is not installed"
+	}
+
+	return a.verifyOperatorReadyV0(ctx, target)
+}
+
+func (a *RHBOKMigrationAction) verifyOperatorReadyV0(ctx context.Context, target action.Target) string {
 	sub, err := target.Client.OLM().Subscriptions(operatorNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
 	if err != nil {
+		if apierrors.IsForbidden(err) && rhbokInstalledViaClusterExtension(ctx, target.Client) {
+			return ""
+		}
+
+		if (apierrors.IsNotFound(err) || meta.IsNoMatchError(err)) && target.Client.ControllerRuntime() != nil {
+			_, operatorErr := platformolm.OperatorExists(
+				ctx,
+				target.Client.ControllerRuntime(),
+				subscriptionPackage,
+			)
+			switch {
+			case operatorErr == nil:
+				return ""
+			case errors.Is(operatorErr, platformolm.ErrOperatorNotInstalled):
+				return "RHBOK operator is not installed"
+			default:
+				return fmt.Sprintf("checking RHBOK operator: %v", operatorErr)
+			}
+		}
+
 		if apierrors.IsNotFound(err) {
 			return "RHBOK operator subscription not found in " + operatorNamespace
 		}

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -17,6 +19,8 @@ import (
 
 	. "github.com/onsi/gomega"
 )
+
+const testRHBOKOLMV1Version = "1.2.3"
 
 type verifiedMigrationFixture struct {
 	objects []*unstructured.Unstructured
@@ -89,6 +93,29 @@ func TestVerifyMigrationComplete(t *testing.T) {
 		target := newTarget(t, fixture.objects, fixture.opts)
 
 		rhbok.ExportVerifyMigration(a, ctx, target)
+
+		res := target.Recorder.(action.RootRecorder).Build()
+		step := findStep(res.Status.Steps, "verify-migration-complete")
+		g.Expect(step).ToNot(BeNil())
+		g.Expect(step.Status).To(Equal(result.StepCompleted))
+		g.Expect(step.Message).To(ContainSubstring("passed"))
+	})
+
+	t.Run("passes with an installed OLM v1 ClusterExtension", func(t *testing.T) {
+		g := NewWithT(t)
+
+		fixture := verifiedMigrationSetup()
+		fixture.opts.olmObjects = nil
+		fixture.opts.controllerObjs = []crclient.Object{
+			newInstalledClusterExtension(
+				rhbok.ExportSubscriptionName,
+				rhbok.ExportSubscriptionName,
+				testRHBOKOLMV1Version,
+			),
+		}
+		target := newTarget(t, fixture.objects, fixture.opts)
+
+		rhbok.ExportVerifyMigration(a, t.Context(), target)
 
 		res := target.Recorder.(action.RootRecorder).Build()
 		step := findStep(res.Status.Steps, "verify-migration-complete")
@@ -295,6 +322,39 @@ func TestVerifyMigrationComplete(t *testing.T) {
 		g.Expect(step.Status).To(Equal(result.StepFailed))
 		g.Expect(step.Message).To(ContainSubstring("missing queue-name label"))
 	})
+}
+
+func newInstalledClusterExtension(name, packageName, version string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "olm.operatorframework.io/v1",
+		"kind":       "ClusterExtension",
+		"metadata": map[string]any{
+			"name": name,
+		},
+		"spec": map[string]any{
+			"namespace": rhbok.ExportOperatorNamespace,
+			"source": map[string]any{
+				"sourceType": "Catalog",
+				"catalog": map[string]any{
+					"packageName": packageName,
+				},
+			},
+		},
+		"status": map[string]any{
+			"conditions": []any{
+				map[string]any{
+					"type":   "Installed",
+					"status": "True",
+					"reason": "Succeeded",
+				},
+			},
+			"install": map[string]any{
+				"bundle": map[string]any{
+					"version": version,
+				},
+			},
+		},
+	}}
 }
 
 func TestVerifyResourcesPreserved(t *testing.T) {

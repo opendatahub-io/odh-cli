@@ -89,13 +89,14 @@ func TestNewStatusReport_ComputeStatus_WithDependencyErrors(t *testing.T) {
 		{Name: "servicemesh", Status: deps.StatusInstalled},
 		{Name: "serverless", Status: deps.StatusMissing},
 		{Name: "authorino", Status: deps.StatusUnknown},
+		{Name: "certmanager", Status: deps.StatusPending},
 	}
 
 	sr := status.NewStatusReport(report, depStatuses)
 
 	g.Expect(sr.Status).NotTo(BeNil())
 	g.Expect(sr.Status.Errors).To(Equal(1), "missing dep should count as error")
-	g.Expect(sr.Status.Warnings).To(Equal(1), "unknown dep should count as warning")
+	g.Expect(sr.Status.Warnings).To(Equal(2), "unknown and pending deps should count as warnings")
 }
 
 func TestNewStatusReport_ComputeStatus_WithDependencyAPIError(t *testing.T) {

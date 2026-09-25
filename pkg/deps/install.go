@@ -14,6 +14,7 @@ import (
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
+	"sigs.k8s.io/yaml"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,13 +22,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
+	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 	"github.com/opendatahub-io/odh-cli/pkg/util/iostreams"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
+	utilolm "github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 	"github.com/opendatahub-io/odh-cli/pkg/util/stdin"
 )
 
@@ -35,10 +40,11 @@ import (
 var _ cmd.Command = (*InstallCommand)(nil)
 
 const (
-	defaultTimeout       = 5 * time.Minute
-	pollInterval         = 5 * time.Second
-	defaultCatalogSource = "redhat-operators"
-	sourceNamespace      = "openshift-marketplace"
+	defaultTimeout        = 5 * time.Minute
+	pollInterval          = 5 * time.Second
+	defaultCatalogSource  = "redhat-operators"
+	defaultServiceAccount = "odh-cli-dependency-installer"
+	sourceNamespace       = "openshift-marketplace"
 
 	// csvNamespaceListEveryNPolls limits full-namespace CSV List calls during wait:
 	// only every Nth poll (subscription Get still runs each poll).
@@ -62,9 +68,12 @@ const (
 	msgCreatedOperatorGroup  = "  Created OperatorGroup\n"
 	msgOperatorGroupExists   = "  OperatorGroup already exists\n"
 	msgCreatingSubscription  = "  Creating Subscription"
+	msgCreatingExtension     = "  Creating ClusterExtension"
 	msgWaitingForCSV         = "  Waiting for CSV... (%s)\n"
 	msgWaitingForCSVPhase    = "  Waiting for CSV %s... (%s)\n"
+	msgWaitingForOperator    = "  Waiting for operator... (%s)\n"
 	msgAllInstalled          = "All dependencies are already installed."
+	msgAllRequested          = "All dependencies already have installation requests or are installed."
 	msgNoDepsToInstall       = "No dependencies to install."
 
 	// Success/failure messages.
@@ -120,8 +129,11 @@ type InstallCommand struct {
 	Version         string
 	Refresh         bool
 	FromStdin       bool
+	ServiceAccount  string
+	OLMMode         string
 
 	client          client.Client
+	selectedOLMMode utilolm.Mode
 	manifestVersion string
 	useColor        bool
 	flags           *pflag.FlagSet
@@ -141,10 +153,13 @@ func (c *InstallCommand) AddFlags(fs *pflag.FlagSet) {
 	c.flags = fs
 	fs.BoolVar(&c.DryRun, "dry-run", false, "Show what would be installed without executing")
 	fs.BoolVar(&c.IncludeOptional, "include-optional", false, "Install optional dependencies in addition to required")
-	fs.DurationVar(&c.Timeout, "timeout", defaultTimeout, "Timeout for waiting on each operator CSV")
+	fs.DurationVar(&c.Timeout, "timeout", defaultTimeout, "Timeout for waiting on each operator installation")
 	fs.StringVar(&c.Version, "version", "", "ODH/RHOAI version to install dependencies for")
 	fs.BoolVar(&c.Refresh, "refresh", false, "Fetch latest manifest from odh-gitops")
 	fs.BoolVar(&c.FromStdin, "from-stdin", false, stdin.FlagDesc)
+	fs.StringVar(&c.ServiceAccount, "service-account", defaultServiceAccount,
+		"Preconfigured ServiceAccount in each operator namespace for OLM v1 installations")
+	fs.StringVar(&c.OLMMode, "olm-mode", "auto", "Installation API: auto (defaults to v0 when both APIs are available), v0, or v1")
 }
 
 // Complete prepares the command for execution.
@@ -210,6 +225,12 @@ func (c *InstallCommand) applyStdinInput(input *StdinInput) error {
 		c.TargetDeps = input.Deps
 	}
 
+	c.applyStdinOptions(input)
+
+	return nil
+}
+
+func (c *InstallCommand) applyStdinOptions(input *StdinInput) {
 	if input.Version != "" && !stdin.FlagChanged(c.flags, "version") {
 		c.Version = input.Version
 	}
@@ -225,8 +246,12 @@ func (c *InstallCommand) applyStdinInput(input *StdinInput) error {
 	if input.Refresh && !stdin.FlagChanged(c.flags, "refresh") {
 		c.Refresh = true
 	}
-
-	return nil
+	if input.ServiceAccount != "" && !stdin.FlagChanged(c.flags, "service-account") {
+		c.ServiceAccount = input.ServiceAccount
+	}
+	if input.OLMMode != "" && !stdin.FlagChanged(c.flags, "olm-mode") {
+		c.OLMMode = input.OLMMode
+	}
 }
 
 // Validate checks the command options.
@@ -234,9 +259,25 @@ func (c *InstallCommand) Validate() error {
 	if c.Timeout <= 0 {
 		return fmt.Errorf("--timeout must be positive, got %v", c.Timeout)
 	}
+	requestedMode, err := c.requestedOLMMode()
+	if err != nil {
+		return err
+	}
 
-	if !c.DryRun && !c.client.OLM().Available() {
-		return errors.New(msgOLMNotAvailableInst)
+	if !c.DryRun {
+		mode, err := utilolm.ResolveInstallMode(c.client.Discovery(), requestedMode)
+		if err != nil {
+			if requestedMode == "" && errors.Is(err, utilolm.ErrUnavailable) {
+				return errors.New(msgOLMNotAvailableInst)
+			}
+
+			return fmt.Errorf("detect OLM API: %w", err)
+		}
+
+		c.selectedOLMMode = mode
+		if mode == utilolm.ModeV1 && c.client.ControllerRuntime() == nil {
+			return errors.New(msgOLMNotAvailableInst)
+		}
 	}
 
 	// Skip version validation if refreshing (will fetch from remote)
@@ -261,6 +302,19 @@ func (c *InstallCommand) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *InstallCommand) requestedOLMMode() (utilolm.Mode, error) {
+	switch c.OLMMode {
+	case "", "auto":
+		return "", nil
+	case string(utilolm.ModeV0):
+		return utilolm.ModeV0, nil
+	case string(utilolm.ModeV1):
+		return utilolm.ModeV1, nil
+	default:
+		return "", fmt.Errorf("invalid --olm-mode %q: must be auto, v0, or v1", c.OLMMode)
+	}
 }
 
 // Run executes the install command.
@@ -319,8 +373,13 @@ func (c *InstallCommand) isValidDependency(deps []DependencyInfo, name string) b
 
 func (c *InstallCommand) runDryRun(_ context.Context, deps []DependencyInfo) error {
 	w := c.IO.Out()
+	mode, modeErr := c.dryRunMode()
 
-	_, _ = fmt.Fprintln(w, "[DRY RUN] The following resources would be created:")
+	if modeErr != nil {
+		_, _ = fmt.Fprintf(w, "[DRY RUN] OLM API could not be detected (%v); showing both installation paths as comments. Use --olm-mode=v0 or --olm-mode=v1 to render active manifests.\n", modeErr)
+	} else {
+		_, _ = fmt.Fprintln(w, "[DRY RUN] The following resources would be created:")
+	}
 	_, _ = fmt.Fprintln(w)
 
 	toInstall := c.filterDepsForDryRun(deps)
@@ -338,13 +397,54 @@ func (c *InstallCommand) runDryRun(_ context.Context, deps []DependencyInfo) err
 	}
 
 	for _, dep := range toInstall {
-		c.printDryRunManifests(w, dep)
+		if mode == "" {
+			var preview strings.Builder
+			if err := c.printDryRunManifests(&preview, dep, mode); err != nil {
+				return err
+			}
+			for line := range strings.SplitSeq(strings.TrimSuffix(preview.String(), "\n"), "\n") {
+				_, _ = fmt.Fprintf(w, "# %s\n", line)
+			}
+
+			continue
+		}
+
+		if err := c.printDryRunManifests(w, dep, mode); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (c *InstallCommand) printDryRunManifests(w io.Writer, dep DependencyInfo) {
+func (c *InstallCommand) dryRunMode() (utilolm.Mode, error) {
+	if c.selectedOLMMode != "" {
+		return c.selectedOLMMode, nil
+	}
+	requestedMode, err := c.requestedOLMMode()
+	if err != nil {
+		return "", err
+	}
+	if requestedMode != "" {
+		return requestedMode, nil
+	}
+
+	kubeClient := c.client
+	if kubeClient == nil {
+		if c.ConfigFlags == nil {
+			return "", errors.New("no cluster configuration")
+		}
+
+		kubeClient, err = client.NewClient(c.ConfigFlags)
+		if err != nil {
+			return "", fmt.Errorf("create kubernetes client: %w", err)
+		}
+	}
+
+	return utilolm.ResolveInstallMode(kubeClient.Discovery(), "") //nolint:wrapcheck // The caller prints the discovery error.
+}
+
+func (c *InstallCommand) printDryRunManifests(w io.Writer, dep DependencyInfo, mode utilolm.Mode) error {
 	_, _ = fmt.Fprintf(w, "# %s\n", dep.DisplayName)
 	_, _ = fmt.Fprintln(w, "---")
 
@@ -358,6 +458,30 @@ metadata:
 ---
 `, dep.Namespace, labelManagedBy, labelManagedByValue)
 
+	if mode == utilolm.ModeV1 {
+		return c.printDryRunClusterExtension(w, dep)
+	}
+
+	if mode == "" {
+		_, _ = fmt.Fprintln(w, "# OLM v0 alternative")
+	}
+
+	c.printDryRunV0Resources(w, dep)
+
+	if mode == "" {
+		_, _ = fmt.Fprintln(w, "# OLM v1 alternative")
+
+		if err := c.printDryRunClusterExtension(w, dep); err != nil {
+			_, _ = fmt.Fprintf(w, "# OLM v1 path unavailable: %v\n---\n", err)
+		}
+
+		return nil
+	}
+
+	return nil
+}
+
+func (c *InstallCommand) printDryRunV0Resources(w io.Writer, dep DependencyInfo) {
 	// OperatorGroup
 	_, _ = fmt.Fprintf(w, `apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
@@ -401,6 +525,24 @@ spec:
 `, dep.Subscription, dep.Namespace, labelManagedBy, labelManagedByValue, dep.Channel, dep.Subscription, source, sourceNamespace)
 }
 
+func (c *InstallCommand) printDryRunClusterExtension(w io.Writer, dep DependencyInfo) error {
+	extension, err := c.clusterExtension(dep)
+	if err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(extension.Object)
+	if err != nil {
+		return fmt.Errorf("render ClusterExtension for %s: %w", dep.Name, err)
+	}
+
+	_, _ = fmt.Fprintf(w, "# Requires an existing ServiceAccount %s in namespace %s with permissions for this operator.\n",
+		c.serviceAccountName(), dep.Namespace)
+	_, _ = fmt.Fprintln(w, string(data))
+	_, _ = fmt.Fprintln(w, "---")
+
+	return nil
+}
+
 func (c *InstallCommand) runInstall(ctx context.Context, deps []DependencyInfo) error {
 	w := c.IO.Out()
 
@@ -410,21 +552,18 @@ func (c *InstallCommand) runInstall(ctx context.Context, deps []DependencyInfo) 
 	}
 
 	if len(toInstall) == 0 {
-		switch {
-		case len(c.TargetDeps) == 0 && c.TargetDeps != nil:
-			_, _ = fmt.Fprintln(w, msgNoDepsToInstall)
-		case len(c.TargetDeps) > 0:
-			_, _ = fmt.Fprintf(w, "%s is already installed.\n", strings.Join(c.TargetDeps, ", "))
-		default:
-			_, _ = fmt.Fprintln(w, msgAllInstalled)
-		}
+		c.printNoInstallNeeded(w)
 
 		return nil
 	}
 
-	// Phase 1: Create all resources (namespace, operatorgroup, subscription)
+	if err := c.validateServiceAccounts(ctx, toInstall); err != nil {
+		return err
+	}
+
+	// Phase 1: Create all resources for the selected OLM API.
 	results := make([]InstallResult, len(toInstall))
-	pendingCSVs := make([]int, 0, len(toInstall))
+	pendingOperators := make([]int, 0, len(toInstall))
 
 	for i, dep := range toInstall {
 		results[i] = InstallResult{
@@ -437,14 +576,14 @@ func (c *InstallCommand) runInstall(ctx context.Context, deps []DependencyInfo) 
 			results[i].Error = err
 			c.printFailure(w, dep.DisplayName, err)
 		} else {
-			pendingCSVs = append(pendingCSVs, i)
+			pendingOperators = append(pendingOperators, i)
 		}
 	}
 
-	// Phase 2: Wait for all CSVs in parallel
-	if len(pendingCSVs) > 0 {
-		_, _ = fmt.Fprintf(w, "\nWaiting for %d operator(s) to become ready...\n", len(pendingCSVs))
-		c.waitForCSVsParallel(ctx, toInstall, results, pendingCSVs)
+	// Phase 2: Wait for all operators in parallel.
+	if len(pendingOperators) > 0 {
+		_, _ = fmt.Fprintf(w, "\nWaiting for %d operator(s) to become ready...\n", len(pendingOperators))
+		c.waitForOperatorsParallel(ctx, toInstall, results, pendingOperators)
 	}
 
 	c.printSummary(w, results)
@@ -465,7 +604,61 @@ func (c *InstallCommand) runInstall(ctx context.Context, deps []DependencyInfo) 
 	return nil
 }
 
-func (c *InstallCommand) waitForCSVsParallel(ctx context.Context, deps []DependencyInfo, results []InstallResult, pendingIndices []int) {
+func (c *InstallCommand) printNoInstallNeeded(w io.Writer) {
+	switch {
+	case len(c.TargetDeps) == 0 && c.TargetDeps != nil:
+		_, _ = fmt.Fprintln(w, msgNoDepsToInstall)
+	case len(c.TargetDeps) > 0:
+		_, _ = fmt.Fprintf(w, "%s already has an installation request or is installed.\n",
+			strings.Join(c.TargetDeps, ", "))
+	default:
+		_, _ = fmt.Fprintln(w, msgAllRequested)
+	}
+}
+
+func (c *InstallCommand) serviceAccountName() string {
+	if c.ServiceAccount != "" {
+		return c.ServiceAccount
+	}
+
+	return defaultServiceAccount
+}
+
+func (c *InstallCommand) validateServiceAccounts(ctx context.Context, deps []DependencyInfo) error {
+	if c.selectedOLMMode != utilolm.ModeV1 {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(deps))
+
+	for _, dep := range deps {
+		if seen[dep.Namespace] {
+			continue
+		}
+		seen[dep.Namespace] = true
+
+		account := &corev1.ServiceAccount{}
+		err := c.client.ControllerRuntime().Get(ctx,
+			types.NamespacedName{Namespace: dep.Namespace, Name: c.serviceAccountName()}, account)
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("OLM v1 requires ServiceAccount %s in namespace %s; create it with the operator bundle's required permissions or set --service-account: %w",
+				c.serviceAccountName(), dep.Namespace, err)
+		}
+		if err != nil {
+			return fmt.Errorf("check OLM v1 ServiceAccount %s in namespace %s: %w",
+				c.serviceAccountName(), dep.Namespace, err)
+		}
+	}
+
+	return nil
+}
+
+func (c *InstallCommand) waitForOperatorsParallel(
+	ctx context.Context,
+	deps []DependencyInfo,
+	results []InstallResult,
+	pendingIndices []int,
+) {
 	sw := &syncWriter{w: c.IO.Out()}
 
 	var mu sync.Mutex
@@ -477,7 +670,7 @@ func (c *InstallCommand) waitForCSVsParallel(ctx context.Context, deps []Depende
 		resultIdx := idx
 
 		g.Go(func() error {
-			version, err := c.waitForCSV(gctx, sw, dep.Namespace, dep.Subscription)
+			version, err := c.waitForDependency(gctx, sw, dep)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -548,7 +741,7 @@ func (c *InstallCommand) filterDepsToInstall(ctx context.Context, deps []Depende
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, fmt.Errorf("check installed subscriptions: %w", err)
+		return nil, fmt.Errorf("check installed operator requests: %w", err)
 	}
 
 	toInstall := make([]DependencyInfo, 0, len(indices))
@@ -586,6 +779,26 @@ func (c *InstallCommand) shouldInstallDep(dep DependencyInfo) bool {
 }
 
 func (c *InstallCommand) isAlreadyInstalled(ctx context.Context, dep DependencyInfo) (bool, error) {
+	if c.selectedOLMMode == utilolm.ModeV1 {
+		requested, extensionErr := requestedClusterExtension(
+			ctx, c.client.ControllerRuntime(), dep.Subscription, dep.Namespace,
+		)
+		if requested {
+			return true, nil
+		}
+
+		sub, v0Err := requestedV0Subscription(ctx, c.client.OLM(), dep.Subscription, dep.Namespace)
+		if sub != nil {
+			return true, nil
+		}
+
+		if err := errors.Join(extensionErr, v0Err); err != nil {
+			return false, fmt.Errorf("check if %s is requested: %w", dep.Name, err)
+		}
+
+		return false, nil
+	}
+
 	sub, err := getSubscription(ctx, c.client.OLM(), dep.Namespace, dep.Subscription)
 	if err != nil {
 		return false, fmt.Errorf("check if %s is installed: %w", dep.Name, err)
@@ -598,8 +811,33 @@ func (c *InstallCommand) isAlreadyInstalled(ctx context.Context, dep DependencyI
 		return true, nil
 	}
 
-	// No subscription - check for orphaned CSV (installed but subscription deleted)
-	return c.hasSucceededCSV(ctx, dep.Namespace, dep.Subscription)
+	// No subscription - check for orphaned CSV (installed but subscription deleted).
+	installed, err := c.hasSucceededCSV(ctx, dep.Namespace, dep.Subscription)
+	if err != nil || installed {
+		return installed, err
+	}
+
+	// A mixed cluster may already have this package requested through OLM v1.
+	if c.client.ControllerRuntime() == nil {
+		return false, nil
+	}
+
+	requested, err := requestedClusterExtension(
+		ctx, c.client.ControllerRuntime(), dep.Subscription, dep.Namespace,
+	)
+	if requested {
+		return true, nil
+	}
+	if apierrors.IsForbidden(err) {
+		c.IO.Errorf("Warning: cannot check OLM v1 ClusterExtensions for %s: %v; continuing with OLM v0", dep.Name, err)
+
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check if %s has an OLM v1 request: %w", dep.Name, err)
+	}
+
+	return false, nil
 }
 
 func (c *InstallCommand) hasSucceededCSV(ctx context.Context, namespace, subName string) (bool, error) {
@@ -651,6 +889,14 @@ func (c *InstallCommand) warnIfSubscriptionMismatch(sub *operatorsv1alpha1.Subsc
 }
 
 func (c *InstallCommand) createDepResources(ctx context.Context, dep DependencyInfo) error {
+	if c.selectedOLMMode == utilolm.ModeV1 {
+		return c.createDepResourcesV1(ctx, dep)
+	}
+
+	return c.createDepResourcesV0(ctx, dep)
+}
+
+func (c *InstallCommand) createDepResourcesV0(ctx context.Context, dep DependencyInfo) error {
 	w := c.IO.Out()
 
 	_, _ = fmt.Fprintf(w, msgInstalling, dep.DisplayName)
@@ -680,6 +926,26 @@ func (c *InstallCommand) createDepResources(ctx context.Context, dep DependencyI
 	}
 
 	return nil
+}
+
+func (c *InstallCommand) createDepResourcesV1(ctx context.Context, dep DependencyInfo) error {
+	extension, err := c.clusterExtension(dep)
+	if err != nil {
+		return err
+	}
+
+	w := c.IO.Out()
+
+	_, _ = fmt.Fprintf(w, msgInstalling, dep.DisplayName)
+	_, _ = fmt.Fprintf(w, msgCreatingNamespace, dep.Namespace)
+
+	if err := c.createNamespace(ctx, dep.Namespace); err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintln(w, msgCreatingExtension)
+
+	return c.createClusterExtension(ctx, dep, extension)
 }
 
 func (c *InstallCommand) createNamespace(ctx context.Context, name string) error {
@@ -842,6 +1108,158 @@ func (c *InstallCommand) verifyExistingSubscription(ctx context.Context, dep Dep
 	return nil
 }
 
+func (c *InstallCommand) createClusterExtension(ctx context.Context, dep DependencyInfo, extension *unstructured.Unstructured) error {
+	_, err := c.client.Dynamic().Resource(resources.ClusterExtension.GVR()).
+		Create(ctx, extension, metav1.CreateOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create ClusterExtension: %w", err)
+	}
+
+	source := dep.Source
+	if source == "" {
+		source = defaultCatalogSource
+	}
+
+	return c.verifyExistingClusterExtension(ctx, dep, clusterCatalogName(source))
+}
+
+func (c *InstallCommand) clusterExtension(dep DependencyInfo) (*unstructured.Unstructured, error) {
+	if len(dep.TargetNamespaces) > 1 {
+		return nil, fmt.Errorf("dependency %q has %d target namespaces; OLM v1 supports only one watch namespace",
+			dep.Name, len(dep.TargetNamespaces))
+	}
+
+	source := dep.Source
+	if source == "" {
+		source = defaultCatalogSource
+	}
+	catalogName := clusterCatalogName(source)
+
+	catalog := map[string]any{
+		"packageName": dep.Subscription,
+		"selector": map[string]any{
+			"matchLabels": map[string]any{
+				"olm.operatorframework.io/metadata.name": catalogName,
+			},
+		},
+	}
+
+	if dep.Channel != "" {
+		catalog["channels"] = []any{dep.Channel}
+	}
+
+	spec := map[string]any{
+		"namespace": dep.Namespace,
+		"serviceAccount": map[string]any{
+			"name": c.serviceAccountName(),
+		},
+		"source": map[string]any{
+			"sourceType": "Catalog",
+			"catalog":    catalog,
+		},
+	}
+	if len(dep.TargetNamespaces) == 1 {
+		spec["config"] = map[string]any{
+			"configType": "Inline",
+			"inline": map[string]any{
+				"watchNamespace": dep.TargetNamespaces[0],
+			},
+		}
+	}
+
+	extension := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": resources.ClusterExtension.APIVersion(),
+		"kind":       resources.ClusterExtension.Kind,
+		"metadata": map[string]any{
+			"name": dep.Subscription,
+			"labels": map[string]any{
+				labelManagedBy: labelManagedByValue,
+			},
+		},
+		"spec": spec,
+	}}
+
+	return extension, nil
+}
+
+// clusterCatalogName maps OLM v0 CatalogSource names to the default OLM v1 ClusterCatalog names.
+func clusterCatalogName(source string) string {
+	switch source {
+	case "redhat-operators", "community-operators", "certified-operators", "redhat-marketplace":
+		return "openshift-" + source
+	default:
+		return source
+	}
+}
+
+func (c *InstallCommand) verifyExistingClusterExtension(
+	ctx context.Context,
+	dep DependencyInfo,
+	expectedSource string,
+) error {
+	existing, err := c.client.Dynamic().Resource(resources.ClusterExtension.GVR()).
+		Get(ctx, dep.Subscription, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get existing ClusterExtension: %w", err)
+	}
+
+	namespace, err := jq.Query[string](existing, ".spec.namespace")
+	if err != nil {
+		return fmt.Errorf("query existing ClusterExtension namespace: %w", err)
+	}
+
+	packageName, err := jq.Query[string](existing, ".spec.source.catalog.packageName")
+	if err != nil {
+		return fmt.Errorf("query existing ClusterExtension package: %w", err)
+	}
+
+	if namespace != dep.Namespace || packageName != dep.Subscription {
+		return fmt.Errorf(
+			"ClusterExtension %s requests package %q in namespace %q, expected package %q in namespace %q",
+			dep.Subscription,
+			packageName,
+			namespace,
+			dep.Subscription,
+			dep.Namespace,
+		)
+	}
+
+	var mismatches []string
+
+	channel, channelErr := jq.Query[string](existing, ".spec.source.catalog.channels[0]")
+	if dep.Channel != "" && (channelErr != nil || channel != dep.Channel) {
+		mismatches = append(mismatches, fmt.Sprintf("channel: %s (expected %s)", channel, dep.Channel))
+	}
+
+	source, sourceErr := jq.Query[string](
+		existing,
+		`.spec.source.catalog.selector.matchLabels["olm.operatorframework.io/metadata.name"]`,
+	)
+	if sourceErr != nil || source != expectedSource {
+		mismatches = append(mismatches, fmt.Sprintf("source: %s (expected %s)", source, expectedSource))
+	}
+
+	serviceAccount, serviceAccountErr := jq.Query[string](existing, ".spec.serviceAccount.name")
+	if serviceAccountErr != nil || serviceAccount != c.serviceAccountName() {
+		mismatches = append(mismatches,
+			fmt.Sprintf("serviceAccount: %s (expected %s)", serviceAccount, c.serviceAccountName()))
+	}
+
+	if len(mismatches) > 0 {
+		_, _ = fmt.Fprintf(
+			c.IO.Out(),
+			"  Warning: ClusterExtension exists with different spec: %s\n",
+			strings.Join(mismatches, ", "),
+		)
+	}
+
+	return nil
+}
+
 // csvResult holds the result of a CSV check.
 type csvResult struct {
 	version string
@@ -931,6 +1349,60 @@ func (c *InstallCommand) findSucceededCSVInNamespace(ctx context.Context, namesp
 	}
 
 	return csvResult{ready: false}
+}
+
+func (c *InstallCommand) waitForDependency(
+	ctx context.Context,
+	w io.Writer,
+	dep DependencyInfo,
+) (string, error) {
+	if c.selectedOLMMode == utilolm.ModeV1 {
+		return c.waitForOperator(ctx, w, dep.Subscription, dep.Namespace)
+	}
+
+	return c.waitForCSV(ctx, w, dep.Namespace, dep.Subscription)
+}
+
+func (c *InstallCommand) waitForOperator(
+	ctx context.Context,
+	w io.Writer,
+	packageName string,
+	namespace ...string,
+) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	startTime := time.Now()
+	installNamespace := ""
+	if len(namespace) > 0 {
+		installNamespace = namespace[0]
+	}
+
+	for {
+		state, err := findClusterExtensionInstallState(
+			ctx, c.client.ControllerRuntime(), packageName, installNamespace,
+		)
+		switch {
+		case err == nil && state.installed:
+			return strings.TrimPrefix(state.version, "v"), nil
+		case err == nil:
+			elapsed := time.Since(startTime).Round(time.Second)
+			_, _ = fmt.Fprintf(w, msgWaitingForOperator, elapsed)
+		case err != nil:
+			return "", fmt.Errorf("check operator %s: %w", packageName, err)
+		}
+
+		select {
+		case <-ctx.Done():
+			elapsed := time.Since(startTime).Round(time.Second)
+
+			return "", fmt.Errorf("timeout waiting for operator after %s: %w", elapsed, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func (c *InstallCommand) waitForCSV(ctx context.Context, w io.Writer, namespace, subName string) (string, error) {

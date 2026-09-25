@@ -19,7 +19,7 @@ const (
 const cmdLong = `
 Manage operator dependencies required by ODH/RHOAI components.
 
-Without a subcommand, displays dependency status by querying OLM subscriptions.
+Without a subcommand, displays dependency status by querying OLM operator resources.
 Each dependency shows:
   - Installation status (installed, missing, optional)
   - Installed version (if available)
@@ -118,8 +118,15 @@ func addInstallCommand(parent *cobra.Command, flags *genericclioptions.ConfigFla
 		Short: "Install missing operator dependencies via OLM",
 		Long: `Install missing operator dependencies required by ODH/RHOAI.
 
-Creates namespace, OperatorGroup, and OLM Subscription for each missing dependency.
-Waits for the CSV (ClusterServiceVersion) to reach Succeeded phase.
+Creates the resources required by the cluster's OLM API for each missing dependency:
+an OperatorGroup and Subscription for OLM v0, or a ClusterExtension for OLM v1.
+Waits for the operator installation to succeed.
+
+OLM v1 requires a preconfigured ServiceAccount in each operator namespace with
+permissions for the operator bundle. The default name is odh-cli-dependency-installer;
+use --service-account to select a different account.
+When both OLM APIs are available, OLM v0 is used by default; use --olm-mode=v1
+to install with ClusterExtension.
 
 If a dependency name is provided, only that dependency is installed.
 Otherwise, all missing required dependencies are installed.

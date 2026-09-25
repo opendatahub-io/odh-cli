@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"time"
 
+	platformcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	platformolm "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster/olm"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/pflag"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -71,8 +74,11 @@ type RHBOKMigrationAction struct {
 	Channel               string
 	SkipRemoveEmbedded    bool
 	ForceDeleteLegacyCRDs bool
+	OLMMode               string
+	ServiceAccount        string
 
 	executeLabelingPlan *labelingPlan
+	selectedOLMMode     olm.Mode
 }
 
 func (a *RHBOKMigrationAction) ID() string { return actionID }
@@ -106,6 +112,10 @@ func (a *RHBOKMigrationAction) AddFlags(fs *pflag.FlagSet) {
 		"Skip setting Kueue managementState to Removed before installing RHBOK (not recommended)")
 	fs.BoolVar(&a.ForceDeleteLegacyCRDs, "force-delete-legacy-crds", false,
 		"Delete legacy cohorts/topologies CRDs even when instances still exist")
+	fs.StringVar(&a.OLMMode, "kueue-olm-mode", "auto",
+		"RHBOK installation API: auto (defaults to v0 when both APIs are available), v0, or v1")
+	fs.StringVar(&a.ServiceAccount, "kueue-service-account", "odh-cli-dependency-installer",
+		"Preconfigured ServiceAccount for OLM v1 RHBOK installation")
 }
 
 func (a *RHBOKMigrationAction) Prepare() action.Task {
@@ -160,14 +170,15 @@ func (a *RHBOKMigrationAction) isMigrationComplete(ctx context.Context, target a
 		return false
 	}
 
-	sub, err := target.Client.OLM().Subscriptions(operatorNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
-	if err != nil || sub.Status.InstalledCSV == "" {
-		return false
-	}
-
-	csv, err := target.Client.OLM().ClusterServiceVersions(operatorNamespace).Get(ctx, sub.Status.InstalledCSV, metav1.GetOptions{})
-	if err != nil || csv.Status.Phase != operatorsv1alpha1.CSVPhaseSucceeded {
-		return false
+	if a.selectedOLMMode == olm.ModeV1 {
+		if !rhbokInstalledViaClusterExtension(ctx, target.Client) {
+			return false
+		}
+	} else {
+		installed, err := rhbokOperatorInstalled(ctx, target.Client)
+		if err != nil || !installed {
+			return false
+		}
 	}
 
 	pods, err := target.Client.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
@@ -184,6 +195,69 @@ func (a *RHBOKMigrationAction) isMigrationComplete(ctx context.Context, target a
 	}
 
 	return true
+}
+
+func rhbokOperatorInstalled(ctx context.Context, kubeClient client.Client) (bool, error) {
+	sub, err := kubeClient.OLM().Subscriptions(operatorNamespace).Get(ctx, subscriptionName, metav1.GetOptions{})
+	if err == nil {
+		if sub.Status.InstalledCSV == "" {
+			return false, nil
+		}
+
+		csv, csvErr := kubeClient.OLM().ClusterServiceVersions(operatorNamespace).
+			Get(ctx, sub.Status.InstalledCSV, metav1.GetOptions{})
+		if csvErr != nil {
+			return false, fmt.Errorf("get RHBOK CSV %s: %w", sub.Status.InstalledCSV, csvErr)
+		}
+
+		return csv.Status.Phase == operatorsv1alpha1.CSVPhaseSucceeded, nil
+	}
+
+	if apierrors.IsForbidden(err) && rhbokInstalledViaClusterExtension(ctx, kubeClient) {
+		return true, nil
+	}
+
+	if !apierrors.IsNotFound(err) && !meta.IsNoMatchError(err) {
+		return false, fmt.Errorf("get RHBOK subscription: %w", err)
+	}
+
+	if kubeClient.ControllerRuntime() == nil {
+		return false, fmt.Errorf("get RHBOK subscription: %w", err)
+	}
+
+	_, err = platformolm.OperatorExists(ctx, kubeClient.ControllerRuntime(), subscriptionPackage)
+	if errors.Is(err, platformolm.ErrOperatorNotInstalled) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check RHBOK operator: %w", err)
+	}
+
+	return true, nil
+}
+
+func rhbokInstalledViaClusterExtension(ctx context.Context, kubeClient client.Client) bool {
+	if !rhbokRequestedViaClusterExtension(ctx, kubeClient) {
+		return false
+	}
+
+	info, err := platformcluster.OperatorInstalledViaClusterExtension(
+		ctx, kubeClient.ControllerRuntime(), subscriptionPackage,
+	)
+
+	return err == nil && info != nil
+}
+
+func rhbokRequestedViaClusterExtension(ctx context.Context, kubeClient client.Client) bool {
+	if kubeClient.ControllerRuntime() == nil {
+		return false
+	}
+
+	requested, err := platformcluster.ClusterExtensionInstallsPackage(
+		ctx, kubeClient.ControllerRuntime(), subscriptionPackage, operatorNamespace,
+	)
+
+	return err == nil && requested
 }
 
 func (a *RHBOKMigrationAction) checkKueueManaged(
@@ -305,7 +379,7 @@ func (a *RHBOKMigrationAction) resolveSubscriptionChannel(
 			return existing.Spec.Channel, nil
 		}
 
-		if err != nil && !apierrors.IsNotFound(err) {
+		if err != nil && !apierrors.IsNotFound(err) && !meta.IsNoMatchError(err) {
 			return "", fmt.Errorf("checking existing subscription: %w", err)
 		}
 	}
@@ -333,14 +407,21 @@ func (a *RHBOKMigrationAction) installRHBOKOperator(
 		"Install Red Hat Build of Kueue Operator",
 	)
 
-	channel, err := a.resolveSubscriptionChannel(ctx, target)
+	channel, err := a.operatorChannel(ctx, target)
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to resolve operator channel: %v", err)
 
 		return
 	}
 
-	step.AddDetail("channel", channel)
+	if channel != "" {
+		step.AddDetail("channel", channel)
+	}
+	if a.selectedOLMMode == olm.ModeV1 {
+		a.installRHBOKClusterExtension(ctx, target, channel, step)
+
+		return
+	}
 
 	subscriptionExists := false
 	if !target.DryRun {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"golang.org/x/sync/errgroup"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/output"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	utilolm "github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 )
 
 const (
@@ -28,6 +30,7 @@ type Status string
 
 const (
 	StatusInstalled Status = "installed"
+	StatusPending   Status = "pending"
 	StatusMissing   Status = "missing"
 	StatusOptional  Status = "optional"
 	StatusUnknown   Status = "unknown"
@@ -35,14 +38,14 @@ const (
 
 // DependencyStatus represents the checked status of a dependency on the cluster.
 type DependencyStatus struct {
-	Name         string   `json:"name"                 jsonschema:"description=Operator package name"                                                      yaml:"name"`
-	DisplayName  string   `json:"displayName"          jsonschema:"description=Human-readable operator name"                                               yaml:"displayName"`
-	Status       Status   `json:"status"               jsonschema:"description=Installation status,enum=installed,enum=missing,enum=optional,enum=unknown" yaml:"status"`
-	Version      string   `json:"version,omitempty"    jsonschema:"description=Installed operator version"                                                 yaml:"version,omitempty"`
-	Namespace    string   `json:"namespace"            jsonschema:"description=Operator namespace"                                                         yaml:"namespace"`
-	Subscription string   `json:"subscription"         jsonschema:"description=OLM subscription name"                                                      yaml:"subscription"`
-	RequiredBy   []string `json:"requiredBy,omitempty" jsonschema:"description=Components that require this dependency"                                    yaml:"requiredBy,omitempty"`
-	Error        string   `json:"error,omitempty"      jsonschema:"description=Error message if status check failed"                                       yaml:"error,omitempty"`
+	Name         string   `json:"name"                 jsonschema:"description=Operator package name"                                                                   yaml:"name"`
+	DisplayName  string   `json:"displayName"          jsonschema:"description=Human-readable operator name"                                                            yaml:"displayName"`
+	Status       Status   `json:"status"               jsonschema:"description=Installation status,enum=installed,enum=pending,enum=missing,enum=optional,enum=unknown" yaml:"status"`
+	Version      string   `json:"version,omitempty"    jsonschema:"description=Installed operator version"                                                              yaml:"version,omitempty"`
+	Namespace    string   `json:"namespace"            jsonschema:"description=Operator namespace"                                                                      yaml:"namespace"`
+	Subscription string   `json:"subscription"         jsonschema:"description=OLM operator package request name"                                                       yaml:"subscription"`
+	RequiredBy   []string `json:"requiredBy,omitempty" jsonschema:"description=Components that require this dependency"                                                 yaml:"requiredBy,omitempty"`
+	Error        string   `json:"error,omitempty"      jsonschema:"description=Error message if status check failed"                                                    yaml:"error,omitempty"`
 }
 
 // DependencyList wraps dependency statuses with a self-describing envelope.
@@ -77,7 +80,7 @@ func (l *DependencyList) computeStatus() {
 		switch d.Status {
 		case StatusMissing:
 			errs++
-		case StatusUnknown:
+		case StatusUnknown, StatusPending:
 			warnings++
 		case StatusInstalled, StatusOptional:
 			// No action needed for installed or optional dependencies.
@@ -88,8 +91,20 @@ func (l *DependencyList) computeStatus() {
 
 // CheckDependencies queries the cluster for dependency installation status.
 // Checks run concurrently for improved performance.
-func CheckDependencies(ctx context.Context, olmReader client.OLMReader, manifest *Manifest) ([]DependencyStatus, error) {
-	if !olmReader.Available() {
+func CheckDependencies(ctx context.Context, kubeClient client.Client, manifest *Manifest) ([]DependencyStatus, error) {
+	mode, err := utilolm.DetectMode(kubeClient.Discovery())
+	if err != nil {
+		if errors.Is(err, utilolm.ErrUnavailable) {
+			return nil, ErrOLMNotAvailable
+		}
+
+		return nil, fmt.Errorf("detect OLM API: %w", err)
+	}
+
+	if mode == utilolm.ModeV1 && kubeClient.ControllerRuntime() == nil {
+		return nil, ErrOLMNotAvailable
+	}
+	if mode == utilolm.ModeV0 && (kubeClient.OLM() == nil || !kubeClient.OLM().Available()) {
 		return nil, ErrOLMNotAvailable
 	}
 
@@ -100,7 +115,12 @@ func CheckDependencies(ctx context.Context, olmReader client.OLMReader, manifest
 
 	for i, dep := range deps {
 		g.Go(func() error {
-			results[i] = checkSingleDependency(gctx, olmReader, dep)
+			switch mode {
+			case utilolm.ModeV1:
+				results[i] = checkSingleDependencyV1(gctx, kubeClient, dep)
+			case utilolm.ModeV0:
+				results[i] = checkSingleDependencyV0(gctx, kubeClient.OLM(), dep)
+			}
 
 			return nil
 		})
@@ -116,7 +136,7 @@ func CheckDependencies(ctx context.Context, olmReader client.OLMReader, manifest
 	return results, nil
 }
 
-func checkSingleDependency(ctx context.Context, olmReader client.OLMReader, dep DependencyInfo) DependencyStatus {
+func checkSingleDependencyV0(ctx context.Context, olmReader client.OLMReader, dep DependencyInfo) DependencyStatus {
 	status := DependencyStatus{
 		Name:         dep.Name,
 		DisplayName:  dep.DisplayName,
@@ -135,7 +155,7 @@ func checkSingleDependency(ctx context.Context, olmReader client.OLMReader, dep 
 
 	if sub == nil {
 		// Not installed - check if optional or required
-		if dep.Enabled == "auto" || dep.Enabled == "false" {
+		if dep.Enabled == enabledAuto || dep.Enabled == "false" {
 			status.Status = StatusOptional
 		} else {
 			status.Status = StatusMissing
@@ -144,6 +164,66 @@ func checkSingleDependency(ctx context.Context, olmReader client.OLMReader, dep 
 		return status
 	}
 
+	return v0SubscriptionStatus(ctx, olmReader, dep, status, sub)
+}
+
+func checkSingleDependencyV1(ctx context.Context, kubeClient client.Client, dep DependencyInfo) DependencyStatus {
+	status := DependencyStatus{
+		Name:         dep.Name,
+		DisplayName:  dep.DisplayName,
+		Namespace:    dep.Namespace,
+		Subscription: dep.Subscription,
+		RequiredBy:   dep.RequiredBy,
+	}
+
+	extensionState, extensionErr := findClusterExtensionInstallState(
+		ctx, kubeClient.ControllerRuntime(), dep.Subscription, dep.Namespace,
+	)
+	if extensionState.installed {
+		status.Status = StatusInstalled
+		status.Version = strings.TrimPrefix(extensionState.version, "v")
+
+		return status
+	}
+
+	olmReader := kubeClient.OLM()
+	var sub *operatorsv1alpha1.Subscription
+	var v0Err error
+	if olmReader != nil {
+		sub, v0Err = requestedV0Subscription(ctx, olmReader, dep.Subscription, dep.Namespace)
+	}
+	if sub != nil {
+		return v0SubscriptionStatus(ctx, olmReader, dep, status, sub)
+	}
+
+	if err := errors.Join(extensionErr, v0Err); err != nil {
+		status.Status = StatusUnknown
+		status.Error = err.Error()
+
+		return status
+	}
+	if extensionState.requested {
+		status.Status = StatusPending
+
+		return status
+	}
+
+	if dep.Enabled == enabledAuto || dep.Enabled == "false" {
+		status.Status = StatusOptional
+	} else {
+		status.Status = StatusMissing
+	}
+
+	return status
+}
+
+func v0SubscriptionStatus(
+	ctx context.Context,
+	olmReader client.OLMReader,
+	dep DependencyInfo,
+	status DependencyStatus,
+	sub *operatorsv1alpha1.Subscription,
+) DependencyStatus {
 	status.Status = StatusInstalled
 
 	version, err := getVersionFromCSV(ctx, olmReader, dep.Namespace, sub.Status.InstalledCSV)
@@ -151,7 +231,7 @@ func checkSingleDependency(ctx context.Context, olmReader client.OLMReader, dep 
 		status.Error = err.Error()
 	}
 
-	// Fallback: if InstalledCSV is empty (not error), search for matching CSV in namespace
+	// Fallback: if InstalledCSV is empty (not error), search for matching CSV in namespace.
 	if err == nil && version == "" {
 		var fallbackErr error
 

@@ -1,6 +1,7 @@
 package olm_test
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -9,6 +10,22 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 
 	. "github.com/onsi/gomega"
+)
+
+const (
+	testCatalogChannels = `{"schema":"olm.package","name":"kueue-operator","defaultChannel":"stable-v1.1"}
+{"schema":"olm.channel","package":"another-operator","name":"stable-v9.9"}
+{"schema":"olm.channel","package":"kueue-operator","name":"stable-v1.1"}
+{"schema":"olm.channel","package":"kueue-operator","name":"stable-v1.3"}
+{"schema":"olm.channel","package":"kueue-operator","name":"candidate"}
+`
+	testCatalogDefault = `{"schema":"olm.package","name":"kueue-operator","defaultChannel":"stable"}
+{"schema":"olm.channel","package":"kueue-operator","name":"stable"}
+{"schema":"olm.channel","package":"kueue-operator","name":"candidate"}
+`
+	testCatalogUnavailableDefault = `{"schema":"olm.package","name":"kueue-operator","defaultChannel":"stable"}
+{"schema":"olm.channel","package":"kueue-operator","name":"candidate"}
+`
 )
 
 func newKueuePackageManifest(channels []string, defaultChannel string) *unstructured.Unstructured {
@@ -68,4 +85,32 @@ func TestResolveChannelFromManifest_NoChannels(t *testing.T) {
 
 	_, err := olm.ExportResolveChannelFromManifest(pm)
 	g.Expect(err).To(HaveOccurred())
+}
+
+func TestResolveCatalogChannel(t *testing.T) {
+	t.Run("highest stable channel", func(t *testing.T) {
+		g := NewWithT(t)
+		channel, err := olm.ResolveCatalogChannel(strings.NewReader(testCatalogChannels), "kueue-operator")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(channel).To(Equal("stable-v1.3"))
+	})
+
+	t.Run("package default without versioned stable channel", func(t *testing.T) {
+		g := NewWithT(t)
+		channel, err := olm.ResolveCatalogChannel(strings.NewReader(testCatalogDefault), "kueue-operator")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(channel).To(Equal("stable"))
+	})
+
+	t.Run("missing package fails", func(t *testing.T) {
+		g := NewWithT(t)
+		_, err := olm.ResolveCatalogChannel(strings.NewReader(testCatalogChannels), "missing-operator")
+		g.Expect(err).To(HaveOccurred())
+	})
+
+	t.Run("unavailable default channel fails", func(t *testing.T) {
+		g := NewWithT(t)
+		_, err := olm.ResolveCatalogChannel(strings.NewReader(testCatalogUnavailableDefault), "kueue-operator")
+		g.Expect(err).To(HaveOccurred())
+	})
 }

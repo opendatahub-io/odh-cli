@@ -234,7 +234,7 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 	}
 
-	statuses, err := CheckDependencies(ctx, c.client.OLM(), result.Manifest)
+	statuses, err := CheckDependencies(ctx, c.client, result.Manifest)
 	if err != nil {
 		return fmt.Errorf(msgCheckDeps, err)
 	}
@@ -370,6 +370,12 @@ func (c *Command) statusToIcon(status Status) string {
 		}
 
 		return "✓ installed"
+	case StatusPending:
+		if c.useColor {
+			return colorYellow + "… pending" + colorReset
+		}
+
+		return "… pending"
 	case StatusMissing:
 		if c.useColor {
 			return colorRed + "✗ MISSING" + colorReset

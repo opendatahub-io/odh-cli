@@ -236,7 +236,7 @@ func (c *Command) checkDependencies(ctx context.Context) []deps.DependencyStatus
 		return nil
 	}
 
-	statuses, err := deps.CheckDependencies(ctx, c.client.OLM(), result.Manifest)
+	statuses, err := deps.CheckDependencies(ctx, c.client, result.Manifest)
 	if err != nil {
 		if c.Verbose || c.IncludeDeps {
 			if errors.Is(err, deps.ErrOLMNotAvailable) {

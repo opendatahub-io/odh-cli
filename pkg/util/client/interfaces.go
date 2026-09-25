@@ -5,6 +5,7 @@ import (
 
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	olmclientset "github.com/operator-framework/operator-lifecycle-manager/pkg/api/client/clientset/versioned"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -92,6 +93,8 @@ type Writer interface {
 // Client provides full access to Kubernetes resources.
 // Embeds Reader and Writer, and exposes the underlying clientsets
 // for callers that need low-level or write access.
+//
+//nolint:interfacebloat // This facade intentionally centralizes all shared Kubernetes clients.
 type Client interface {
 	Reader
 	Writer
@@ -110,6 +113,10 @@ type Client interface {
 
 	// RESTMapper returns the REST mapper for GVK/GVR resolution.
 	RESTMapper() meta.RESTMapper
+
+	// ControllerRuntime returns the controller-runtime client used by shared
+	// platform utilities that operate on unstructured resources.
+	ControllerRuntime() crclient.Client
 
 	// OLMClient returns the full OLM clientset for write operations (subscriptions, CSVs).
 	// Use OLM() from Reader for read-only access.
