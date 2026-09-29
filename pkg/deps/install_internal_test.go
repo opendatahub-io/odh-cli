@@ -56,6 +56,12 @@ const (
 	testV1FailureMessage      = "bundle resolution failed"
 	testV1PendingReason       = "Installing"
 	testV1InstalledType       = "Installed"
+	testV1ProgressingType     = "Progressing"
+	testV1BlockedReason       = "Blocked"
+	testV1BlockedMessage      = "upgrade requires manual intervention"
+	testV1BlockedError        = "progress blocked"
+	testV1SucceededReason     = "Succeeded"
+	testV1TrueStatus          = "True"
 	testV1FalseStatus         = "False"
 )
 
@@ -1022,4 +1028,40 @@ func TestClusterExtensionInstalledKeepsOLMV1InstallationInProgress(t *testing.T)
 	installed, err := clusterExtensionInstalled(extension)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(installed).To(BeFalse())
+}
+
+func TestClusterExtensionInstalledRejectsBlockedProgress(t *testing.T) {
+	installedCondition := map[string]any{
+		"type": testV1InstalledType, "status": testV1TrueStatus, "reason": testV1SucceededReason,
+	}
+	blockedCondition := map[string]any{
+		"type": testV1ProgressingType, "status": testV1FalseStatus,
+		"reason": testV1BlockedReason, "message": testV1BlockedMessage,
+	}
+	tests := []struct {
+		name       string
+		conditions []any
+	}{
+		{name: "blocked after installed", conditions: []any{installedCondition, blockedCondition}},
+		{name: "blocked before installed", conditions: []any{blockedCondition, installedCondition}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			extension := &unstructured.Unstructured{Object: map[string]any{
+				"metadata": map[string]any{"name": testV1DependencyName},
+				"status":   map[string]any{"conditions": tt.conditions},
+			}}
+
+			installed, err := clusterExtensionInstalled(extension)
+			g.Expect(installed).To(BeFalse())
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(And(
+				ContainSubstring(testV1DependencyName),
+				ContainSubstring(testV1BlockedError),
+				ContainSubstring(testV1BlockedMessage),
+			))
+		})
+	}
 }

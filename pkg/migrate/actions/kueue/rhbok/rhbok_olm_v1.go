@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"path"
 	"strings"
@@ -25,7 +26,11 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 )
 
-const rhbokClusterCatalog = "openshift-redhat-operators"
+const (
+	rhbokClusterCatalog            = "openshift-redhat-operators"
+	maxRHBOKCatalogContentBytes    = 512 << 20 // 512 MiB
+	msgRHBOKCatalogContentTooLarge = "RHBOK ClusterCatalog content exceeds %d-byte limit"
+)
 
 func (a *RHBOKMigrationAction) selectOLMMode(ctx context.Context, target action.Target) error {
 	var requested olm.Mode
@@ -93,8 +98,8 @@ func existingClusterExtensionChannel(ctx context.Context, target action.Target, 
 		return "", false, nil
 	}
 
-	channels, _, err := unstructured.NestedStringSlice(existing.Object, "spec", "source", "catalog", "channels")
-	if err != nil {
+	channels, err := jq.Query[[]string](existing, ".spec.source.catalog.channels")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return "", true, fmt.Errorf("read RHBOK ClusterExtension %s channels: %w", existing.GetName(), err)
 	}
 	if len(channels) == 1 && channels[0] != "" {
@@ -120,11 +125,11 @@ func resolveClusterCatalogChannel(ctx context.Context, target action.Target) (st
 		return "", fmt.Errorf("get RHBOK ClusterCatalog: %w", err)
 	}
 
-	baseURL, found, err := unstructured.NestedString(catalog.Object, "status", "urls", "base")
-	if err != nil {
+	baseURL, err := jq.Query[string](catalog, ".status.urls.base")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return "", fmt.Errorf("read RHBOK ClusterCatalog content URL: %w", err)
 	}
-	if !found || baseURL == "" {
+	if baseURL == "" {
 		return "", errors.New("RHBOK ClusterCatalog has no content URL at status.urls.base")
 	}
 
@@ -139,7 +144,16 @@ func resolveClusterCatalogChannel(ctx context.Context, target action.Target) (st
 	}
 	defer func() { _ = content.Close() }()
 
-	channel, err := olm.ResolveCatalogChannel(content, subscriptionPackage)
+	return resolveRHBOKCatalogContentChannel(content, maxRHBOKCatalogContentBytes)
+}
+
+func resolveRHBOKCatalogContentChannel(content io.Reader, maxBytes int64) (string, error) {
+	// The extra byte distinguishes an oversized catalog from one exactly at the limit.
+	limited := &io.LimitedReader{R: content, N: maxBytes + 1}
+	channel, err := olm.ResolveCatalogChannel(limited, subscriptionPackage)
+	if limited.N == 0 {
+		return "", fmt.Errorf(msgRHBOKCatalogContentTooLarge, maxBytes)
+	}
 	if err != nil {
 		return "", fmt.Errorf("resolve RHBOK channel from ClusterCatalog: %w", err)
 	}
@@ -245,14 +259,20 @@ func (a *RHBOKMigrationAction) installRHBOKClusterExtension(
 
 	err = wait.PollUntilContextTimeout(ctx, operatorPollPeriod, operatorTimeout, true,
 		func(ctx context.Context) (bool, error) {
-			info, err := platformcluster.OperatorInstalledViaClusterExtension(
-				ctx, target.Client.ControllerRuntime(), subscriptionPackage,
-			)
+			extension, err := findRHBOKClusterExtension(ctx, target.Client.ControllerRuntime())
+			if err != nil {
+				return false, fmt.Errorf("check RHBOK ClusterExtension installation: %w", err)
+			}
+			if extension == nil {
+				return false, nil
+			}
+
+			installed, err := clusterExtensionInstalled(extension)
 			if err != nil {
 				return false, fmt.Errorf("check RHBOK ClusterExtension installation: %w", err)
 			}
 
-			return info != nil, nil
+			return installed, nil
 		})
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed waiting for RHBOK ClusterExtension: %v", err)

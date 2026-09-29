@@ -2,6 +2,7 @@ package rhbok
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	platformcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
@@ -19,6 +20,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube/olm"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube/rbac"
 )
@@ -316,8 +318,8 @@ func rhbokV0SubscriptionRequested(ctx context.Context, reader crclient.Reader) (
 	}
 
 	for i := range list.Items {
-		packageName, _, err := unstructured.NestedString(list.Items[i].Object, "spec", "name")
-		if err != nil {
+		packageName, err := jq.Query[string](&list.Items[i], ".spec.name")
+		if err != nil && !errors.Is(err, jq.ErrNotFound) {
 			return false, fmt.Errorf("read Subscription %s package: %w", list.Items[i].GetName(), err)
 		}
 		if packageName == subscriptionPackage {
@@ -351,8 +353,8 @@ func (a *RHBOKMigrationAction) checkV1ServiceAccount(ctx context.Context, target
 			return
 		}
 
-		accountName, _, err = unstructured.NestedString(extension.Object, "spec", "serviceAccount", "name")
-		if err != nil {
+		accountName, err = jq.Query[string](extension, ".spec.serviceAccount.name")
+		if err != nil && !errors.Is(err, jq.ErrNotFound) {
 			step.Completef(result.StepFailed,
 				"Failed to read RHBOK ClusterExtension %s ServiceAccount: %v",
 				extension.GetName(), err)
@@ -392,24 +394,24 @@ func findRHBOKClusterExtension(ctx context.Context, reader crclient.Reader) (*un
 
 	for i := range list.Items {
 		extension := &list.Items[i]
-		namespace, _, err := unstructured.NestedString(extension.Object, "spec", "namespace")
-		if err != nil {
+		namespace, err := jq.Query[string](extension, ".spec.namespace")
+		if err != nil && !errors.Is(err, jq.ErrNotFound) {
 			return nil, fmt.Errorf("read ClusterExtension %s namespace: %w", extension.GetName(), err)
 		}
 		if namespace != operatorNamespace {
 			continue
 		}
 
-		sourceType, _, err := unstructured.NestedString(extension.Object, "spec", "source", "sourceType")
-		if err != nil {
+		sourceType, err := jq.Query[string](extension, ".spec.source.sourceType")
+		if err != nil && !errors.Is(err, jq.ErrNotFound) {
 			return nil, fmt.Errorf("read ClusterExtension %s source type: %w", extension.GetName(), err)
 		}
 		if sourceType != "Catalog" {
 			continue
 		}
 
-		packageName, _, err := unstructured.NestedString(extension.Object, "spec", "source", "catalog", "packageName")
-		if err != nil {
+		packageName, err := jq.Query[string](extension, ".spec.source.catalog.packageName")
+		if err != nil && !errors.Is(err, jq.ErrNotFound) {
 			return nil, fmt.Errorf("read ClusterExtension %s package: %w", extension.GetName(), err)
 		}
 		if packageName == subscriptionPackage {
@@ -421,21 +423,32 @@ func findRHBOKClusterExtension(ctx context.Context, reader crclient.Reader) (*un
 }
 
 func clusterExtensionInstalled(extension *unstructured.Unstructured) (bool, error) {
-	conditions, _, err := unstructured.NestedSlice(extension.Object, "status", "conditions")
-	if err != nil {
+	conditions, err := jq.Query[[]any](extension, ".status.conditions")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return false, fmt.Errorf("read ClusterExtension %s conditions: %w", extension.GetName(), err)
 	}
+	installed := false
 	for _, condition := range conditions {
 		values, ok := condition.(map[string]any)
 		if !ok {
 			return false, fmt.Errorf("ClusterExtension %s has malformed condition", extension.GetName())
 		}
+		if values["type"] == "Progressing" && values["status"] == "False" && values["reason"] == "Blocked" {
+			message, _ := values["message"].(string)
+
+			return false, fmt.Errorf("ClusterExtension %s progress blocked: %s", extension.GetName(), message)
+		}
 		if values["type"] == "Installed" {
-			return values["status"] == "True" && values["reason"] == "Succeeded", nil
+			if values["status"] == "False" && values["reason"] == "Failed" {
+				message, _ := values["message"].(string)
+
+				return false, fmt.Errorf("ClusterExtension %s installation failed (Failed): %s", extension.GetName(), message)
+			}
+			installed = values["status"] == "True" && values["reason"] == "Succeeded"
 		}
 	}
 
-	return false, nil
+	return installed, nil
 }
 
 func (a *RHBOKMigrationAction) checkNoRHBOKConflictsV0(

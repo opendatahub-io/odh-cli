@@ -47,6 +47,16 @@ func ExportPlanNamespaces(p labelingPlan) []string {
 	return p.namespaces
 }
 
+func ExportInstallRHBOKClusterExtension(
+	a *RHBOKMigrationAction, ctx context.Context, target action.Target, channel string, step action.StepRecorder,
+) {
+	a.installRHBOKClusterExtension(ctx, target, channel, step)
+}
+
+func ExportRHBOKInstalledViaClusterExtension(ctx context.Context, target action.Target) bool {
+	return rhbokInstalledViaClusterExtension(ctx, target.Client)
+}
+
 func ExportPlanWorkloads(p labelingPlan) []workloadRef {
 	return p.workloads
 }

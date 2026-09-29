@@ -237,15 +237,18 @@ func rhbokOperatorInstalled(ctx context.Context, kubeClient client.Client) (bool
 }
 
 func rhbokInstalledViaClusterExtension(ctx context.Context, kubeClient client.Client) bool {
-	if !rhbokRequestedViaClusterExtension(ctx, kubeClient) {
+	if kubeClient.ControllerRuntime() == nil {
 		return false
 	}
 
-	info, err := platformcluster.OperatorInstalledViaClusterExtension(
-		ctx, kubeClient.ControllerRuntime(), subscriptionPackage,
-	)
+	extension, err := findRHBOKClusterExtension(ctx, kubeClient.ControllerRuntime())
+	if err != nil || extension == nil {
+		return false
+	}
 
-	return err == nil && info != nil
+	installed, err := clusterExtensionInstalled(extension)
+
+	return err == nil && installed
 }
 
 func rhbokRequestedViaClusterExtension(ctx context.Context, kubeClient client.Client) bool {

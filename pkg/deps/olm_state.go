@@ -2,6 +2,7 @@ package deps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	platformcluster "github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/jq"
 )
 
 func requestedClusterExtension(ctx context.Context, reader crclient.Reader, packageName, namespace string) (bool, error) {
@@ -52,6 +54,8 @@ type clusterExtensionInstallState struct {
 	installed bool
 }
 
+const msgClusterExtensionProgressBlocked = "ClusterExtension %s progress blocked: %s"
+
 func findClusterExtensionInstallState(
 	ctx context.Context, reader crclient.Reader, packageName, namespace string,
 ) (clusterExtensionInstallState, error) {
@@ -87,8 +91,8 @@ func findClusterExtensionInstallState(
 			continue
 		}
 
-		version, _, versionErr := unstructured.NestedString(extension.Object, "status", "install", "bundle", "version")
-		if versionErr != nil {
+		version, versionErr := jq.Query[string](extension, ".status.install.bundle.version")
+		if versionErr != nil && !errors.Is(versionErr, jq.ErrNotFound) {
 			return state, fmt.Errorf("read ClusterExtension %s version: %w", extension.GetName(), versionErr)
 		}
 
@@ -102,24 +106,24 @@ func findClusterExtensionInstallState(
 }
 
 func clusterExtensionMatches(extension *unstructured.Unstructured, packageName, namespace string) (bool, error) {
-	installNamespace, _, err := unstructured.NestedString(extension.Object, "spec", "namespace")
-	if err != nil {
+	installNamespace, err := jq.Query[string](extension, ".spec.namespace")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return false, fmt.Errorf("read ClusterExtension %s namespace: %w", extension.GetName(), err)
 	}
 	if namespace != "" && installNamespace != namespace {
 		return false, nil
 	}
 
-	sourceType, _, err := unstructured.NestedString(extension.Object, "spec", "source", "sourceType")
-	if err != nil {
+	sourceType, err := jq.Query[string](extension, ".spec.source.sourceType")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return false, fmt.Errorf("read ClusterExtension %s source type: %w", extension.GetName(), err)
 	}
 	if sourceType != "Catalog" {
 		return false, nil
 	}
 
-	installedPackage, _, err := unstructured.NestedString(extension.Object, "spec", "source", "catalog", "packageName")
-	if err != nil {
+	installedPackage, err := jq.Query[string](extension, ".spec.source.catalog.packageName")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return false, fmt.Errorf("read ClusterExtension %s package: %w", extension.GetName(), err)
 	}
 
@@ -127,15 +131,21 @@ func clusterExtensionMatches(extension *unstructured.Unstructured, packageName, 
 }
 
 func clusterExtensionInstalled(extension *unstructured.Unstructured) (bool, error) {
-	conditions, _, err := unstructured.NestedSlice(extension.Object, "status", "conditions")
-	if err != nil {
+	conditions, err := jq.Query[[]any](extension, ".status.conditions")
+	if err != nil && !errors.Is(err, jq.ErrNotFound) {
 		return false, fmt.Errorf("read ClusterExtension %s conditions: %w", extension.GetName(), err)
 	}
 
+	installed := false
 	for _, condition := range conditions {
 		values, ok := condition.(map[string]any)
 		if !ok {
 			return false, fmt.Errorf("ClusterExtension %s has malformed condition", extension.GetName())
+		}
+		if values["type"] == "Progressing" && values["status"] == "False" && values["reason"] == "Blocked" {
+			message, _ := values["message"].(string)
+
+			return false, fmt.Errorf(msgClusterExtensionProgressBlocked, extension.GetName(), message)
 		}
 		if values["type"] == "Installed" {
 			reason, _ := values["reason"].(string)
@@ -148,9 +158,9 @@ func clusterExtensionInstalled(extension *unstructured.Unstructured) (bool, erro
 				)
 			}
 
-			return values["status"] == "True" && values["reason"] == "Succeeded", nil
+			installed = values["status"] == "True" && reason == "Succeeded"
 		}
 	}
 
-	return false, nil
+	return installed, nil
 }
