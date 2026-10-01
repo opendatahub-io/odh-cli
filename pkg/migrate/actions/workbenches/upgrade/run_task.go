@@ -224,7 +224,7 @@ func (t *runTask) verifyAuthModel(
 			step.Recordf(
 				fmt.Sprintf("auth-model-%s-%s", nb.GetNamespace(), nb.GetName()),
 				"%s/%s needs auth model patch: %s",
-				result.StepFailed,
+				result.StepSkipped,
 				nb.GetNamespace(), nb.GetName(), strings.Join(failures, "; "),
 			)
 
@@ -233,7 +233,10 @@ func (t *runTask) verifyAuthModel(
 	}
 
 	if needsPatchCount > 0 {
-		step.Completef(result.StepFailed,
+		// Auth model migration is intentionally informational here: it is completed
+		// separately via workbenches.patch-auth-model, so it must not fail this action
+		// or block the overall migration run/prepare loop.
+		step.Completef(result.StepSkipped,
 			"%d stopped Notebook(s) still have legacy OAuth-proxy sidecar — run workbenches.patch-auth-model to complete migration",
 			needsPatchCount)
 	} else {
