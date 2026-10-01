@@ -19,6 +19,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check"
 	resultpkg "github.com/opendatahub-io/odh-cli/pkg/lint/check/result"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/aigateway"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/aisafety"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/dashboard"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/datasciencepipelines"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/kserve"
@@ -112,7 +113,8 @@ func NewCommand(
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
 
-	// Components (21)
+	// Components (22)
+	registry.MustRegister(aisafety.NewFMSGuardrailsCRDRemovalCheck())
 	registry.MustRegister(aigateway.NewMaaSFieldMigrationCheck())
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
