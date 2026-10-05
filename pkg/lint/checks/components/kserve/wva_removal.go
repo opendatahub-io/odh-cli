@@ -27,13 +27,17 @@ const (
 	wvaConfigMapName        = "inferenceservice-config"
 	wvaConfigMapKey         = "autoscaling-wva-controller-config"
 	variantAutoscalingCRD   = "variantautoscalings.llmd.ai"
+	wvaRemovedMajor         = 3
+	wvaRemovedMinor         = 6
 )
 
-var variantAutoscalingResource = resources.ResourceType{
-	Group:    "llmd.ai",
-	Version:  "v1alpha1",
-	Kind:     "VariantAutoscaling",
-	Resource: "variantautoscalings",
+func variantAutoscalingType() resources.ResourceType {
+	return resources.ResourceType{
+		Group:    "llmd.ai",
+		Version:  "v1alpha1",
+		Kind:     "VariantAutoscaling",
+		Resource: "variantautoscalings",
+	}
 }
 
 // WVARemovalCheck stops a 3.6 upgrade while WVA is still enabled or its
@@ -59,10 +63,10 @@ func NewWVARemovalCheck() *WVARemovalCheck {
 // CanApply reports whether this check should run. It runs only for an upgrade
 // into 3.6 from an older release.
 func (c *WVARemovalCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
-	if target.TargetVersion == nil || !version.IsVersionAtLeast(target.TargetVersion, 3, 6) {
+	if target.TargetVersion == nil || !version.IsVersionAtLeast(target.TargetVersion, wvaRemovedMajor, wvaRemovedMinor) {
 		return false, nil
 	}
-	if target.CurrentVersion != nil && version.IsVersionAtLeast(target.CurrentVersion, 3, 6) {
+	if target.CurrentVersion != nil && version.IsVersionAtLeast(target.CurrentVersion, wvaRemovedMajor, wvaRemovedMinor) {
 		return false, nil
 	}
 
@@ -110,61 +114,114 @@ func (c *WVARemovalCheck) Validate(ctx context.Context, target check.Target) (*r
 		})
 }
 
-func wvaUpgradeFindings(ctx context.Context, req *validate.ComponentRequest) (blockers, advisories []string, err error) {
-	state, qerr := jq.Query[string](req.DSC, ".spec.components.kserve.wva.managementState")
-	switch {
-	case errors.Is(qerr, jq.ErrNotFound):
-	case qerr != nil:
-		return nil, nil, fmt.Errorf("querying kserve wva managementState: %w", qerr)
-	case state == constants.ManagementStateManaged:
-		blockers = append(blockers, "spec.components.kserve.wva.managementState is Managed")
+func wvaUpgradeFindings(ctx context.Context, req *validate.ComponentRequest) ([]string, []string, error) {
+	var blockers, advisories []string
+
+	blocker, err := wvaManagementStateBlocker(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if blocker != "" {
+		blockers = append(blockers, blocker)
 	}
 
+	blocker, err = wvaDeploymentBlocker(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if blocker != "" {
+		blockers = append(blockers, blocker)
+	}
+
+	crdBlockers, crdAdvisories, err := wvaCustomResourceFindings(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	blockers = append(blockers, crdBlockers...)
+	advisories = append(advisories, crdAdvisories...)
+
+	advisory, err := wvaConfigMapAdvisory(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if advisory != "" {
+		advisories = append(advisories, advisory)
+	}
+
+	return blockers, advisories, nil
+}
+
+func wvaManagementStateBlocker(req *validate.ComponentRequest) (string, error) {
+	state, err := jq.Query[string](req.DSC, ".spec.components.kserve.wva.managementState")
+	switch {
+	case errors.Is(err, jq.ErrNotFound):
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("querying kserve wva managementState: %w", err)
+	case state == constants.ManagementStateManaged:
+		return "spec.components.kserve.wva.managementState is Managed", nil
+	default:
+		return "", nil
+	}
+}
+
+func wvaDeploymentBlocker(ctx context.Context, req *validate.ComponentRequest) (string, error) {
 	ns := req.ApplicationsNamespace
 	exists, err := namedResourceExists(ctx, req.Client, resources.Deployment.GVR(), wvaControllerDeployment, ns)
 	if err != nil {
-		return nil, nil, fmt.Errorf("checking WVA deployment: %w", err)
+		return "", fmt.Errorf("checking WVA deployment: %w", err)
 	}
-	if exists {
-		blockers = append(blockers, fmt.Sprintf("deployment %s/%s exists", ns, wvaControllerDeployment))
+	if !exists {
+		return "", nil
 	}
 
+	return fmt.Sprintf("deployment %s/%s exists", ns, wvaControllerDeployment), nil
+}
+
+func wvaCustomResourceFindings(ctx context.Context, req *validate.ComponentRequest) ([]string, []string, error) {
 	crdExists, err := namedResourceExists(ctx, req.Client, resources.CustomResourceDefinition.GVR(), variantAutoscalingCRD, "")
 	if err != nil {
 		return nil, nil, fmt.Errorf("checking VariantAutoscaling CRD: %w", err)
 	}
-	if crdExists {
-		items, listErr := req.Client.List(ctx, variantAutoscalingResource)
-		if listErr != nil && !client.IsResourceTypeNotFound(listErr) {
-			return nil, nil, fmt.Errorf("listing VariantAutoscaling resources: %w", listErr)
-		}
-		if len(items) > 0 {
-			names := make([]string, 0, len(items))
-			for _, item := range items {
-				names = append(names, fmt.Sprintf("%s/%s", item.GetNamespace(), item.GetName()))
-			}
-			blockers = append(blockers, "VariantAutoscaling resources exist: "+strings.Join(names, ", "))
-		} else {
-			advisories = append(advisories, "CRD "+variantAutoscalingCRD+" still exists")
-		}
+	if !crdExists {
+		return nil, nil, nil
 	}
 
+	items, listErr := req.Client.List(ctx, variantAutoscalingType())
+	if listErr != nil && !client.IsResourceTypeNotFound(listErr) {
+		return nil, nil, fmt.Errorf("listing VariantAutoscaling resources: %w", listErr)
+	}
+	if len(items) == 0 {
+		return nil, []string{"CRD " + variantAutoscalingCRD + " still exists"}, nil
+	}
+
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		names = append(names, fmt.Sprintf("%s/%s", item.GetNamespace(), item.GetName()))
+	}
+
+	return []string{"VariantAutoscaling resources exist: " + strings.Join(names, ", ")}, nil, nil
+}
+
+func wvaConfigMapAdvisory(ctx context.Context, req *validate.ComponentRequest) (string, error) {
+	ns := req.ApplicationsNamespace
 	cm, err := req.Client.Get(ctx, resources.ConfigMap.GVR(), wvaConfigMapName, client.InNamespace(ns))
-	if err != nil && !apierrors.IsNotFound(err) {
-		return nil, nil, fmt.Errorf("checking inferenceservice-config: %w", err)
+	if apierrors.IsNotFound(err) || (cm == nil && err == nil) {
+		return "", nil
 	}
-	if cm != nil {
-		_, keyErr := jq.Query[string](cm, `.data["`+wvaConfigMapKey+`"]`)
-		switch {
-		case errors.Is(keyErr, jq.ErrNotFound):
-		case keyErr != nil:
-			return nil, nil, fmt.Errorf("querying %s: %w", wvaConfigMapKey, keyErr)
-		default:
-			advisories = append(advisories, fmt.Sprintf("ConfigMap %s/%s still contains %s", ns, wvaConfigMapName, wvaConfigMapKey))
-		}
+	if err != nil {
+		return "", fmt.Errorf("checking inferenceservice-config: %w", err)
 	}
 
-	return blockers, advisories, nil
+	_, keyErr := jq.Query[string](cm, `.data["`+wvaConfigMapKey+`"]`)
+	switch {
+	case errors.Is(keyErr, jq.ErrNotFound):
+		return "", nil
+	case keyErr != nil:
+		return "", fmt.Errorf("querying %s: %w", wvaConfigMapKey, keyErr)
+	default:
+		return fmt.Sprintf("ConfigMap %s/%s still contains %s", ns, wvaConfigMapName, wvaConfigMapKey), nil
+	}
 }
 
 func namedResourceExists(ctx context.Context, r client.Reader, gvr schema.GroupVersionResource, name, namespace string) (bool, error) {
@@ -178,7 +235,7 @@ func namedResourceExists(ctx context.Context, r client.Reader, gvr schema.GroupV
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("getting %s %s: %w", gvr.Resource, name, err)
 	}
 
 	return true, nil

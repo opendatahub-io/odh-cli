@@ -5,6 +5,7 @@ import (
 
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,7 +56,8 @@ func wvaDSC(wvaState string) *unstructured.Unstructured {
 
 func wvaTarget(t *testing.T, current, target string, objects ...*unstructured.Unstructured) check.Target {
 	t.Helper()
-	all := []*unstructured.Unstructured{testutil.NewDSCI("opendatahub")}
+	all := make([]*unstructured.Unstructured, 0, 1+len(objects))
+	all = append(all, testutil.NewDSCI("opendatahub"))
 	all = append(all, objects...)
 
 	return testutil.NewTarget(t, testutil.TargetConfig{
