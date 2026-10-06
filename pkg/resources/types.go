@@ -482,6 +482,16 @@ var (
 		Resource: "authorinos",
 	}
 
+	// MCPServer is the MCP lifecycle operator's MCPServer resource.
+	// Served at v1alpha1 on pre-GA (Tech Preview) clusters, which is the
+	// relevant version for pre-upgrade lint checks.
+	MCPServer = ResourceType{
+		Group:    "mcp.x-k8s.io",
+		Version:  "v1alpha1",
+		Kind:     "MCPServer",
+		Resource: "mcpservers",
+	}
+
 	// LLMInferenceService is the llm-d LLMInferenceService resource.
 	LLMInferenceService = ResourceType{
 		Group:    "serving.kserve.io",
