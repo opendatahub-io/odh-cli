@@ -787,6 +787,8 @@ func TestRunTask_Validate_WithMismatch(t *testing.T) {
 	result, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
+	// Only the (informational) auth-model check flags this notebook; the mismatch
+	// detection itself succeeds, so the action still completes.
 	g.Expect(result.Status.Completed).To(BeTrue())
 }
 
@@ -824,6 +826,7 @@ func TestRunTask_Execute_AllCorrectNames(t *testing.T) {
 	result, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
+	// Auth-model check is informational only; no fixable mismatch here either.
 	g.Expect(result.Status.Completed).To(BeTrue())
 }
 
@@ -845,6 +848,8 @@ func TestRunTask_Execute_FixContainerNameMismatch(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
+	// Container name fix succeeds; the informational auth-model check is the
+	// only outstanding item and does not block completion.
 	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	updated, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
@@ -875,6 +880,8 @@ func TestRunTask_Execute_DryRun_NoChanges(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
+	// Dry-run "would fix" is a Skipped step, and the auth-model check is
+	// informational, so nothing here should block completion.
 	g.Expect(actionResult.Status.Completed).To(BeTrue())
 
 	original, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
@@ -1594,7 +1601,7 @@ func TestPrepareTask_Validate_ListError(t *testing.T) {
 	result, err := prepTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestPrepareTask_Execute_ListError(t *testing.T) {
@@ -1610,7 +1617,7 @@ func TestPrepareTask_Execute_ListError(t *testing.T) {
 	result, err := prepTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Validate_ListError(t *testing.T) {
@@ -1626,7 +1633,7 @@ func TestRunTask_Validate_ListError(t *testing.T) {
 	result, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_ListError(t *testing.T) {
@@ -1642,7 +1649,7 @@ func TestRunTask_Execute_ListError(t *testing.T) {
 	result, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_UpdateError(t *testing.T) {
@@ -1663,7 +1670,7 @@ func TestRunTask_Execute_UpdateError(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.Status.Completed).To(BeFalse())
 
 	updated, _ := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-nb", metav1.GetOptions{})
@@ -1904,15 +1911,18 @@ func TestRunTask_Validate_DetectsLegacyAuthModel(t *testing.T) {
 	actionResult, err := runTask.Validate(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
+	// The auth-model check is informational only: it flags notebooks needing
+	// workbenches.patch-auth-model, but must not fail this action or block
+	// the migrate run/prepare loop.
 	g.Expect(actionResult.Status.Completed).To(BeTrue())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
 
 	hasAuthModelStep := false
 
 	for _, step := range actionResult.Status.Steps {
 		if step.Name == "verify-auth-model" {
 			hasAuthModelStep = true
-			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Status).To(Equal(result.StepSkipped))
 			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
 		}
 	}
@@ -1941,15 +1951,16 @@ func TestRunTask_Execute_DetectsLegacyAuthModel(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
+	// The auth-model check is informational only and must not fail this action.
 	g.Expect(actionResult.Status.Completed).To(BeTrue())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
 
 	hasAuthModelStep := false
 
 	for _, step := range actionResult.Status.Steps {
 		if step.Name == "verify-auth-model" {
 			hasAuthModelStep = true
-			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Status).To(Equal(result.StepSkipped))
 			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
 		}
 	}
@@ -2009,8 +2020,10 @@ func TestRunTask_Execute_FixesNamesAndDetectsAuthModel(t *testing.T) {
 	actionResult, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
+	// Container name fix succeeds; the informational auth-model check must not
+	// fail this action.
 	g.Expect(actionResult.Status.Completed).To(BeTrue())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
 
 	updated, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "my-notebook", metav1.GetOptions{})
@@ -2023,7 +2036,7 @@ func TestRunTask_Execute_FixesNamesAndDetectsAuthModel(t *testing.T) {
 
 	for _, step := range actionResult.Status.Steps {
 		if step.Name == "verify-auth-model" {
-			g.Expect(step.Status).To(Equal(result.StepFailed))
+			g.Expect(step.Status).To(Equal(result.StepSkipped))
 			g.Expect(step.Message).To(ContainSubstring("patch-auth-model"))
 		}
 	}

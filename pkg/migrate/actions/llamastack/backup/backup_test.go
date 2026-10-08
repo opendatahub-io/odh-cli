@@ -441,7 +441,7 @@ func TestLlamaStackBackupAction_Execute(t *testing.T) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(res).To(gstruct.PointTo(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 			"Status": gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-				"Completed": BeTrue(),
+				"Completed": BeFalse(),
 			}),
 		})))
 	})
@@ -476,7 +476,7 @@ func TestLlamaStackBackupAction_Execute(t *testing.T) {
 		res, err := prepareTask.Execute(ctx, target)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(res.Status.Completed).To(BeTrue())
+		g.Expect(res.Status.Completed).To(BeFalse())
 		g.Expect(hasFailedStep(res, stepNameBackup, stepNameBackupLLSD)).To(BeTrue(),
 			"Expected to find a failed step for "+stepNameBackupLLSD)
 	})
@@ -511,7 +511,7 @@ func TestLlamaStackBackupAction_Execute(t *testing.T) {
 		res, err := prepareTask.Execute(ctx, target)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(res.Status.Completed).To(BeTrue())
+		g.Expect(res.Status.Completed).To(BeFalse())
 		g.Expect(hasFailedStep(res, stepNameBackup, stepNameBackupLLSD)).To(BeTrue(),
 			"Expected to find a failed step for "+stepNameBackupLLSD)
 	})
@@ -546,7 +546,7 @@ func TestLlamaStackBackupAction_Execute(t *testing.T) {
 		res, err := prepareTask.Execute(ctx, target)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(res.Status.Completed).To(BeTrue())
+		g.Expect(res.Status.Completed).To(BeFalse())
 		g.Expect(hasFailedStep(res, stepNameBackup, stepNameBackupLLSD)).To(BeTrue(),
 			"Expected to find a failed step for "+stepNameBackupLLSD)
 	})
@@ -583,7 +583,7 @@ func TestLlamaStackBackupAction_Execute(t *testing.T) {
 		res, err := prepareTask.Execute(ctx, target)
 
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(res.Status.Completed).To(BeTrue())
+		g.Expect(res.Status.Completed).To(BeFalse())
 		g.Expect(hasFailedStep(res, stepNameBackup, stepNameBackupLLSD)).To(BeTrue(),
 			"Expected backup to fail when oc/kubectl are not in PATH")
 	})
