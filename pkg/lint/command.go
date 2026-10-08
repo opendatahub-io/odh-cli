@@ -42,6 +42,7 @@ import (
 	kueueworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/kueue"
 	llamastackworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/llamastack"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/notebook"
+	ogxworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ogx"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/ray"
 	trainerworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainer"
 	trainingoperatorworkloads "github.com/opendatahub-io/odh-cli/pkg/lint/checks/workloads/trainingoperator"
@@ -158,6 +159,7 @@ func NewCommand(
 	registry.MustRegister(kueueworkloads.NewDataIntegrityCheck())
 	registry.MustRegister(llamastackworkloads.NewConfigCheck())
 	registry.MustRegister(llamastackworkloads.NewMigrationCheck())
+	registry.MustRegister(ogxworkloads.NewExternalAccessTLSCheck())
 	registry.MustRegister(notebook.NewAcceleratorMigrationCheck())
 	registry.MustRegister(notebook.NewContainerNameCheck())
 	registry.MustRegister(notebook.NewHardwareProfileMigrationCheck())

@@ -22,6 +22,7 @@ const (
 	ComponentTrainingOperator = "trainingoperator"
 	ComponentWorkbenches      = "workbenches"
 	ComponentAIGateway        = "aigateway"
+	ComponentOGX              = "ogx"
 )
 
 // Component names for Kueue integration.

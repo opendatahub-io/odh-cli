@@ -466,6 +466,14 @@ var (
 		Resource: "llamastackdistributions",
 	}
 
+	// OGXServer is the OGX server resource that replaced LlamaStackDistribution in 3.5.
+	OGXServer = ResourceType{
+		Group:    "ogx.io",
+		Version:  "v1beta1",
+		Kind:     "OGXServer",
+		Resource: "ogxservers",
+	}
+
 	// Kuadrant is the Kuadrant gateway API resource.
 	Kuadrant = ResourceType{
 		Group:    "kuadrant.io",
