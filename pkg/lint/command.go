@@ -113,7 +113,7 @@ func NewCommand(
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
 
-	// Components (21)
+	// Components (22)
 	registry.MustRegister(aigateway.NewMaaSFieldMigrationCheck())
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
@@ -125,6 +125,7 @@ func NewCommand(
 	registry.MustRegister(dashboard.NewConfigCompatibilityCheck())
 	registry.MustRegister(datasciencepipelines.NewRenamingCheck())
 	registry.MustRegister(kserve.NewServerlessRemovalCheck())
+	registry.MustRegister(kserve.NewWVARemovalCheck())
 	registry.MustRegister(kserve.NewKuadrantReadinessCheck())
 	registry.MustRegister(kserve.NewAuthorinoTLSReadinessCheck())
 	registry.MustRegister(kserve.NewServiceMeshOperatorCheck())
