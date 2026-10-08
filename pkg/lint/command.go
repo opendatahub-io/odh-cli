@@ -109,9 +109,10 @@ func NewCommand(
 	registry := check.NewRegistry()
 
 	// Explicitly register all checks (no global state, full test isolation)
-	// Platform (2)
+	// Platform (3)
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
+	registry.MustRegister(datasciencecluster.NewStorageVersionCheck())
 
 	// Components (21)
 	registry.MustRegister(aigateway.NewMaaSFieldMigrationCheck())
