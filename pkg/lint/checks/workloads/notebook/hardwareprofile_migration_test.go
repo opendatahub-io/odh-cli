@@ -189,11 +189,37 @@ func TestHardwareProfileMigration_MixedNotebooks(t *testing.T) {
 	g.Expect(result.ImpactedObjects).To(HaveLen(2))
 }
 
-func TestHardwareProfileMigration_CanApply(t *testing.T) {
+func TestHardwareProfileMigration_CanApply_NilVersions(t *testing.T) {
+	g := NewWithT(t)
+
+	chk := notebook.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), check.Target{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
+func TestHardwareProfileMigration_CanApply_SameVersion(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: hardwareProfileListKinds,
+		ListKinds:      hardwareProfileListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "2.17.0",
+	})
+
+	chk := notebook.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
+func TestHardwareProfileMigration_CanApply_UpgradeTo3x(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      hardwareProfileListKinds,
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
 
 	chk := notebook.NewHardwareProfileMigrationCheck()
@@ -239,8 +265,10 @@ func TestHardwareProfileMigration_CanApply_Managed(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: hardwareProfileListKinds,
-		Objects:   []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+		ListKinds:      hardwareProfileListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Managed"})},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
 
 	chk := notebook.NewHardwareProfileMigrationCheck()
@@ -253,14 +281,16 @@ func TestHardwareProfileMigration_CanApply_Removed(t *testing.T) {
 	g := NewWithT(t)
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds: hardwareProfileListKinds,
-		Objects:   []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Removed"})},
+		ListKinds:      hardwareProfileListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"workbenches": "Removed"})},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "3.0.0",
 	})
 
 	chk := notebook.NewHardwareProfileMigrationCheck()
 	canApply, err := chk.CanApply(t.Context(), target)
 	g.Expect(err).ToNot(HaveOccurred())
-	// CanApply always returns true; component filtering is done in Validate via ForComponent.
+	// CanApply returns true regardless of component state; component filtering is done in Validate via ForComponent.
 	g.Expect(canApply).To(BeTrue())
 }
 

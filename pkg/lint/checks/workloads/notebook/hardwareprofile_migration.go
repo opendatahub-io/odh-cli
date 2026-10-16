@@ -11,6 +11,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/check/validate"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
+	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
 // HardwareProfileMigrationCheck detects Notebook CRs carrying the legacy
@@ -36,9 +37,9 @@ func NewHardwareProfileMigrationCheck() *HardwareProfileMigrationCheck {
 }
 
 // CanApply returns whether this check should run for the given target.
-// Applies regardless of version; component state is checked via ForComponent in Validate.
-func (c *HardwareProfileMigrationCheck) CanApply(_ context.Context, _ check.Target) (bool, error) {
-	return true, nil
+// Only applies when upgrading from 2.x to 3.x; component state is checked via ForComponent in Validate.
+func (c *HardwareProfileMigrationCheck) CanApply(_ context.Context, target check.Target) (bool, error) {
+	return version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion), nil
 }
 
 // Validate executes the check against the provided target.
