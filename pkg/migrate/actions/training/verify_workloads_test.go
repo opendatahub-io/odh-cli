@@ -248,31 +248,33 @@ func TestVerifyWorkloadsAction_RunAt36ReportsUnmanagedResources(t *testing.T) {
 	actionResult, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+	g.Expect(actionResult.HasSkippedSteps()).To(BeTrue())
 
 	dscStep := findStep(actionResult.Status.Steps, "trainingoperator-dsc")
 	g.Expect(dscStep).ToNot(BeNil())
 	g.Expect(dscStep.Status).To(Equal(result.StepCompleted))
 	g.Expect(dscStep.Details["state"]).To(Equal(managementStateRemoved))
+	g.Expect(dscStep.Message).To(ContainSubstring("No TrainingOperator installed or managed by RHOAI"))
 
 	pytorchStep := findStep(actionResult.Status.Steps, resources.PyTorchJob.Resource)
 	g.Expect(pytorchStep).ToNot(BeNil())
-	g.Expect(pytorchStep.Status).To(Equal(result.StepFailed))
+	g.Expect(pytorchStep.Status).To(Equal(result.StepSkipped))
 	g.Expect(pytorchStep.Message).To(ContainSubstring("no longer managed by RHOAI"))
 
 	summary := findStep(actionResult.Status.Steps, "summary")
 	g.Expect(summary).ToNot(BeNil())
-	g.Expect(summary.Status).To(Equal(result.StepFailed))
+	g.Expect(summary.Status).To(Equal(result.StepSkipped))
 	g.Expect(summary.Details["active"]).To(Equal(1))
 
 	componentCRStep := findStep(actionResult.Status.Steps, "trainingoperator-cr")
 	g.Expect(componentCRStep).ToNot(BeNil())
-	g.Expect(componentCRStep.Status).To(Equal(result.StepFailed))
+	g.Expect(componentCRStep.Status).To(Equal(result.StepSkipped))
 	g.Expect(componentCRStep.Details["present"]).To(BeTrue())
 	g.Expect(componentCRStep.Message).To(ContainSubstring("no longer managed by RHOAI"))
 }
 
-func TestVerifyWorkloadsAction_RunAt36FailsWhenDSCManaged(t *testing.T) {
+func TestVerifyWorkloadsAction_RunAt36WarnsWhenDSCManaged(t *testing.T) {
 	tests := []struct {
 		name string
 		dsc  *unstructured.Unstructured
@@ -290,11 +292,12 @@ func TestVerifyWorkloadsAction_RunAt36FailsWhenDSCManaged(t *testing.T) {
 			actionResult, err := a.Run().Execute(ctx, target)
 
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+			g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+			g.Expect(actionResult.HasSkippedSteps()).To(BeTrue())
 
 			dscStep := findStep(actionResult.Status.Steps, "trainingoperator-dsc")
 			g.Expect(dscStep).ToNot(BeNil())
-			g.Expect(dscStep.Status).To(Equal(result.StepFailed))
+			g.Expect(dscStep.Status).To(Equal(result.StepSkipped))
 			g.Expect(dscStep.Message).To(ContainSubstring("still managed by RHOAI"))
 		})
 	}
@@ -309,12 +312,19 @@ func TestVerifyWorkloadsAction_RunAt36IgnoresDSCStatus(t *testing.T) {
 	actionResult, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+	g.Expect(actionResult.HasSkippedSteps()).To(BeFalse())
 
 	dscStep := findStep(actionResult.Status.Steps, "trainingoperator-dsc")
 	g.Expect(dscStep).ToNot(BeNil())
 	g.Expect(dscStep.Status).To(Equal(result.StepCompleted))
 	g.Expect(dscStep.Details["state"]).To(Equal(managementStateRemoved))
+	g.Expect(dscStep.Message).To(ContainSubstring("No TrainingOperator installed or managed by RHOAI"))
+
+	summary := findStep(actionResult.Status.Steps, "summary")
+	g.Expect(summary).ToNot(BeNil())
+	g.Expect(summary.Status).To(Equal(result.StepCompleted))
+	g.Expect(summary.Details["active"]).To(Equal(0))
 }
 
 func TestVerifyWorkloadsAction_RunAt36AllowsMissingTrainJobCRD(t *testing.T) {
@@ -346,12 +356,43 @@ func TestVerifyWorkloadsAction_RunAt36AllowsMissingTrainJobCRD(t *testing.T) {
 	actionResult, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+	g.Expect(actionResult.HasSkippedSteps()).To(BeFalse())
 
 	crdStep := findStep(actionResult.Status.Steps, "trainjob-crd")
 	g.Expect(crdStep).ToNot(BeNil())
 	g.Expect(crdStep.Status).To(Equal(result.StepCompleted))
 	g.Expect(crdStep.Message).To(ContainSubstring("v2 API not yet available"))
+
+	summary := findStep(actionResult.Status.Steps, "summary")
+	g.Expect(summary).ToNot(BeNil())
+	g.Expect(summary.Status).To(Equal(result.StepCompleted))
+	g.Expect(summary.Details["active"]).To(Equal(0))
+}
+
+func TestVerifyWorkloadsAction_RunAt36CompletesSummaryForTerminalWorkloads(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	terminal := newTrainingJob(resources.PyTorchJob, "terminal-job", "ns-a", succeededConditions())
+	target := newTestTargetForVersion(
+		targetVersion36,
+		newDSC("", managementStateRemoved),
+		terminal,
+	)
+
+	a := &trainingaction.VerifyWorkloadsAction{}
+	actionResult, err := a.Run().Execute(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult.HasFailedSteps()).To(BeFalse())
+	g.Expect(actionResult.HasSkippedSteps()).To(BeTrue())
+
+	summary := findStep(actionResult.Status.Steps, "summary")
+	g.Expect(summary).ToNot(BeNil())
+	g.Expect(summary.Status).To(Equal(result.StepCompleted))
+	g.Expect(summary.Details["active"]).To(Equal(0))
+	g.Expect(summary.Details["terminal"]).To(Equal(1))
 }
 
 func TestVerifyWorkloadsAction_RunCategorizesBlockers(t *testing.T) {

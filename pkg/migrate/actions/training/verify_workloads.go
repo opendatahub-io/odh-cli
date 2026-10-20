@@ -127,14 +127,14 @@ func (t *verifyWorkloadsTask) checkTrainingOperatorDSC(
 	step.AddDetail("state", state)
 
 	if state == constants.ManagementStateManaged {
-		step.Completef(result.StepFailed,
+		step.Completef(result.StepSkipped,
 			"TrainingOperator is still managed by RHOAI (state: %s) — set it to Removed", state)
 
 		return nil
 	}
 
 	step.Completef(result.StepCompleted,
-		"TrainingOperator is not managed by RHOAI (state: %s)", state)
+		"No TrainingOperator installed or managed by RHOAI (state: %s)", state)
 
 	return nil
 }
@@ -173,7 +173,7 @@ func (t *verifyWorkloadsTask) enumerateV1Workloads(ctx context.Context, target a
 			message := "%s/%s — %s (age: %s)"
 
 			if removalTarget {
-				status = result.StepFailed
+				status = result.StepSkipped
 				message = "%s/%s — %s (age: %s) is no longer managed by RHOAI, use Trainer v2"
 			}
 
@@ -186,7 +186,7 @@ func (t *verifyWorkloadsTask) enumerateV1Workloads(ctx context.Context, target a
 		}
 
 		if removalTarget {
-			step.Completef(result.StepFailed,
+			step.Completef(result.StepSkipped,
 				"Found %d %s(s) — no longer managed by RHOAI, use Trainer v2",
 				len(kindEntries), rt.Kind)
 		} else {
@@ -270,9 +270,13 @@ func (t *verifyWorkloadsTask) buildSummary(
 	}
 
 	if removalTarget {
+		status := result.StepCompleted
+		if activeCount > 0 {
+			status = result.StepSkipped
+		}
 		step.AddDetail("active", activeCount)
 		step.AddDetail("terminal", report.Summary.Total-activeCount)
-		step.Completef(result.StepFailed,
+		step.Completef(status,
 			"Found %d v1 training workload(s): %d active, %d terminal — none are managed by RHOAI",
 			report.Summary.Total, activeCount, report.Summary.Total-activeCount)
 
@@ -318,10 +322,10 @@ func (t *verifyWorkloadsTask) checkTrainingOperatorCR(
 	}
 
 	for _, item := range items {
-		step.Recordf(item.GetName(), "%s is no longer managed by RHOAI — use Trainer v2", result.StepFailed, item.GetName())
+		step.Recordf(item.GetName(), "%s is no longer managed by RHOAI — use Trainer v2", result.StepSkipped, item.GetName())
 	}
 
-	step.Completef(result.StepFailed,
+	step.Completef(result.StepSkipped,
 		"Found %d TrainingOperator component CR(s) — no longer managed by RHOAI, use Trainer v2",
 		len(items))
 
