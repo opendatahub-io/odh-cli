@@ -23,7 +23,9 @@ func Detect(ctx context.Context, c client.Client) (*semver.Version, error) {
 			return nil, fmt.Errorf("parsing version %q: %w", versionStr, err)
 		}
 
-		return &ver, nil
+		if !ver.EQ(semver.Version{}) {
+			return &ver, nil
+		}
 	}
 
 	// Priority 2: DSCInitialization
@@ -35,7 +37,9 @@ func Detect(ctx context.Context, c client.Client) (*semver.Version, error) {
 			return nil, fmt.Errorf("parsing version %q: %w", versionStr, err)
 		}
 
-		return &ver, nil
+		if !ver.EQ(semver.Version{}) {
+			return &ver, nil
+		}
 	}
 
 	// Priority 3: OLM
@@ -47,7 +51,9 @@ func Detect(ctx context.Context, c client.Client) (*semver.Version, error) {
 			return nil, fmt.Errorf("parsing version %q: %w", versionStr, err)
 		}
 
-		return &ver, nil
+		if !ver.EQ(semver.Version{}) {
+			return &ver, nil
+		}
 	}
 
 	// No version found from any source

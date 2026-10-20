@@ -25,6 +25,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/kueue"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/llamastack"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/modelmesh"
+	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/modelregistry"
 	raycomponent "github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/ray"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/components/trainingoperator"
 	"github.com/opendatahub-io/odh-cli/pkg/lint/checks/dependencies/certmanager"
@@ -113,7 +114,7 @@ func NewCommand(
 	registry.MustRegister(dscinitialization.NewDSCInitializationReadinessCheck())
 	registry.MustRegister(datasciencecluster.NewDataScienceClusterReadinessCheck())
 
-	// Components (22)
+	// Components (23)
 	registry.MustRegister(aigateway.NewMaaSFieldMigrationCheck())
 	registry.MustRegister(raycomponent.NewCodeFlareRemovalCheck())
 	registry.MustRegister(dashboard.NewAcceleratorProfileMigrationCheck())
@@ -134,6 +135,7 @@ func NewCommand(
 	registry.MustRegister(kueue.NewOperatorInstalledCheck())
 	registry.MustRegister(llamastack.NewRemovalCheck())
 	registry.MustRegister(modelmesh.NewRemovalCheck())
+	registry.MustRegister(modelregistry.NewRenamingCheck())
 	registry.MustRegister(trainingoperator.NewDeprecationCheck())
 	registry.MustRegister(trainingoperator.NewRemovalCheck())
 
