@@ -2,6 +2,7 @@ package version_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -54,6 +55,12 @@ const (
 	testOLMV1ExtensionName = "rhoai-operator"
 	testOLMV1PackageName   = "rhods-operator"
 	testOLMV1Version       = "2.22.1"
+
+	testZeroVersion          = "0.0.0"
+	testFallbackVersion      = "2.16.0"
+	testZeroVersionDSCName   = "default-dsc"
+	testFallbackDSCIName     = "default-dsci"
+	testDSCGroupV1VersionFmt = "%s/v1"
 )
 
 func TestDetect_FromDataScienceCluster(t *testing.T) {
@@ -451,6 +458,90 @@ func TestDetect_NoVersionFound(t *testing.T) {
 	clusterVersion, err := version.Detect(ctx, c)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("unable to detect cluster version"))
+	g.Expect(clusterVersion).To(BeNil())
+}
+
+func TestDetect_ZeroVersionFallsBackToNextSource(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	// DataScienceCluster reports a placeholder 0.0.0 version - detection must
+	// fall through to DSCInitialization
+	dsc := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DataScienceClusterV1.APIVersion(),
+			"kind":       resources.DataScienceClusterV1.Kind,
+			"metadata": map[string]any{
+				"name": testZeroVersionDSCName,
+			},
+			"status": map[string]any{
+				"release": map[string]any{
+					"version": testZeroVersion,
+				},
+			},
+		},
+	}
+
+	dsci := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DSCInitializationV1.APIVersion(),
+			"kind":       resources.DSCInitializationV1.Kind,
+			"metadata": map[string]any{
+				"name": testFallbackDSCIName,
+			},
+			"status": map[string]any{
+				"release": map[string]any{
+					"version": testFallbackVersion,
+				},
+			},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc, dsci)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:   dynamicClient,
+		Discovery: newFakeDiscoveryWithResources(fmt.Sprintf(testDSCGroupV1VersionFmt, resources.DataScienceCluster.Group)),
+	})
+
+	clusterVersion, err := version.Detect(ctx, c)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(clusterVersion).ToNot(BeNil())
+	g.Expect(clusterVersion.String()).To(Equal(testFallbackVersion))
+}
+
+func TestDetect_AllSourcesZeroVersion(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	// Every source that exists reports a placeholder 0.0.0 version
+	dsc := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DataScienceClusterV1.APIVersion(),
+			"kind":       resources.DataScienceClusterV1.Kind,
+			"metadata": map[string]any{
+				"name": testZeroVersionDSCName,
+			},
+			"status": map[string]any{
+				"release": map[string]any{
+					"version": testZeroVersion,
+				},
+			},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, dsc)
+
+	c := client.NewForTesting(client.TestClientConfig{
+		Dynamic:   dynamicClient,
+		Discovery: newFakeDiscoveryWithResources(fmt.Sprintf(testDSCGroupV1VersionFmt, resources.DataScienceCluster.Group)),
+	})
+
+	clusterVersion, err := version.Detect(ctx, c)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("no nonzero version found"))
 	g.Expect(clusterVersion).To(BeNil())
 }
 

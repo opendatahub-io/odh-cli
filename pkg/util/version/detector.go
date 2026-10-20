@@ -56,6 +56,7 @@ func Detect(ctx context.Context, c client.Client) (*semver.Version, error) {
 		}
 	}
 
-	// No version found from any source
-	return nil, errors.New("unable to detect cluster version: no DataScienceCluster, DSCInitialization, or OLM resources found with version information")
+	// No nonzero version found from any source (sources may exist but report a
+	// placeholder 0.0.0 version, or not exist at all)
+	return nil, errors.New("unable to detect cluster version: no nonzero version found from DataScienceCluster, DSCInitialization, or OLM resources")
 }
