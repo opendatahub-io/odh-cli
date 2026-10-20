@@ -24,15 +24,24 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const testTimestamp = "2025-01-01T00:00:00Z"
+const (
+	testTimestamp             = "2025-01-01T00:00:00Z"
+	targetVersion30           = "3.0.0"
+	targetVersion36           = "3.6.0"
+	trainingOperatorComponent = "trainingoperator"
+	managementStateManaged    = "Managed"
+	managementStateRemoved    = "Removed"
+)
 
 //nolint:gochecknoglobals // Test fixture
 var listKinds = map[schema.GroupVersionResource]string{
-	resources.PyTorchJob.GVR(): resources.PyTorchJob.ListKind(),
-	resources.TFJob.GVR():      resources.TFJob.ListKind(),
-	resources.MPIJob.GVR():     resources.MPIJob.ListKind(),
-	resources.XGBoostJob.GVR(): resources.XGBoostJob.ListKind(),
-	resources.TrainJob.GVR():   resources.TrainJob.ListKind(),
+	resources.PyTorchJob.GVR():                                resources.PyTorchJob.ListKind(),
+	resources.TFJob.GVR():                                     resources.TFJob.ListKind(),
+	resources.MPIJob.GVR():                                    resources.MPIJob.ListKind(),
+	resources.XGBoostJob.GVR():                                resources.XGBoostJob.ListKind(),
+	resources.TrainJob.GVR():                                  resources.TrainJob.ListKind(),
+	resources.DataScienceCluster.GVR():                        resources.DataScienceCluster.ListKind(),
+	resources.GetComponentCR(trainingOperatorComponent).GVR(): resources.GetComponentCR(trainingOperatorComponent).ListKind(),
 }
 
 func newTrainingJob(rt resources.ResourceType, name, namespace string, conditions []any) *unstructured.Unstructured {
@@ -84,20 +93,66 @@ func createdConditions() []any {
 	}
 }
 
+func newDSC(specState, statusState string) *unstructured.Unstructured {
+	specComponents := map[string]any{}
+	statusComponents := map[string]any{}
+
+	if specState != "" {
+		specComponents[trainingOperatorComponent] = map[string]any{"managementState": specState}
+	}
+
+	if statusState != "" {
+		statusComponents[trainingOperatorComponent] = map[string]any{"managementState": statusState}
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resources.DataScienceCluster.APIVersion(),
+			"kind":       resources.DataScienceCluster.Kind,
+			"metadata": map[string]any{
+				"name": "default-dsc",
+			},
+			"spec": map[string]any{
+				"components": specComponents,
+			},
+			"status": map[string]any{
+				"components": statusComponents,
+			},
+		},
+	}
+}
+
+func newTrainingOperatorCR(name string) *unstructured.Unstructured {
+	resourceType := *resources.GetComponentCR(trainingOperatorComponent)
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": resourceType.APIVersion(),
+			"kind":       resourceType.Kind,
+			"metadata": map[string]any{
+				"name": name,
+			},
+		},
+	}
+}
+
 func newTestTarget(objects ...runtime.Object) action.Target {
+	return newTestTargetForVersion(targetVersion30, objects...)
+}
+
+func newTestTargetForVersion(targetVersion string, objects ...runtime.Object) action.Target {
 	scheme := runtime.NewScheme()
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, objects...)
 	testClient := client.NewForTesting(client.TestClientConfig{
 		Dynamic: dynamicClient,
 	})
 
-	v := semver.MustParse("2.25.0")
-	tv := semver.MustParse("3.0.0")
+	version := semver.MustParse(targetVersion)
 
 	return action.Target{
 		Client:         testClient,
-		CurrentVersion: &v,
-		TargetVersion:  &tv,
+		CurrentVersion: &version,
+		TargetVersion:  &version,
 		DryRun:         false,
 		SkipConfirm:    true,
 		Recorder:       action.NewRootRecorder(),
@@ -117,40 +172,38 @@ func TestVerifyWorkloadsAction_Metadata(t *testing.T) {
 }
 
 func TestVerifyWorkloadsAction_CanApply(t *testing.T) {
-	t.Run("applies when current version is 2.x", func(t *testing.T) {
+	t.Run("applies when target version is 3.x", func(t *testing.T) {
+		g := NewWithT(t)
+
+		a := &trainingaction.VerifyWorkloadsAction{}
+		tv := semver.MustParse(targetVersion30)
+
+		g.Expect(a.CanApply(action.Target{
+			TargetVersion: &tv,
+		})).To(BeTrue())
+	})
+
+	t.Run("applies when current version is nil", func(t *testing.T) {
+		g := NewWithT(t)
+
+		a := &trainingaction.VerifyWorkloadsAction{}
+		tv := semver.MustParse(targetVersion30)
+
+		g.Expect(a.CanApply(action.Target{
+			TargetVersion: &tv,
+		})).To(BeTrue())
+	})
+
+	t.Run("does not apply when target version is 2.x", func(t *testing.T) {
 		g := NewWithT(t)
 
 		a := &trainingaction.VerifyWorkloadsAction{}
 		v := semver.MustParse("2.25.0")
-		tv := semver.MustParse("3.0.0")
+		tv := semver.MustParse("2.25.0")
 
 		g.Expect(a.CanApply(action.Target{
 			CurrentVersion: &v,
 			TargetVersion:  &tv,
-		})).To(BeTrue())
-	})
-
-	t.Run("does not apply when current version is 3.x", func(t *testing.T) {
-		g := NewWithT(t)
-
-		a := &trainingaction.VerifyWorkloadsAction{}
-		v := semver.MustParse("3.0.0")
-		tv := semver.MustParse("3.1.0")
-
-		g.Expect(a.CanApply(action.Target{
-			CurrentVersion: &v,
-			TargetVersion:  &tv,
-		})).To(BeFalse())
-	})
-
-	t.Run("does not apply when current version is nil", func(t *testing.T) {
-		g := NewWithT(t)
-
-		a := &trainingaction.VerifyWorkloadsAction{}
-		tv := semver.MustParse("3.0.0")
-
-		g.Expect(a.CanApply(action.Target{
-			TargetVersion: &tv,
 		})).To(BeFalse())
 	})
 
@@ -177,6 +230,128 @@ func TestVerifyWorkloadsAction_CanApply(t *testing.T) {
 			TargetVersion:  &tv,
 		})).To(BeFalse())
 	})
+}
+
+func TestVerifyWorkloadsAction_RunAt36ReportsUnmanagedResources(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	running := newTrainingJob(resources.PyTorchJob, "running-job", "ns-a", runningConditions())
+	target := newTestTargetForVersion(
+		targetVersion36,
+		newDSC("", managementStateRemoved),
+		newTrainingOperatorCR("legacy-trainingoperator"),
+		running,
+	)
+
+	a := &trainingaction.VerifyWorkloadsAction{}
+	actionResult, err := a.Run().Execute(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+	dscStep := findStep(actionResult.Status.Steps, "trainingoperator-dsc")
+	g.Expect(dscStep).ToNot(BeNil())
+	g.Expect(dscStep.Status).To(Equal(result.StepCompleted))
+	g.Expect(dscStep.Details["state"]).To(Equal(managementStateRemoved))
+
+	pytorchStep := findStep(actionResult.Status.Steps, resources.PyTorchJob.Resource)
+	g.Expect(pytorchStep).ToNot(BeNil())
+	g.Expect(pytorchStep.Status).To(Equal(result.StepFailed))
+	g.Expect(pytorchStep.Message).To(ContainSubstring("no longer managed by RHOAI"))
+
+	summary := findStep(actionResult.Status.Steps, "summary")
+	g.Expect(summary).ToNot(BeNil())
+	g.Expect(summary.Status).To(Equal(result.StepFailed))
+	g.Expect(summary.Details["active"]).To(Equal(1))
+
+	componentCRStep := findStep(actionResult.Status.Steps, "trainingoperator-cr")
+	g.Expect(componentCRStep).ToNot(BeNil())
+	g.Expect(componentCRStep.Status).To(Equal(result.StepFailed))
+	g.Expect(componentCRStep.Details["present"]).To(BeTrue())
+	g.Expect(componentCRStep.Message).To(ContainSubstring("no longer managed by RHOAI"))
+}
+
+func TestVerifyWorkloadsAction_RunAt36FailsWhenDSCManaged(t *testing.T) {
+	tests := []struct {
+		name string
+		dsc  *unstructured.Unstructured
+	}{
+		{name: "managed", dsc: newDSC(managementStateManaged, managementStateRemoved)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			g := NewWithT(t)
+			ctx := t.Context()
+
+			target := newTestTargetForVersion(targetVersion36, test.dsc)
+			a := &trainingaction.VerifyWorkloadsAction{}
+			actionResult, err := a.Run().Execute(ctx, target)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+			dscStep := findStep(actionResult.Status.Steps, "trainingoperator-dsc")
+			g.Expect(dscStep).ToNot(BeNil())
+			g.Expect(dscStep.Status).To(Equal(result.StepFailed))
+			g.Expect(dscStep.Message).To(ContainSubstring("still managed by RHOAI"))
+		})
+	}
+}
+
+func TestVerifyWorkloadsAction_RunAt36IgnoresDSCStatus(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	target := newTestTargetForVersion(targetVersion36, newDSC(managementStateRemoved, managementStateManaged))
+	a := &trainingaction.VerifyWorkloadsAction{}
+	actionResult, err := a.Run().Execute(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+	dscStep := findStep(actionResult.Status.Steps, "trainingoperator-dsc")
+	g.Expect(dscStep).ToNot(BeNil())
+	g.Expect(dscStep.Status).To(Equal(result.StepCompleted))
+	g.Expect(dscStep.Details["state"]).To(Equal(managementStateRemoved))
+}
+
+func TestVerifyWorkloadsAction_RunAt36AllowsMissingTrainJobCRD(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	scheme := runtime.NewScheme()
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds, newDSC("", managementStateRemoved))
+	dynamicClient.PrependReactor("list", "trainjobs", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewNotFound(
+			schema.GroupResource{Group: resources.TrainJob.Group, Resource: resources.TrainJob.Resource},
+			"",
+		)
+	})
+
+	testClient := client.NewForTesting(client.TestClientConfig{
+		Dynamic: dynamicClient,
+	})
+	version := semver.MustParse(targetVersion36)
+	target := action.Target{
+		Client:         testClient,
+		CurrentVersion: &version,
+		TargetVersion:  &version,
+		Recorder:       action.NewRootRecorder(),
+		IO:             iostreams.NewIOStreams(nil, &bytes.Buffer{}, &bytes.Buffer{}),
+	}
+
+	a := &trainingaction.VerifyWorkloadsAction{}
+	actionResult, err := a.Run().Execute(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
+
+	crdStep := findStep(actionResult.Status.Steps, "trainjob-crd")
+	g.Expect(crdStep).ToNot(BeNil())
+	g.Expect(crdStep.Status).To(Equal(result.StepCompleted))
+	g.Expect(crdStep.Message).To(ContainSubstring("v2 API not yet available"))
 }
 
 func TestVerifyWorkloadsAction_RunCategorizesBlockers(t *testing.T) {
