@@ -20,12 +20,13 @@ import (
 const (
 	kind = constants.ComponentAIGateway
 
-	// kserveMaaSField is the 3.4 DSC path for MaaS nested under kserve.
+	// kserveMaaSField is the deprecated v2 DSC path for MaaS nested under kserve.
 	kserveMaaSField = ".spec.components.kserve.modelsAsService.managementState"
 )
 
 // MaaSFieldMigrationCheck detects when Models as a Service is configured via the
-// deprecated kserve.modelsAsService field (3.4) instead of aigateway.modelsAsAService (3.5+).
+// deprecated kserve.modelsAsService field (removed in DSC v3) instead of the
+// canonical aigateway.modelsAsAService location.
 type MaaSFieldMigrationCheck struct {
 	check.BaseCheck
 }
@@ -38,16 +39,28 @@ func NewMaaSFieldMigrationCheck() *MaaSFieldMigrationCheck {
 			Kind:             kind,
 			Type:             "maas-field-migration",
 			CheckID:          "components.aigateway.maas-field-migration",
-			CheckName:        "Components :: AIGateway :: MaaS Field Migration (3.4 to 3.5)",
-			CheckDescription: "Detects when Models as a Service is configured via the deprecated kserve.modelsAsService field instead of the new aigateway.modelsAsAService location",
+			CheckName:        "Components :: AIGateway :: MaaS Field Migration (deprecated field)",
+			CheckDescription: "Detects when Models as a Service is configured via the deprecated kserve.modelsAsService field instead of the canonical aigateway.modelsAsAService location for RHOAI 3.5+ targets; the deprecated stanza is removed in DSC v3",
 			CheckRemediation: "Set spec.components.aigateway.managementState: Managed and spec.components.aigateway.modelsAsAService.managementState: Managed in DataScienceCluster, then set spec.components.kserve.modelsAsService.managementState: Removed to clear the deprecated field",
 		},
 	}
 }
 
-// CanApply returns true when upgrading from 3.4 to 3.5 with MaaS enabled via the deprecated field.
+// CanApply returns true when upgrading to a RHOAI 3.5+ target within major 3
+// with MaaS enabled via the deprecated kserve.modelsAsService field.
 func (c *MaaSFieldMigrationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	if !version.IsUpgradeFrom34To35(target.CurrentVersion, target.TargetVersion) {
+	switch {
+	case target.CurrentVersion == nil:
+		return false, nil
+	case target.TargetVersion == nil:
+		return false, nil
+	case !target.CurrentVersion.LT(*target.TargetVersion):
+		return false, nil
+	case version.SameMajorMinor(target.CurrentVersion, target.TargetVersion):
+		return false, nil
+	case !version.IsVersion3x(target.TargetVersion):
+		return false, nil
+	case !version.IsVersionAtLeast(target.TargetVersion, 3, 5): //nolint:mnd // RHOAI 3.5 moved MaaS under aigateway
 		return false, nil
 	}
 
