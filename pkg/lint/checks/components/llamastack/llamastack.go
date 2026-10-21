@@ -15,7 +15,7 @@ import (
 
 const kind = "llamastackoperator"
 
-// RemovalCheck validates that LlamaStack Operator is disabled before upgrading from 3.4 to 3.5.
+// RemovalCheck validates that LlamaStack Operator is disabled before upgrading to RHOAI 3.5+.
 type RemovalCheck struct {
 	check.BaseCheck
 }
@@ -27,17 +27,29 @@ func NewRemovalCheck() *RemovalCheck {
 			Kind:             kind,
 			Type:             check.CheckTypeRemoval,
 			CheckID:          "components.llamastackoperator.removal",
-			CheckName:        "Components :: LlamaStack Operator :: Removal (3.5)",
-			CheckDescription: "Validates that LlamaStack Operator is disabled before upgrading from RHOAI 3.4 to 3.5 (component is replaced by ogx)",
+			CheckName:        "Components :: LlamaStack Operator :: Removal (3.5+)",
+			CheckDescription: "Validates that LlamaStack Operator is disabled before upgrading to RHOAI 3.5+ (component is replaced by ogx)",
 			CheckRemediation: "Disable LlamaStack Operator by setting managementState to 'Removed' in DataScienceCluster before upgrading",
 		},
 	}
 }
 
 // CanApply returns whether this check should run for the given target.
-// This check only applies when upgrading FROM 3.4.x TO 3.5.x and LlamaStack Operator is Managed.
+// This check applies when upgrading to a RHOAI 3.5+ target within major 3
+// and LlamaStack Operator is Managed.
 func (c *RemovalCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
-	if !version.IsUpgradeFrom34To35(target.CurrentVersion, target.TargetVersion) {
+	switch {
+	case target.CurrentVersion == nil:
+		return false, nil
+	case target.TargetVersion == nil:
+		return false, nil
+	case !target.CurrentVersion.LT(*target.TargetVersion):
+		return false, nil
+	case version.SameMajorMinor(target.CurrentVersion, target.TargetVersion):
+		return false, nil
+	case !version.IsVersion3x(target.TargetVersion):
+		return false, nil
+	case !version.IsVersionAtLeast(target.TargetVersion, 3, 5): //nolint:mnd // RHOAI 3.5 replaces LlamaStack Operator with ogx
 		return false, nil
 	}
 

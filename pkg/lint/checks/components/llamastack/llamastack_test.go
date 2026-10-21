@@ -137,24 +137,58 @@ func TestLlamaStackRemovalCheck_CanApply_Managed(t *testing.T) {
 	g.Expect(canApply).To(BeTrue())
 }
 
-func TestLlamaStackRemovalCheck_CanApply_NotUpgrade(t *testing.T) {
-	g := NewWithT(t)
+func TestLlamaStackRemovalCheck_CanApply_VersionMatrix(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		target  string
+		want    bool
+	}{
+		{name: "3.4 to 3.5 applies", current: "3.4.0", target: "3.5.0", want: true},
+		{name: "3.5 to 3.6 applies", current: "3.5.0", target: "3.6.0", want: true},
+		{name: "3.4 to 3.6 applies", current: "3.4.0", target: "3.6.0", want: true},
+		{name: "3.3 to 3.5 applies", current: "3.3.0", target: "3.5.0", want: true},
+		{name: "2.x to 3.5 applies", current: "2.17.0", target: "3.5.0", want: true},
+		{name: "2.x to 3.6 applies", current: "2.17.0", target: "3.6.0", want: true},
+		{name: "3.6 to 3.7 applies", current: "3.6.0", target: "3.7.0", want: true},
+		{name: "no current version", current: "", target: "3.5.0", want: false},
+		{name: "no target version", current: "3.4.0", target: "", want: false},
+		{name: "same version does not apply", current: "3.5.0", target: "3.5.0", want: false},
+		{name: "same major/minor patch change does not apply", current: "3.5.1", target: "3.5.2", want: false},
+		{name: "downgrade does not apply", current: "3.6.0", target: "3.5.0", want: false},
+		{name: "target 3.4 does not apply", current: "3.3.0", target: "3.4.0", want: false},
+		{name: "target 2.x does not apply", current: "2.17.0", target: "2.20.0", want: false},
+		{name: "target 4.x does not apply", current: "3.5.0", target: "4.0.0", want: false},
+	}
 
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:     listKinds,
-		Objects:       []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"llamastackoperator": "Managed"})},
-		TargetVersion: "3.5.0",
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
 
-	chk := llamastack.NewRemovalCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
+			cfg := testutil.TargetConfig{
+				ListKinds: listKinds,
+				Objects:   []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"llamastackoperator": "Managed"})},
+			}
+			if tt.current != "" {
+				cfg.CurrentVersion = tt.current
+			}
+			if tt.target != "" {
+				cfg.TargetVersion = tt.target
+			}
 
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+			target := testutil.NewTarget(t, cfg)
+			chk := llamastack.NewRemovalCheck()
+			canApply, err := chk.CanApply(t.Context(), target)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(canApply).To(Equal(tt.want))
+		})
+	}
 }
 
-func TestLlamaStackRemovalCheck_CanApply_WrongVersion_35To36(t *testing.T) {
+func TestLlamaStackRemovalCheck_ManagedBlocking_36Target(t *testing.T) {
 	g := NewWithT(t)
+	ctx := t.Context()
 
 	target := testutil.NewTarget(t, testutil.TargetConfig{
 		ListKinds:      listKinds,
@@ -163,45 +197,18 @@ func TestLlamaStackRemovalCheck_CanApply_WrongVersion_35To36(t *testing.T) {
 		TargetVersion:  "3.6.0",
 	})
 
-	chk := llamastack.NewRemovalCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
+	llamastackCheck := llamastack.NewRemovalCheck()
+	result, err := llamastackCheck.Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
-}
-
-func TestLlamaStackRemovalCheck_CanApply_From33To35(t *testing.T) {
-	g := NewWithT(t)
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      listKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"llamastackoperator": "Managed"})},
-		CurrentVersion: "3.3.0",
-		TargetVersion:  "3.5.0",
-	})
-
-	chk := llamastack.NewRemovalCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
-}
-
-func TestLlamaStackRemovalCheck_CanApply_From2xTo35(t *testing.T) {
-	g := NewWithT(t)
-
-	target := testutil.NewTarget(t, testutil.TargetConfig{
-		ListKinds:      listKinds,
-		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"llamastackoperator": "Managed"})},
-		CurrentVersion: "2.17.0",
-		TargetVersion:  "3.5.0",
-	})
-
-	chk := llamastack.NewRemovalCheck()
-	canApply, err := chk.CanApply(t.Context(), target)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(canApply).To(BeFalse())
+	g.Expect(result.Status.Conditions).To(HaveLen(1))
+	g.Expect(result.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":    Equal(check.ConditionTypeCompatible),
+		"Status":  Equal(metav1.ConditionFalse),
+		"Reason":  Equal(check.ReasonVersionIncompatible),
+		"Message": And(ContainSubstring("enabled"), ContainSubstring("replaced by ogx in RHOAI 3.6")),
+	}))
+	g.Expect(result.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactBlocking))
 }
 
 func TestLlamaStackRemovalCheck_Metadata(t *testing.T) {
@@ -210,7 +217,7 @@ func TestLlamaStackRemovalCheck_Metadata(t *testing.T) {
 	llamastackCheck := llamastack.NewRemovalCheck()
 
 	g.Expect(llamastackCheck.ID()).To(Equal("components.llamastackoperator.removal"))
-	g.Expect(llamastackCheck.Name()).To(Equal("Components :: LlamaStack Operator :: Removal (3.5)"))
+	g.Expect(llamastackCheck.Name()).To(Equal("Components :: LlamaStack Operator :: Removal (3.5+)"))
 	g.Expect(llamastackCheck.Group()).To(Equal(check.GroupComponent))
 	g.Expect(llamastackCheck.Description()).ToNot(BeEmpty())
 }
