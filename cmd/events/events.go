@@ -9,6 +9,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	eventspkg "github.com/opendatahub-io/odh-cli/pkg/events"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -62,7 +63,7 @@ const cmdExample = `
 `
 
 // AddCommand adds the events command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -104,6 +105,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	_ = cmd.RegisterFlagCompletionFunc("component", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return eventspkg.ValidComponents(), cobra.ShellCompDirectiveNoFileComp
 	})
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

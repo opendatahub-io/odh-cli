@@ -57,3 +57,6 @@ bkp
 # Generated JSON schemas (created by gen-schemas at build time)
 pkg/schema/data/
 
+
+# Agent plan directories (never commit)
+.context/

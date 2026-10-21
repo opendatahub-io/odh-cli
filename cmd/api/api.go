@@ -6,6 +6,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 
 	apipkg "github.com/opendatahub-io/odh-cli/pkg/api"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 )
 
 const (
@@ -14,7 +15,7 @@ const (
 )
 
 // AddCommand adds the api subcommand to the root command.
-func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	cmd := &cobra.Command{
 		Use:           cmdName,
 		Short:         cmdShort,
@@ -26,6 +27,8 @@ func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
 			return apipkg.Run(root, cmd.OutOrStdout())
 		},
 	}
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

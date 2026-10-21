@@ -7,6 +7,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	getpkg "github.com/opendatahub-io/odh-cli/pkg/get"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -47,7 +48,7 @@ const cmdExample = `
 `
 
 // AddCommand adds the get command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -126,6 +127,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	}
 
 	command.AddFlags(cmd.Flags())
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

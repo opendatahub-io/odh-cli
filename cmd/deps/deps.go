@@ -8,6 +8,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/cmd"
 	depspkg "github.com/opendatahub-io/odh-cli/pkg/deps"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -77,7 +78,7 @@ func runCommand(cobraCmd *cobra.Command, c cmd.Command, outputFormat string) err
 }
 
 // AddCommand adds the deps command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -104,6 +105,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	// Add subcommands
 	addInstallCommand(depsCmd, flags, streams)
 	addGraphCommand(depsCmd, flags, streams)
+
+	utilcobra.ApplyOptions(depsCmd, opts...)
 
 	root.AddCommand(depsCmd)
 }

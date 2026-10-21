@@ -4,6 +4,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 )
 
 const (
@@ -80,7 +82,7 @@ Installation:
 `
 
 // AddCommand adds the completion command and its shell-specific subcommands.
-func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	cmd := &cobra.Command{
 		Use:           cmdName,
 		Short:         cmdShort,
@@ -92,6 +94,8 @@ func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
 	cmd.AddCommand(newBashCmd(root))
 	cmd.AddCommand(newZshCmd(root))
 	cmd.AddCommand(newFishCmd(root))
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }
