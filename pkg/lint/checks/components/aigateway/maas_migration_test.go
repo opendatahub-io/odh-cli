@@ -129,18 +129,28 @@ func TestMaaSFieldMigrationCheck_CanApply_OldFieldRemoved(t *testing.T) {
 	g.Expect(canApply).To(BeFalse())
 }
 
-func TestMaaSFieldMigrationCheck_CanApply_NotUpgrade34To35(t *testing.T) {
+func TestMaaSFieldMigrationCheck_CanApply_VersionMatrix(t *testing.T) {
 	tests := []struct {
 		name    string
 		current string
 		target  string
+		want    bool
 	}{
-		{"no current version", "", "3.5.0"},
-		{"same version 3.5", "3.5.0", "3.5.0"},
-		{"3.5 to 3.6", "3.5.0", "3.6.0"},
-		{"2.x to 3.5", "2.17.0", "3.5.0"},
-		{"3.3 to 3.5", "3.3.0", "3.5.0"},
-		{"3.4 to 3.6", "3.4.0", "3.6.0"},
+		{name: "3.4 to 3.5 applies", current: "3.4.0", target: "3.5.0", want: true},
+		{name: "3.5 to 3.6 applies", current: "3.5.0", target: "3.6.0", want: true},
+		{name: "3.4 to 3.6 applies", current: "3.4.0", target: "3.6.0", want: true},
+		{name: "3.3 to 3.5 applies", current: "3.3.0", target: "3.5.0", want: true},
+		{name: "2.x to 3.5 applies", current: "2.17.0", target: "3.5.0", want: true},
+		{name: "2.x to 3.6 applies", current: "2.17.0", target: "3.6.0", want: true},
+		{name: "3.6 to 3.7 applies", current: "3.6.0", target: "3.7.0", want: true},
+		{name: "no current version", current: "", target: "3.5.0", want: false},
+		{name: "no target version", current: "3.4.0", target: "", want: false},
+		{name: "same version does not apply", current: "3.5.0", target: "3.5.0", want: false},
+		{name: "same major/minor patch change does not apply", current: "3.5.1", target: "3.5.2", want: false},
+		{name: "downgrade does not apply", current: "3.6.0", target: "3.5.0", want: false},
+		{name: "target 3.4 does not apply", current: "3.3.0", target: "3.4.0", want: false},
+		{name: "target 2.x does not apply", current: "2.17.0", target: "2.20.0", want: false},
+		{name: "target 4.x does not apply", current: "3.5.0", target: "4.0.0", want: false},
 	}
 
 	for _, tt := range tests {
@@ -163,7 +173,7 @@ func TestMaaSFieldMigrationCheck_CanApply_NotUpgrade34To35(t *testing.T) {
 			canApply, err := chk.CanApply(t.Context(), target)
 
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(canApply).To(BeFalse())
+			g.Expect(canApply).To(Equal(tt.want))
 		})
 	}
 }
@@ -192,6 +202,35 @@ func TestMaaSFieldMigrationCheck_Validate_OldFieldManaged_Advisory(t *testing.T)
 			ContainSubstring("kserve.modelsAsService"),
 			ContainSubstring("aigateway.modelsAsAService"),
 			ContainSubstring("3.5"),
+		),
+	}))
+	g.Expect(res.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
+}
+
+func TestMaaSFieldMigrationCheck_Validate_OldFieldManaged_36Target(t *testing.T) {
+	g := NewWithT(t)
+	ctx := t.Context()
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      listKinds,
+		Objects:        []*unstructured.Unstructured{newDSCWithKserveMaaS("Managed")},
+		CurrentVersion: "3.5.0",
+		TargetVersion:  "3.6.0",
+	})
+
+	chk := aigateway.NewMaaSFieldMigrationCheck()
+	res, err := chk.Validate(ctx, target)
+
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(res.Status.Conditions).To(HaveLen(1))
+	g.Expect(res.Status.Conditions[0].Condition).To(MatchFields(IgnoreExtras, Fields{
+		"Type":   Equal(check.ConditionTypeCompatible),
+		"Status": Equal(metav1.ConditionFalse),
+		"Reason": Equal(check.ReasonVersionIncompatible),
+		"Message": And(
+			ContainSubstring("kserve.modelsAsService"),
+			ContainSubstring("aigateway.modelsAsAService"),
+			ContainSubstring("3.6"),
 		),
 	}))
 	g.Expect(res.Status.Conditions[0].Impact).To(Equal(resultpkg.ImpactAdvisory))
@@ -226,7 +265,7 @@ func TestMaaSFieldMigrationCheck_Metadata(t *testing.T) {
 	chk := aigateway.NewMaaSFieldMigrationCheck()
 
 	g.Expect(chk.ID()).To(Equal("components.aigateway.maas-field-migration"))
-	g.Expect(chk.Name()).To(Equal("Components :: AIGateway :: MaaS Field Migration (3.4 to 3.5)"))
+	g.Expect(chk.Name()).To(Equal("Components :: AIGateway :: MaaS Field Migration (deprecated field)"))
 	g.Expect(chk.Group()).To(Equal(check.GroupComponent))
 	g.Expect(chk.Description()).ToNot(BeEmpty())
 	g.Expect(chk.Remediation()).ToNot(BeEmpty())
