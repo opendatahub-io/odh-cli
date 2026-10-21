@@ -14,6 +14,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
 	"github.com/opendatahub-io/odh-cli/pkg/util/components"
 	"github.com/opendatahub-io/odh-cli/pkg/util/kube"
+	"github.com/opendatahub-io/odh-cli/pkg/util/version"
 )
 
 // ConditionTypeISVCHardwareProfileCompatible indicates whether InferenceServices reference legacy hardware profiles.
@@ -43,6 +44,10 @@ func NewHardwareProfileMigrationCheck() *HardwareProfileMigrationCheck {
 // CanApply returns whether this check should run for the given target.
 // Only applies when KServe is in a Managed state.
 func (c *HardwareProfileMigrationCheck) CanApply(ctx context.Context, target check.Target) (bool, error) {
+	if !version.IsUpgradeFrom2xTo3x(target.CurrentVersion, target.TargetVersion) {
+		return false, nil
+	}
+
 	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
 	if err != nil {
 		return false, fmt.Errorf("getting DataScienceCluster: %w", err)

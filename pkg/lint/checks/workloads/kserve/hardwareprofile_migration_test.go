@@ -269,6 +269,47 @@ func TestHardwareProfileMigration_CanApply_Removed(t *testing.T) {
 	g.Expect(canApply).To(BeFalse())
 }
 
+func TestHardwareProfileMigration_CanApply_NilVersions(t *testing.T) {
+	g := NewWithT(t)
+
+	chk := kserve.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), check.Target{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
+func TestHardwareProfileMigration_CanApply_LintMode2x(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      hardwareProfileListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed"})},
+		CurrentVersion: "2.17.0",
+		TargetVersion:  "2.18.0",
+	})
+
+	chk := kserve.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
+func TestHardwareProfileMigration_CanApply_LintMode3x(t *testing.T) {
+	g := NewWithT(t)
+
+	target := testutil.NewTarget(t, testutil.TargetConfig{
+		ListKinds:      hardwareProfileListKinds,
+		Objects:        []*unstructured.Unstructured{testutil.NewDSC(map[string]string{"kserve": "Managed"})},
+		CurrentVersion: "3.0.0",
+		TargetVersion:  "3.1.0",
+	})
+
+	chk := kserve.NewHardwareProfileMigrationCheck()
+	canApply, err := chk.CanApply(t.Context(), target)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(canApply).To(BeFalse())
+}
+
 func TestHardwareProfileMigration_Metadata(t *testing.T) {
 	g := NewWithT(t)
 
