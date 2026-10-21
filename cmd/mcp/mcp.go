@@ -6,6 +6,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 
 	mcppkg "github.com/opendatahub-io/odh-cli/pkg/mcp"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 )
 
 const (
@@ -37,7 +38,7 @@ Examples:
 const defaultPort = 8080
 
 // AddCommand adds the mcp command group to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	mcpCmd := &cobra.Command{
 		Use:   cmdName,
 		Short: cmdShort,
@@ -65,5 +66,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	serveCmd.Flags().IntVar(&port, "port", defaultPort, "Port for SSE transport")
 
 	mcpCmd.AddCommand(serveCmd)
+
+	utilcobra.ApplyOptions(mcpCmd, opts...)
+
 	root.AddCommand(mcpCmd)
 }

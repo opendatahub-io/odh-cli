@@ -11,6 +11,7 @@ import (
 
 	componentspkg "github.com/opendatahub-io/odh-cli/pkg/components"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -84,7 +85,7 @@ func runCommand(cmd *cobra.Command, c command, outputFormat string) error {
 }
 
 // AddCommand adds the components command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -111,6 +112,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	addDescribeCommand(cmd, flags, streams)
 	addMutateCommand(cmd, componentspkg.NewEnableCommand(streams, flags), "enable COMPONENT", "Enable a component (set managementState to Managed)")
 	addMutateCommand(cmd, componentspkg.NewDisableCommand(streams, flags), "disable COMPONENT", "Disable a component (set managementState to Removed)")
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/cmd/migrate/list"
 	"github.com/opendatahub-io/odh-cli/cmd/migrate/prepare"
 	"github.com/opendatahub-io/odh-cli/cmd/migrate/run"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 )
 
 const (
@@ -72,7 +73,7 @@ const cmdExample = `
 `
 
 // AddCommand adds the migrate command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -91,6 +92,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	list.AddCommand(cmd, flags, streams)
 	prepare.AddCommand(cmd, flags, streams)
 	run.AddCommand(cmd, flags, streams)
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

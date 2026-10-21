@@ -15,6 +15,7 @@ import (
 
 	"github.com/opendatahub-io/odh-cli/pkg/diagnose"
 	utilclient "github.com/opendatahub-io/odh-cli/pkg/util/client"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -53,7 +54,7 @@ const cmdExample = `
 `
 
 // AddCommand adds the diagnose command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	var (
 		jsonOutput  bool
 		component   string
@@ -80,6 +81,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output report as JSON")
 	cmd.Flags().StringVar(&component, "component", "", "Scope diagnosis to a single component (e.g. kserve)")
 	cmd.Flags().DurationVar(&eventsSince, "events-since", diagnose.DefaultEventsSince, "Look-back window for recent events")
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

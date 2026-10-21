@@ -14,6 +14,7 @@ import (
 	"github.com/opendatahub-io/odh-cli/internal/version"
 	"github.com/opendatahub-io/odh-cli/pkg/api"
 	"github.com/opendatahub-io/odh-cli/pkg/schema"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 )
 
 const (
@@ -41,7 +42,7 @@ func writeTextVersion(out io.Writer, format string, args ...any) error {
 }
 
 // AddCommand adds the version subcommand to the root command.
-func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	var (
 		outputFormat string
 		outputSchema bool
@@ -117,6 +118,8 @@ func AddCommand(root *cobra.Command, _ *genericclioptions.ConfigFlags) {
 	cmd.Flags().BoolVar(&outputSchema, "schema", false, "Output JSON Schema for the command's structured output format")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress all output")
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }

@@ -13,6 +13,39 @@ Commands follow a consistent pattern separating Cobra wrappers from business log
 3. **Add supporting code**: `pkg/<commandname>/` - domain-specific logic and utilities
 4. **Register command**: Add to parent command (e.g., `cmd/main.go`)
 
+### Command Visibility
+
+Root command visibility is explicit maturity policy configured in `cmd/main.go`
+using shared registration options from `pkg/util/cobra`:
+
+```go
+// Hidden: excluded from root help, shell completion, and the api
+// manifest, but still directly invocable.
+logs.AddCommand(cmd, flags, utilcobra.WithHidden(true))
+
+// Struct form, useful when bundling several settings:
+logs.AddCommand(cmd, flags, utilcobra.CommandOptions{Hidden: true})
+
+// Mixed forms compose in order; the last option wins.
+logs.AddCommand(cmd, flags, utilcobra.WithHidden(true), utilcobra.CommandOptions{Hidden: false})
+```
+
+Currently `lint`, `migrate`, and `version` are registered visible; all other
+commands are registered hidden until they mature. To promote a command, change
+its `utilcobra.WithHidden(true)` to `utilcobra.WithHidden(false)` in `cmd/main.go`.
+
+Notes:
+
+- Supplying no options preserves the wrapper's construction default (`api` is
+  hidden by default; other wrappers are visible by default).
+- A supplied `CommandOptions` value sets visibility explicitly, even when
+  `Hidden` is `false`; an empty struct unhides.
+- Hiding is presentation policy, not access control: hidden commands remain
+  registered and directly callable, and descendants' `Hidden` fields are not
+  modified.
+- The `api` command manifest excludes hidden command subtrees, so hidden
+  commands also disappear from machine-readable discovery.
+
 ### Directory Structure
 
 ```

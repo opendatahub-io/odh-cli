@@ -10,6 +10,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	lintpkg "github.com/opendatahub-io/odh-cli/pkg/lint"
+	utilcobra "github.com/opendatahub-io/odh-cli/pkg/util/cobra"
 	clierrors "github.com/opendatahub-io/odh-cli/pkg/util/errors"
 )
 
@@ -78,7 +79,7 @@ func wrapHandledError(err error) error {
 }
 
 // AddCommand adds the lint command to the root command.
-func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
+func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags, opts ...utilcobra.CommandOption) {
 	streams := genericiooptions.IOStreams{
 		In:     root.InOrStdin(),
 		Out:    root.OutOrStdout(),
@@ -160,6 +161,8 @@ func AddCommand(root *cobra.Command, flags *genericclioptions.ConfigFlags) {
 
 	// Register flags using AddFlags method
 	command.AddFlags(cmd.Flags())
+
+	utilcobra.ApplyOptions(cmd, opts...)
 
 	root.AddCommand(cmd)
 }
