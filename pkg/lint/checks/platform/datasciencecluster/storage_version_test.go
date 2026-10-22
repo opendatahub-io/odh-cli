@@ -57,7 +57,9 @@ func TestStorageVersionCheckBlocksV1(t *testing.T) {
 			g.Expect(dr.Annotations).To(HaveKeyWithValue(check.AnnotationCheckTargetVersion, upgradeTarget))
 
 			condition := dr.Status.Conditions[0]
+			g.Expect(condition).To(HaveField("Type", Equal(datasciencecluster.ConditionTypeStorageVersionMigrated)))
 			g.Expect(condition).To(HaveField("Status", Equal(metav1.ConditionFalse)))
+			g.Expect(condition).To(HaveField("Reason", Equal(check.ReasonMigrationPending)))
 			g.Expect(condition).To(HaveField("Impact", Equal(result.ImpactBlocking)))
 			g.Expect(condition).To(HaveField("Remediation", ContainSubstring(migrationCommand)))
 		})
@@ -81,7 +83,9 @@ func TestStorageVersionCheckPassesWithoutV1(t *testing.T) {
 			g.Expect(dr.Status.Conditions).To(HaveLen(1))
 
 			condition := dr.Status.Conditions[0]
+			g.Expect(condition).To(HaveField("Type", Equal(datasciencecluster.ConditionTypeStorageVersionMigrated)))
 			g.Expect(condition).To(HaveField("Status", Equal(metav1.ConditionTrue)))
+			g.Expect(condition).To(HaveField("Reason", Equal(check.ReasonNoMigrationRequired)))
 			g.Expect(condition).To(HaveField("Impact", Equal(result.ImpactNone)))
 		})
 	}

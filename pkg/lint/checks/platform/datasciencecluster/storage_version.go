@@ -22,6 +22,11 @@ const (
 	storageVersionTargetMinor = 6
 )
 
+// ConditionTypeStorageVersionMigrated indicates stored DataScienceCluster objects
+// no longer require the v1 API version. True means v1 is absent from the CRD
+// storedVersions; False means a storage migration is still pending.
+const ConditionTypeStorageVersionMigrated = "StorageVersionMigrated"
+
 // StorageVersionCheck prevents retiring v1 while it remains in the CRD storage history.
 type StorageVersionCheck struct {
 	check.BaseCheck
@@ -71,14 +76,14 @@ func (c StorageVersionCheck) Validate(ctx context.Context, target check.Target) 
 
 	switch {
 	case slices.Contains(storedVersions, "v1"):
-		dr.SetCondition(check.NewCondition(check.ConditionTypeMigrationRequired, metav1.ConditionFalse,
+		dr.SetCondition(check.NewCondition(ConditionTypeStorageVersionMigrated, metav1.ConditionFalse,
 			check.WithReason(check.ReasonMigrationPending),
 			check.WithMessage("DataScienceCluster CRD storedVersions contains v1; migrate stored objects before retiring v1"),
 			check.WithImpact(result.ImpactBlocking),
 			check.WithRemediation(storageVersionRemediation),
 		))
 	default:
-		dr.SetCondition(check.NewCondition(check.ConditionTypeMigrationRequired, metav1.ConditionTrue,
+		dr.SetCondition(check.NewCondition(ConditionTypeStorageVersionMigrated, metav1.ConditionTrue,
 			check.WithReason(check.ReasonNoMigrationRequired),
 			check.WithMessage("DataScienceCluster CRD storedVersions does not contain v1"),
 		))
