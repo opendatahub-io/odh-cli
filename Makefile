@@ -155,6 +155,13 @@ check: lint
 test: gen-schemas
 	go test -coverprofile=coverage.out ./...
 
+# Storage-migration integration tests. By default each test creates a Kind cluster
+# (Docker, or KIND_EXPERIMENTAL_PROVIDER=podman). Set STORAGE_MIGRATION_CLUSTER=external
+# to use the cluster of the current kubeconfig instead: this DELETES its DataScienceCluster CRD.
+.PHONY: test/integration
+test/integration: gen-schemas
+	go test -tags integration -count=1 -v -timeout=30m ./tests/integration/storage-migration
+
 # Build container image without pushing (creates local manifest)
 .PHONY: build-image
 build-image:

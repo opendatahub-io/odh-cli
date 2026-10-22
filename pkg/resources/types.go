@@ -611,6 +611,30 @@ var (
 		Resource: "knativeeventings",
 	}
 
+	// StorageVersionMigration is the stable Kubernetes storage migration API.
+	StorageVersionMigration = ResourceType{
+		Group: "storagemigration.k8s.io", Version: "v1",
+		Kind: "StorageVersionMigration", Resource: "storageversionmigrations",
+	}
+
+	// StorageVersionMigrationBeta is the Kubernetes beta storage migration API.
+	StorageVersionMigrationBeta = ResourceType{
+		Group: "storagemigration.k8s.io", Version: "v1beta1",
+		Kind: "StorageVersionMigration", Resource: "storageversionmigrations",
+	}
+
+	// StorageVersionMigrationAlpha is the Kubernetes alpha storage migration API.
+	StorageVersionMigrationAlpha = ResourceType{
+		Group: "storagemigration.k8s.io", Version: "v1alpha1",
+		Kind: "StorageVersionMigration", Resource: "storageversionmigrations",
+	}
+
+	// OpenShiftStorageVersionMigration is the OpenShift storage migrator API.
+	OpenShiftStorageVersionMigration = ResourceType{
+		Group: "migration.k8s.io", Version: "v1alpha1",
+		Kind: "StorageVersionMigration", Resource: "storageversionmigrations",
+	}
+
 	// KnativeService is the Knative Service (KService) resource.
 	KnativeService = ResourceType{
 		Group:    "serving.knative.dev",
