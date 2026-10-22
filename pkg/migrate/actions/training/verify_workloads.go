@@ -5,10 +5,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/opendatahub-io/odh-cli/pkg/constants"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action"
 	"github.com/opendatahub-io/odh-cli/pkg/migrate/action/result"
 	"github.com/opendatahub-io/odh-cli/pkg/resources"
 	"github.com/opendatahub-io/odh-cli/pkg/util/client"
+	"github.com/opendatahub-io/odh-cli/pkg/util/components"
+	"github.com/opendatahub-io/odh-cli/pkg/util/version"
+)
+
+const (
+	targetMajorVersion                  = 3
+	trainingOperatorRemovalMinorVersion = 6
 )
 
 // VerifyWorkloadsAction enumerates Kubeflow v1 training workloads as a pre-upgrade check,
@@ -23,8 +31,7 @@ func (a *VerifyWorkloadsAction) Group() action.ActionGroup { return action.Group
 func (a *VerifyWorkloadsAction) Phase() action.ActionPhase { return action.PhasePostUpgrade }
 
 func (a *VerifyWorkloadsAction) CanApply(target action.Target) bool {
-	return target.CurrentVersion != nil && target.TargetVersion != nil &&
-		target.CurrentVersion.Major == 2 && target.TargetVersion.Major == 3
+	return version.IsVersion3x(target.TargetVersion)
 }
 
 func (a *VerifyWorkloadsAction) Prepare() action.Task { return nil }
@@ -38,19 +45,32 @@ func (t *verifyWorkloadsTask) Validate(ctx context.Context, target action.Target
 
 func (t *verifyWorkloadsTask) Execute(ctx context.Context, target action.Target) (*result.ActionResult, error) {
 	recorder := action.NewVerboseRootRecorder(target.IO)
+	removalTarget := version.IsVersionAtLeast(target.TargetVersion, targetMajorVersion, trainingOperatorRemovalMinorVersion)
 
 	trainjobReady, err := t.checkTrainJobCRD(ctx, target, recorder)
 	if err != nil {
 		return recorder.Build(), err
 	}
 
-	allEntries, err := t.enumerateV1Workloads(ctx, target, recorder)
+	allEntries, err := t.enumerateV1Workloads(ctx, target, removalTarget, recorder)
 	if err != nil {
 		return recorder.Build(), err
 	}
 
-	t.assessMigrationReadiness(allEntries, recorder)
-	t.buildSummary(allEntries, trainjobReady, recorder)
+	if removalTarget {
+		if err := t.checkTrainingOperatorDSC(ctx, target, recorder); err != nil {
+			return recorder.Build(), err
+		}
+
+		t.buildSummary(allEntries, trainjobReady, removalTarget, recorder)
+
+		if err := t.checkTrainingOperatorCR(ctx, target, recorder); err != nil {
+			return recorder.Build(), err
+		}
+	} else {
+		t.assessMigrationReadiness(allEntries, recorder)
+		t.buildSummary(allEntries, trainjobReady, removalTarget, recorder)
+	}
 
 	return recorder.Build(), nil
 }
@@ -83,11 +103,43 @@ func (t *verifyWorkloadsTask) checkTrainJobCRD(
 	return true, nil
 }
 
-func (t *verifyWorkloadsTask) enumerateV1Workloads(
+func (t *verifyWorkloadsTask) checkTrainingOperatorDSC(
 	ctx context.Context,
 	target action.Target,
 	recorder action.RootRecorder,
-) ([]WorkloadEntry, error) {
+) error {
+	step := recorder.Child("trainingoperator-dsc", "Check TrainingOperator DSC state")
+
+	dsc, err := client.GetDataScienceCluster(ctx, target.Client)
+	if err != nil {
+		step.Completef(result.StepFailed, "Failed to get DataScienceCluster: %v", err)
+
+		return fmt.Errorf("getting DataScienceCluster: %w", err)
+	}
+
+	state, err := components.GetManagementState(dsc, constants.ComponentTrainingOperator)
+	if err != nil {
+		step.Completef(result.StepFailed, "Failed to check TrainingOperator DSC state: %v", err)
+
+		return fmt.Errorf("checking TrainingOperator DSC state: %w", err)
+	}
+
+	step.AddDetail("state", state)
+
+	if state == constants.ManagementStateManaged {
+		step.Completef(result.StepSkipped,
+			"TrainingOperator is still managed by RHOAI (state: %s) — set it to Removed", state)
+
+		return nil
+	}
+
+	step.Completef(result.StepCompleted,
+		"No TrainingOperator installed or managed by RHOAI (state: %s)", state)
+
+	return nil
+}
+
+func (t *verifyWorkloadsTask) enumerateV1Workloads(ctx context.Context, target action.Target, removalTarget bool, recorder action.RootRecorder) ([]WorkloadEntry, error) {
 	entries, failures, err := EnumerateWorkloads(ctx, target.Client)
 
 	failuresByKind := make(map[string]ListFailure, len(failures))
@@ -117,15 +169,29 @@ func (t *verifyWorkloadsTask) enumerateV1Workloads(
 		}
 
 		for _, entry := range kindEntries {
+			status := result.StepCompleted
+			message := "%s/%s — %s (age: %s)"
+
+			if removalTarget {
+				status = result.StepSkipped
+				message = "%s/%s — %s (age: %s) is no longer managed by RHOAI, use Trainer v2"
+			}
+
 			step.Recordf(
 				entry.Name,
-				"%s/%s — %s (age: %s)",
-				result.StepCompleted,
+				message,
+				status,
 				entry.Namespace, entry.Name, entry.Status, entry.Age,
 			)
 		}
 
-		step.Completef(result.StepCompleted, "Found %d %s(s)", len(kindEntries), rt.Kind)
+		if removalTarget {
+			step.Completef(result.StepSkipped,
+				"Found %d %s(s) — no longer managed by RHOAI, use Trainer v2",
+				len(kindEntries), rt.Kind)
+		} else {
+			step.Completef(result.StepCompleted, "Found %d %s(s)", len(kindEntries), rt.Kind)
+		}
 	}
 
 	if err != nil {
@@ -180,6 +246,7 @@ func (t *verifyWorkloadsTask) assessMigrationReadiness(
 func (t *verifyWorkloadsTask) buildSummary(
 	entries []WorkloadEntry,
 	trainjobReady bool,
+	removalTarget bool,
 	recorder action.RootRecorder,
 ) {
 	step := recorder.Child("summary", "Migration summary")
@@ -194,20 +261,75 @@ func (t *verifyWorkloadsTask) buildSummary(
 	migrationMap := buildMigrationMap(report.Summary.ByKind)
 	step.AddDetail("migrationMap", migrationMap)
 
-	var blockerCount int
+	var activeCount int
 
 	for _, e := range entries {
 		if isActiveStatus(e.Status) {
-			blockerCount++
+			activeCount++
 		}
 	}
 
-	step.AddDetail("blockers", blockerCount)
-	step.AddDetail("completable", report.Summary.Total-blockerCount)
+	if removalTarget {
+		status := result.StepCompleted
+		if activeCount > 0 {
+			status = result.StepSkipped
+		}
+		step.AddDetail("active", activeCount)
+		step.AddDetail("terminal", report.Summary.Total-activeCount)
+		step.Completef(status,
+			"Found %d v1 training workload(s): %d active, %d terminal — none are managed by RHOAI",
+			report.Summary.Total, activeCount, report.Summary.Total-activeCount)
 
+		return
+	}
+
+	step.AddDetail("blockers", activeCount)
+	step.AddDetail("completable", report.Summary.Total-activeCount)
 	step.Completef(result.StepCompleted,
 		"Found %d v1 training workload(s): %d blocking migration, %d completable",
-		report.Summary.Total, blockerCount, report.Summary.Total-blockerCount)
+		report.Summary.Total, activeCount, report.Summary.Total-activeCount)
+}
+
+func (t *verifyWorkloadsTask) checkTrainingOperatorCR(
+	ctx context.Context,
+	target action.Target,
+	recorder action.RootRecorder,
+) error {
+	step := recorder.Child("trainingoperator-cr", "Check TrainingOperator component CR")
+
+	resourceType := resources.GetComponentCR(constants.ComponentTrainingOperator)
+	items, err := target.Client.List(ctx, *resourceType)
+	if err != nil {
+		if client.IsResourceTypeNotFound(err) {
+			step.AddDetail("present", false)
+			step.Completef(result.StepCompleted, "TrainingOperator component CR not found")
+
+			return nil
+		}
+
+		step.Completef(result.StepFailed, "Failed to list TrainingOperator component CRs: %v", err)
+
+		return fmt.Errorf("listing TrainingOperator component CRs: %w", err)
+	}
+
+	step.AddDetail("present", len(items) > 0)
+	step.AddDetail("count", len(items))
+
+	if len(items) == 0 {
+		step.Completef(result.StepCompleted, "TrainingOperator component CR not found")
+
+		return nil
+	}
+
+	for _, item := range items {
+		step.Recordf(item.GetName(), "%s is no longer managed by RHOAI — use Trainer v2", result.StepSkipped, item.GetName())
+	}
+
+	step.Completef(result.StepSkipped,
+		"Found %d TrainingOperator component CR(s) — no longer managed by RHOAI, use Trainer v2",
+		len(items))
+
+	return nil
 }
 
 func isActiveStatus(status string) bool {
