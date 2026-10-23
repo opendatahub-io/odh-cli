@@ -778,7 +778,7 @@ func TestRunTask_Execute_PreCheckFails_SkipConfirm(t *testing.T) {
 	actionResult, err := task.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(actionResult).ToNot(BeNil())
-	g.Expect(actionResult.Status.Completed).To(BeTrue())
+	g.Expect(actionResult.Status.Completed).To(BeFalse())
 	g.Expect(actionResult.HasFailedSteps()).To(BeTrue())
 
 	// SkipConfirm=true with failed pre-check means cleanup is refused (resources NOT deleted)

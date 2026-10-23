@@ -219,6 +219,16 @@ func (t *runTask) restoreDatabase(
 		return
 	}
 
+	// Check dry-run before requiring a live SPDY executor or detecting the
+	// remote client command: a dry-run only needs to report what would
+	// happen and must not depend on RESTConfig/exec being available.
+	if target.DryRun {
+		step.Completef(result.StepSkipped, "Would restore %d-line dump to database %s via %s",
+			dumpLines, creds.database, mariadbPod.Name)
+
+		return
+	}
+
 	if executor == nil {
 		step.Completef(result.StepFailed, "No SPDY executor available (RESTConfig not set)")
 
@@ -228,13 +238,6 @@ func (t *runTask) restoreDatabase(
 	clientCmd, err := detectClientCommand(ctx, executor, svc.namespace, mariadbPod)
 	if err != nil {
 		step.Completef(result.StepFailed, "Failed to detect client command: %v", err)
-
-		return
-	}
-
-	if target.DryRun {
-		step.Completef(result.StepSkipped, "Would restore %d-line dump to database %s via %s",
-			dumpLines, creds.database, mariadbPod.Name)
 
 		return
 	}
