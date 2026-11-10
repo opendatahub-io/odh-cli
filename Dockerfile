@@ -1,5 +1,5 @@
 # Build stage - use native platform for builder to avoid emulation
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26@sha256:0a4666f7a4eb0644c97a73cba198eb268691b270d97831822689e7a2088f87be AS builder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26@sha256:0e3894cea4fc077084245e8aa2befc8a7d91a4f60fbf850f0b5b555cbe62ee26 AS builder
 
 # Build arguments for cross-compilation
 ARG TARGETOS
