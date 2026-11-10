@@ -707,7 +707,7 @@ func TestRunTask_Execute_PatchError(t *testing.T) {
 	result, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_PatchError_ContinuesWithRemaining(t *testing.T) {
@@ -757,7 +757,7 @@ func TestRunTask_Execute_PatchError_ContinuesWithRemaining(t *testing.T) {
 	result, err := runTask.Execute(ctx, target)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).ToNot(BeNil())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 
 	nbOk, err := k8sClient.Dynamic().Resource(resources.Notebook.GVR()).
 		Namespace("ns1").Get(context.Background(), "nb-ok", metav1.GetOptions{})

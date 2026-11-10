@@ -145,7 +145,7 @@ func TestRunTask_Validate_FileNotFound(t *testing.T) {
 	result, err := a.Run().Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Validate_NotDirectory(t *testing.T) {
@@ -161,7 +161,7 @@ func TestRunTask_Validate_NotDirectory(t *testing.T) {
 	result, err := a.Run().Validate(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Validate_Ready(t *testing.T) {
@@ -207,7 +207,7 @@ func TestRunTask_Execute_CannotDetectType(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_NoServicesForRestore(t *testing.T) {
@@ -223,7 +223,7 @@ func TestRunTask_Execute_NoServicesForRestore(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 func TestRunTask_Execute_DryRun_PVC(t *testing.T) {
@@ -289,8 +289,13 @@ func TestRunTask_Execute_DryRun_Database(t *testing.T) {
 	a := &DataAction{BackupFile: backupDir}
 	result, err := a.Run().Execute(ctx, target)
 
+	// target.RESTConfig is unset (no SPDY executor available), but a dry-run
+	// must still succeed without requiring a live executor or remote client
+	// command detection.
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Steps).To(HaveLen(1))
+	g.Expect(result.Status.Steps[0].Message).To(ContainSubstring("Would restore"))
 }
 
 func TestRunTask_Execute_UnsupportedBackupType(t *testing.T) {
@@ -310,7 +315,7 @@ func TestRunTask_Execute_UnsupportedBackupType(t *testing.T) {
 	result, err := a.Run().Execute(ctx, target)
 
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result.Status.Completed).To(BeTrue())
+	g.Expect(result.Status.Completed).To(BeFalse())
 }
 
 // ---------------------------------------------------------------------------
